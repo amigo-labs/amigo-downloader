@@ -136,11 +136,16 @@ var __plugin_exports = module.exports;
             .unwrap_or("plugin.js");
         context.eval_source(&wrapped, filename)?;
 
-        // Extract metadata — supports both properties and functions
+        // Extract required metadata — supports both properties and functions
         let id = context.get_export_string("id")?;
         let name = context.get_export_string("name")?;
         let version = context.get_export_string("version")?;
         let url_pattern = context.get_export_string("urlPattern")?;
+
+        // Validate required function: resolve
+        context
+            .require_export_function("resolve")
+            .map_err(|e| crate::Error::Execution(format!("Plugin {id}: {e}")))?;
 
         let url_regex = Regex::new(&url_pattern).map_err(|e| {
             crate::Error::Execution(format!("Invalid urlPattern in plugin {id}: {e}"))

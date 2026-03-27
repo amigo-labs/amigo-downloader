@@ -115,6 +115,31 @@ impl PluginContext {
         })
     }
 
+    /// Verify that an export exists and is a function. Returns an error if not.
+    pub fn require_export_function(&self, name: &str) -> Result<(), crate::Error> {
+        self.context.with(|ctx| {
+            let global = ctx.globals();
+            let exports: Object<'_> = global
+                .get("__plugin_exports")
+                .map_err(|e| crate::Error::Execution(format!("__plugin_exports not found: {e}")))?;
+            let value: Value<'_> = exports
+                .get(name)
+                .map_err(|e| crate::Error::Execution(format!("Export '{name}' not found: {e}")))?;
+            if value.is_function() {
+                Ok(())
+            } else if value.is_undefined() || value.is_null() {
+                Err(crate::Error::Execution(format!(
+                    "missing required function '{name}'"
+                )))
+            } else {
+                Err(crate::Error::Execution(format!(
+                    "'{name}' must be a function, got {}",
+                    value.type_name()
+                )))
+            }
+        })
+    }
+
     /// Call the async `resolve(url)` function and return the result as JSON string.
     /// The JS function returns a Promise which we resolve synchronously via the event loop.
     pub fn call_resolve(&self, url: &str, timeout: Duration) -> Result<String, crate::Error> {
