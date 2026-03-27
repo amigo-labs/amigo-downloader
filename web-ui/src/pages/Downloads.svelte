@@ -3,6 +3,7 @@
   import { pauseDownload, resumeDownload, deleteDownload, formatBytes, formatSpeed } from "../lib/api";
   import DownloadCard from "../components/DownloadCard.svelte";
   import DownloadRow from "../components/DownloadRow.svelte";
+  import Mascot from "../components/Mascot.svelte";
 
   let filter = $state<string>("all");
 
@@ -37,16 +38,15 @@
 
   <!-- Download list -->
   {#if filtered.length === 0}
-    <div class="flex flex-col items-center justify-center py-20 opacity-50">
-      <div class="pixel-logo text-4xl mb-4" style="font-family: 'Press Start 2P'; color: var(--accent-color)">
-        :)
-      </div>
-      <p style="color: var(--text-secondary-color)">No downloads yet. Click "Add Download" to start.</p>
+    <div class="flex flex-col items-center justify-center py-20">
+      <Mascot size={80} />
+      <p class="mt-4" style="color: var(--text-secondary-color)">No downloads yet. Click "Add Download" or drop files to start.</p>
+      <p class="text-xs mt-2" style="color: var(--text-secondary-color)">Ctrl+N to add &middot; Drag & drop supported</p>
     </div>
   {:else if $layout === "modern"}
     <div class="grid gap-3">
-      {#each filtered as download (download.id)}
-        <DownloadCard {download} />
+      {#each filtered as download, i (download.id)}
+        <DownloadCard {download} index={i} />
       {/each}
     </div>
   {:else}

@@ -1,16 +1,23 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { theme, layout, accent, currentPage, downloads, stats, type Page } from "./lib/stores";
+  import { theme, layout, accent, currentPage, downloads, stats, totalSpeed, type Page } from "./lib/stores";
   import { getDownloads, getStats, connectWebSocket, formatSpeed } from "./lib/api";
+  import { addToast } from "./lib/toast";
   import Downloads from "./pages/Downloads.svelte";
   import Queue from "./pages/Queue.svelte";
   import Plugins from "./pages/Plugins.svelte";
   import History from "./pages/History.svelte";
   import Settings from "./pages/Settings.svelte";
   import AddDialog from "./components/AddDialog.svelte";
+  import Mascot from "./components/Mascot.svelte";
+  import Sparkline from "./components/Sparkline.svelte";
+  import Toasts from "./components/Toasts.svelte";
+  import DropZone from "./components/DropZone.svelte";
 
   let showAddDialog = $state(false);
   let sidebarOpen = $state(false);
+  let speedHistory = $state<number[]>([]);
+  let pageKey = $state(0);
 
   const navItems: { id: Page; label: string; icon: string }[] = [
     { id: "downloads", label: "Downloads", icon: "arrow-down" },
@@ -31,9 +38,13 @@
 
     // WebSocket for live updates
     connectWebSocket((msg) => {
-      if (msg.type === "progress" || msg.type === "status" || msg.type === "completed") {
-        loadData();
+      if (msg.type === "completed") {
+        addToast("success", "Download complete", msg.data?.filename as string || msg.id);
+      } else if (msg.type === "failed") {
+        addToast("error", "Download failed", msg.data?.error as string || msg.id);
       }
+      // Refresh data on any event
+      loadData();
     });
 
     return () => clearInterval(interval);
@@ -44,6 +55,10 @@
       const [dl, st] = await Promise.all([getDownloads(), getStats()]);
       downloads.set(dl);
       stats.set(st);
+      totalSpeed.set(st.speed_bytes_per_sec);
+
+      // Track speed history (last 30 samples)
+      speedHistory = [...speedHistory.slice(-29), st.speed_bytes_per_sec];
     } catch {
       // Server offline
     }
@@ -52,8 +67,32 @@
   function navigate(page: Page) {
     currentPage.set(page);
     sidebarOpen = false;
+    pageKey++;
+  }
+
+  // Global keyboard shortcuts
+  function handleKeydown(e: KeyboardEvent) {
+    // Ctrl+N or Ctrl+L: open add dialog
+    if ((e.ctrlKey || e.metaKey) && (e.key === "n" || e.key === "l")) {
+      e.preventDefault();
+      showAddDialog = true;
+    }
+    // Escape: close dialogs
+    if (e.key === "Escape") {
+      showAddDialog = false;
+      sidebarOpen = false;
+    }
+    // 1-5: navigate pages
+    if (!showAddDialog && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      const num = parseInt(e.key);
+      if (num >= 1 && num <= navItems.length) {
+        navigate(navItems[num - 1].id);
+      }
+    }
   }
 </script>
+
+<svelte:window onkeydown={handleKeydown} />
 
 <div class="flex h-screen overflow-hidden">
   <!-- Sidebar -->
@@ -64,12 +103,12 @@
     style="background: var(--sidebar-bg)"
   >
     <div class="flex flex-col h-full">
-      <!-- Logo -->
-      <div class="flex items-center gap-3 px-5 py-5 border-b border-white/10">
-        <div class="pixel-logo text-2xl" style="font-family: 'Press Start 2P'; color: var(--accent-color)">a</div>
+      <!-- Logo + Mascot -->
+      <div class="flex items-center gap-3 px-5 py-4 border-b border-white/10">
+        <Mascot size={40} animate={$stats.active_downloads > 0} />
         <div>
           <h1 class="text-white font-bold text-lg leading-tight">amigo</h1>
-          <span class="text-xs" style="color: var(--sidebar-text)">downloader</span>
+          <span class="text-[10px] font-mono" style="color: var(--sidebar-text)">downloader v0.1</span>
         </div>
       </div>
 
@@ -77,16 +116,17 @@
       <div class="px-4 py-3">
         <button
           onclick={() => (showAddDialog = true)}
-          class="w-full py-2.5 rounded-lg font-semibold text-white text-sm transition-all hover:brightness-110 active:scale-[0.98]"
+          class="w-full py-2.5 rounded-lg font-semibold text-white text-sm transition-all hover:brightness-110 active:scale-[0.98] interactive"
           style="background: var(--accent-color)"
         >
           + Add Download
+          <span class="text-[10px] opacity-60 ml-1">Ctrl+N</span>
         </button>
       </div>
 
       <!-- Navigation -->
       <nav class="flex-1 px-3 py-1 space-y-0.5">
-        {#each navItems as item}
+        {#each navItems as item, i}
           <button
             onclick={() => navigate(item.id)}
             class="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all"
@@ -96,13 +136,17 @@
               : `color: var(--sidebar-text)`}
           >
             <Icon name={item.icon} />
-            {item.label}
+            <span class="flex-1 text-left">{item.label}</span>
+            <span class="text-[10px] opacity-40">{i + 1}</span>
           </button>
         {/each}
       </nav>
 
-      <!-- Stats footer -->
-      <div class="px-5 py-4 border-t border-white/10">
+      <!-- Speed Sparkline -->
+      <div class="px-5 py-3 border-t border-white/10">
+        <div class="mb-2">
+          <Sparkline values={speedHistory} width={200} height={28} color="var(--accent-color)" />
+        </div>
         <div class="text-xs space-y-1" style="color: var(--sidebar-text)">
           <div class="flex justify-between">
             <span>Speed</span>
@@ -110,7 +154,12 @@
           </div>
           <div class="flex justify-between">
             <span>Active</span>
-            <span class="font-mono text-white">{$stats.active_downloads}</span>
+            <span class="font-mono text-white">
+              {$stats.active_downloads}
+              {#if $stats.active_downloads > 0}
+                <span class="inline-block w-1.5 h-1.5 rounded-full ml-1 status-pulse" style="background: var(--accent-color)"></span>
+              {/if}
+            </span>
           </div>
           <div class="flex justify-between">
             <span>Queued</span>
@@ -123,7 +172,7 @@
 
   <!-- Mobile overlay -->
   {#if sidebarOpen}
-    <div class="fixed inset-0 bg-black/50 z-40 md:hidden" onclick={() => (sidebarOpen = false)}></div>
+    <div class="fixed inset-0 bg-black/50 backdrop-blur-sm z-40 md:hidden" onclick={() => (sidebarOpen = false)}></div>
   {/if}
 
   <!-- Main content -->
@@ -135,11 +184,16 @@
           <Icon name="menu" />
         </button>
         <h2 class="text-xl font-bold capitalize">{$currentPage}</h2>
+        {#if $stats.active_downloads > 0 && $currentPage === "downloads"}
+          <span class="px-2 py-0.5 rounded-full text-xs font-mono" style="background: color-mix(in srgb, var(--accent-color) 15%, transparent); color: var(--accent-color)">
+            {formatSpeed($stats.speed_bytes_per_sec)}
+          </span>
+        {/if}
       </div>
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-2">
         <button
           onclick={() => theme.toggle()}
-          class="p-2 rounded-lg transition-colors"
+          class="p-2 rounded-lg transition-all hover:scale-110"
           style="color: var(--text-secondary-color)"
           title={$theme === "dark" ? "Light mode" : "Dark mode"}
         >
@@ -148,19 +202,23 @@
       </div>
     </header>
 
-    <!-- Page content -->
+    <!-- Page content with transition -->
     <div class="flex-1 overflow-y-auto p-6">
-      {#if $currentPage === "downloads"}
-        <Downloads />
-      {:else if $currentPage === "queue"}
-        <Queue />
-      {:else if $currentPage === "plugins"}
-        <Plugins />
-      {:else if $currentPage === "history"}
-        <History />
-      {:else if $currentPage === "settings"}
-        <Settings />
-      {/if}
+      {#key pageKey}
+        <div class="page-enter">
+          {#if $currentPage === "downloads"}
+            <Downloads />
+          {:else if $currentPage === "queue"}
+            <Queue />
+          {:else if $currentPage === "plugins"}
+            <Plugins />
+          {:else if $currentPage === "history"}
+            <History />
+          {:else if $currentPage === "settings"}
+            <Settings />
+          {/if}
+        </div>
+      {/key}
     </div>
   </main>
 </div>
@@ -169,6 +227,12 @@
 {#if showAddDialog}
   <AddDialog onclose={() => (showAddDialog = false)} />
 {/if}
+
+<!-- Toast Notifications -->
+<Toasts />
+
+<!-- Global Drag & Drop -->
+<DropZone />
 
 <!-- Simple Icon component (inline SVG) -->
 {#snippet Icon({ name }: { name: string })}
@@ -190,8 +254,6 @@
       <path d="M12 3v1m0 16v1m-8-9H3m18 0h-1m-2.6-6.4l-.7.7m-9.4 9.4l-.7.7m12.8 0l-.7-.7M6 6l-.7-.7M16 12a4 4 0 11-8 0 4 4 0 018 0z" />
     {:else if name === "moon"}
       <path d="M20.4 12.1a8 8 0 01-11.5-7.3 8 8 0 1011.5 7.3z" />
-    {:else if name === "x"}
-      <path d="M6 18L18 6M6 6l12 12" />
     {/if}
   </svg>
 {/snippet}
