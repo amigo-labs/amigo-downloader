@@ -133,8 +133,15 @@ async fn main() -> anyhow::Result<()> {
                 for file in &nzb.files {
                     println!("  {} ({} segments, {} bytes)", file.filename(), file.segments.len(), file.total_bytes());
                 }
-                // TODO: start actual Usenet download
-                println!("NZB import queued.");
+                // Queue each file as a download
+                for file in &nzb.files {
+                    let id = coord.add_download(
+                        &format!("nzb://{}", file.filename()),
+                        Some(file.filename()),
+                    ).await?;
+                    println!("  Queued: {} → {id}", file.filename());
+                }
+                println!("NZB import complete ({} files queued).", nzb.files.len());
             } else if let Some(dlc_path) = dlc {
                 let data = std::fs::read(&dlc_path)?;
                 let packages = amigo_core::container::import_dlc(&data)?;
@@ -257,8 +264,35 @@ async fn main() -> anyhow::Result<()> {
                     }
                 }
                 ConfigAction::Set { key, value } => {
-                    println!("Setting {key} = {value}");
-                    println!("Config set via CLI not yet fully implemented. Edit config.toml directly.");
+                    let mut json = serde_json::to_value(&config)?;
+                    let pointer = format!("/{}", key.replace('.', "/"));
+                    if let Some(field) = json.pointer_mut(&pointer) {
+                        // Try to preserve the type
+                        *field = if let Ok(n) = value.parse::<u64>() {
+                            serde_json::Value::Number(n.into())
+                        } else if let Ok(b) = value.parse::<bool>() {
+                            serde_json::Value::Bool(b)
+                        } else {
+                            serde_json::Value::String(value.clone())
+                        };
+                        let updated: Config = serde_json::from_value(json)?;
+                        updated.save(std::path::Path::new("config.toml"))?;
+                        println!("{key} = {value} (saved)");
+                    } else {
+                        println!("Key not found: {key}. Available keys:");
+                        fn print_keys(prefix: &str, val: &serde_json::Value) {
+                            match val {
+                                serde_json::Value::Object(map) => {
+                                    for (k, v) in map {
+                                        let full = if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") };
+                                        print_keys(&full, v);
+                                    }
+                                }
+                                _ => println!("  {prefix}"),
+                            }
+                        }
+                        print_keys("", &serde_json::to_value(&config)?);
+                    }
                 }
             }
         }
@@ -297,17 +331,49 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
             UpdateAction::Apply { yes } => {
-                if !yes {
-                    println!("Use --yes to confirm the update.");
-                    return Ok(());
+                let client = reqwest::Client::builder()
+                    .user_agent("amigo-downloader")
+                    .build()?;
+                let config = Config::load_auto();
+
+                let status = amigo_core::updater::check_for_update(&client, &config.update.github_repo).await?;
+
+                match status {
+                    amigo_core::updater::CoreUpdateStatus::UpdateAvailable { current, latest, download_url, sha256_url, .. } => {
+                        if !yes {
+                            println!("Update available: {current} → {latest}");
+                            println!("Run with --yes to apply.");
+                            return Ok(());
+                        }
+                        println!("Updating {current} → {latest}...");
+                        amigo_core::updater::download_and_apply(&client, &download_url, sha256_url.as_deref()).await?;
+                        println!("Update applied! Restart amigo to use v{latest}.");
+                    }
+                    amigo_core::updater::CoreUpdateStatus::UpToDate => {
+                        println!("Already up to date (v{}).", amigo_core::updater::CURRENT_VERSION);
+                    }
                 }
-                println!("Self-update not yet fully implemented.");
             }
         },
 
         Commands::Serve { port, bind } => {
-            println!("Starting server on {bind}:{port}...");
-            println!("Use `amigo-server` binary for the full server. This is a placeholder.");
+            let addr = format!("{bind}:{port}");
+            println!("Starting amigo-server on {addr}...");
+            println!("For the full server with plugins and web UI, use the `amigo-server` binary.");
+            println!("This lite-mode serves only the REST API.");
+
+            let coord = init_coordinator()?;
+            let listener = tokio::net::TcpListener::bind(&addr).await?;
+
+            let state = std::sync::Arc::new(coord);
+            // Minimal API router for CLI serve mode
+            let app = axum::Router::new()
+                .route("/api/v1/status", axum::routing::get(|| async {
+                    axum::Json(serde_json::json!({"status": "ok", "version": env!("CARGO_PKG_VERSION"), "mode": "cli"}))
+                }));
+
+            println!("Listening on {addr}");
+            axum::serve(listener, app).await?;
         }
     }
 

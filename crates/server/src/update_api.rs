@@ -95,6 +95,7 @@ async fn check_updates(
             latest,
             release_notes,
             can_self_update,
+            ..
         }) => CoreUpdateInfo {
             current_version: current,
             latest_version: Some(latest),
@@ -156,6 +157,8 @@ async fn apply_core_update(
         CoreUpdateStatus::UpdateAvailable {
             latest,
             can_self_update,
+            download_url,
+            sha256_url,
             ..
         } => {
             if !can_self_update {
@@ -167,8 +170,16 @@ async fn apply_core_update(
                 ));
             }
 
-            // TODO: Spawn background task for actual download + apply
-            // For now, return 202 Accepted
+            // Spawn background task for download + apply
+            let client = state.http_client.clone();
+            let ver = latest.clone();
+            tokio::spawn(async move {
+                match updater::download_and_apply(&client, &download_url, sha256_url.as_deref()).await {
+                    Ok(()) => tracing::info!("Core update to v{ver} applied — restart needed"),
+                    Err(e) => tracing::error!("Core update failed: {e}"),
+                }
+            });
+
             Ok((
                 StatusCode::ACCEPTED,
                 Json(serde_json::json!({

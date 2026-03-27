@@ -11,8 +11,46 @@
       {
         "title": "amigo-downloader",
         "width": 1200,
-        "height": 800
+        "height": 800,
+        "minWidth": 400,
+        "minHeight": 300,
+        "decorations": true,
+        "transparent": false
       }
-    ]
+    ],
+    "security": {
+      "csp": "default-src 'self'; connect-src 'self' ws://localhost:* http://localhost:*; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/icon.png"
+    ],
+    "category": "Utility",
+    "shortDescription": "Fast, modular download manager",
+    "longDescription": "amigo-downloader is a fast, modular download manager with HTTP multi-chunk downloads, Usenet support, Rune plugin system, and a responsive web UI.",
+    "linux": {
+      "deb": {
+        "depends": ["ca-certificates"]
+      }
+    }
+  },
+  "plugins": {
+    "deep-link": {
+      "desktop": {
+        "schemes": ["amigo", "magnet"]
+      },
+      "mobile": {
+        "schemes": ["amigo"]
+      }
+    },
+    "updater": {
+      "endpoints": [
+        "https://github.com/amigo-labs/amigo-downloader/releases/latest/download/latest.json"
+      ],
+      "pubkey": ""
+    }
   }
 }

@@ -46,6 +46,8 @@ pub enum CoreUpdateStatus {
         latest: String,
         release_notes: String,
         can_self_update: bool,
+        download_url: String,
+        sha256_url: Option<String>,
     },
 }
 
@@ -106,12 +108,21 @@ pub async fn check_for_update(
         let dist = detect_distribution();
         let can_self_update = dist == Distribution::Cli || dist == Distribution::Server;
 
+        let asset = select_asset(&release);
+        let download_url = asset.map(|a| a.browser_download_url.clone()).unwrap_or_default();
+        let sha256_url = asset.and_then(|a| {
+            let sha_name = format!("{}.sha256", a.name);
+            release.assets.iter().find(|x| x.name == sha_name).map(|x| x.browser_download_url.clone())
+        });
+
         info!("Update available: {CURRENT_VERSION} → {latest_tag}");
         Ok(CoreUpdateStatus::UpdateAvailable {
             current: CURRENT_VERSION.to_string(),
             latest: latest_tag.to_string(),
             release_notes: release.body.unwrap_or_default(),
             can_self_update,
+            download_url,
+            sha256_url,
         })
     } else {
         debug!("Up to date: {CURRENT_VERSION}");
@@ -205,6 +216,24 @@ pub fn apply_update(new_binary: &std::path::Path) -> Result<(), crate::Error> {
         .map_err(|e| crate::Error::Update(format!("Self-replace failed: {e}")))?;
 
     info!("Update applied successfully — restart to use new version");
+    Ok(())
+}
+
+/// Download, verify, and apply an update in one step.
+pub async fn download_and_apply(
+    client: &reqwest::Client,
+    download_url: &str,
+    sha256_url: Option<&str>,
+) -> Result<(), crate::Error> {
+    let asset = ReleaseAsset {
+        name: "update".into(),
+        browser_download_url: download_url.to_string(),
+        size: 0,
+    };
+    let path = download_and_verify(client, &asset, sha256_url).await?;
+    apply_update(&path)?;
+    // Clean up temp file
+    let _ = std::fs::remove_file(&path);
     Ok(())
 }
 
