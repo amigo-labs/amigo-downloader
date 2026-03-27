@@ -1,7 +1,8 @@
-//! Protocol backends: HTTP, Usenet.
+//! Protocol backends: HTTP, Usenet, YouTube.
 
 pub mod http;
 pub mod usenet;
+pub mod youtube;
 
 use serde::{Deserialize, Serialize};
 

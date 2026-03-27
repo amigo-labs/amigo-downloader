@@ -45,6 +45,7 @@ tower-http = { version = "0.6", features = ["cors", "fs"] }
 
 # CLI
 clap = { version = "4", features = ["derive"] }
+indicatif = "0.17"
 
 # UUID
 uuid = { version = "1", features = ["v4", "serde"] }

@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(cargo check:*)",
+      "Bash(xargs grep:*)",
+      "Bash(cargo build:*)",
+      "Bash(./target/release/amigo-dl \"https://www.youtube.com/watch?v=1mzl2Oo8Ncw\" -o ./test-downloads 2>&1)",
+      "Bash(RUST_LOG=debug ./target/release/amigo-dl \"https://www.youtube.com/watch?v=1mzl2Oo8Ncw\" -o ./test-downloads)",
+      "Bash(curl -sL \"https://api.github.com/repos/yt-dlp/yt-dlp/contents/yt_dlp/extractor/youtube\")",
+      "Bash(python3 -c \"import sys,json; [print\\(f[''''name''''], f[''''type'''']\\) for f in json.load\\(sys.stdin\\)]\")",
+      "Bash(curl -sL https://api.github.com/repos/yt-dlp/yt-dlp/contents/yt_dlp/extractor/youtube)",
+      "Bash(jq -r \".[] | \"\"\\\\\\(.name\\) \\\\\\(.type\\)\"\"\")",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(curl -sI \"https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/yt_dlp/extractor/youtube.py\")",
+      "Bash(curl -sL \"https://api.github.com/repos/yt-dlp/yt-dlp\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\(''''default_branch:'''', d.get\\(''''default_branch''''\\)\\); print\\(''''size:'''', d.get\\(''''size''''\\)\\)\")",
+      "Bash(curl -sL \"https://api.github.com/repos/yt-dlp/yt-dlp/contents/yt_dlp/extractor\")",
+      "Bash(gh api:*)",
+      "Bash(curl -sL \"https://api.github.com/repos/yt-dlp/yt-dlp/git/trees/master?recursive=1\")",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/yt_dlp/extractor/youtube/_base.py\" -o /tmp/yt_base.py)",
+      "Read(//tmp/**)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/yt_dlp/extractor/youtube/_video.py\" -o /tmp/yt_video.py)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/yt_dlp/extractor/youtube/pot/provider.py\" -o /tmp/yt_pot_provider.py)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/yt_dlp/extractor/youtube/pot/utils.py\" -o /tmp/yt_pot_utils.py)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/yt_dlp/extractor/youtube/pot/_provider.py\" -o /tmp/yt_pot__provider.py)",
+      "Read(//c/tmp/**)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/yt_dlp/extractor/youtube/jsc/provider.py\" -o /tmp/yt_jsc_provider.py)",
+      "Bash(curl -sL \"https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/yt_dlp/extractor/youtube/jsc/_builtin/ejs.py\" -o /tmp/yt_ejs.py)",
+      "Bash(git:*)"
+    ]
+  }
+}

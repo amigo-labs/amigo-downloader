@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [[bin]]
-name = "amigo"
+name = "amigo-dl"
 path = "src/main.rs"
 
 [dependencies]
@@ -18,3 +18,4 @@ tracing-subscriber = { workspace = true }
 serde_json = { workspace = true }
 reqwest = { workspace = true }
 axum = { workspace = true }
+indicatif = { workspace = true }
