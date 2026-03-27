@@ -1,6 +1,9 @@
-//! Global configuration.
+//! Global configuration — TOML file loading and saving.
+
+use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+use tracing::{info, warn};
 
 use crate::bandwidth::BandwidthConfig;
 use crate::postprocess::PostProcessConfig;
@@ -92,5 +95,103 @@ impl Default for HttpConfig {
             timeout_connect_secs: 30,
             timeout_read_secs: 120,
         }
+    }
+}
+
+impl Config {
+    /// Load config from a TOML file. Falls back to defaults if file doesn't exist.
+    pub fn load(path: &Path) -> Result<Self, crate::Error> {
+        if !path.exists() {
+            info!("Config file not found at {}, using defaults", path.display());
+            let config = Self::default();
+            config.save(path)?;
+            return Ok(config);
+        }
+
+        let content = std::fs::read_to_string(path)?;
+        let config: Self = toml::from_str(&content)
+            .map_err(|e| crate::Error::Other(format!("Failed to parse config: {e}")))?;
+        info!("Loaded config from {}", path.display());
+        Ok(config)
+    }
+
+    /// Load config, trying standard paths in order:
+    /// 1. $AMIGO_CONFIG_DIR/config.toml
+    /// 2. ./config.toml
+    pub fn load_auto() -> Self {
+        let paths = [
+            std::env::var("AMIGO_CONFIG_DIR")
+                .map(|d| std::path::PathBuf::from(d).join("config.toml"))
+                .ok(),
+            Some(std::path::PathBuf::from("config.toml")),
+        ];
+
+        for path in paths.into_iter().flatten() {
+            match Self::load(&path) {
+                Ok(config) => return config,
+                Err(e) => warn!("Failed to load config from {}: {e}", path.display()),
+            }
+        }
+
+        Self::default()
+    }
+
+    /// Save config to a TOML file.
+    pub fn save(&self, path: &Path) -> Result<(), crate::Error> {
+        let content = toml::to_string_pretty(self)
+            .map_err(|e| crate::Error::Other(format!("Failed to serialize config: {e}")))?;
+
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+
+        std::fs::write(path, content)?;
+        info!("Config saved to {}", path.display());
+        Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_config_roundtrip_toml() {
+        let config = Config::default();
+        let toml_str = toml::to_string_pretty(&config).unwrap();
+        let parsed: Config = toml::from_str(&toml_str).unwrap();
+        assert_eq!(parsed.max_concurrent_downloads, config.max_concurrent_downloads);
+        assert_eq!(parsed.download_dir, config.download_dir);
+        assert_eq!(parsed.http.max_chunks_per_download, config.http.max_chunks_per_download);
+        assert_eq!(parsed.update.auto_check, config.update.auto_check);
+    }
+
+    #[test]
+    fn test_config_save_and_load() {
+        let dir = std::env::temp_dir().join("amigo-config-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+
+        let config = Config::default();
+        config.save(&path).unwrap();
+
+        let loaded = Config::load(&path).unwrap();
+        assert_eq!(loaded.download_dir, "downloads");
+        assert_eq!(loaded.max_concurrent_downloads, 10);
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn test_config_load_missing_file_creates_default() {
+        let path = std::env::temp_dir().join("amigo-config-test-missing").join("config.toml");
+        let _ = std::fs::remove_file(&path);
+
+        let config = Config::load(&path).unwrap();
+        assert_eq!(config.download_dir, "downloads");
+
+        // File should now exist with defaults
+        assert!(path.exists());
+        std::fs::remove_dir_all(path.parent().unwrap()).ok();
     }
 }

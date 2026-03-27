@@ -248,6 +248,30 @@ impl Coordinator {
         let active = self.active.lock().await;
         active.values().map(|dl| dl.progress_rx.borrow().speed_bytes_per_sec).sum()
     }
+
+    /// Recover downloads that were in-progress when the app crashed.
+    /// Resets "downloading" status to "queued" so they can be restarted.
+    pub async fn recover_downloads(&self) -> Result<u32, crate::Error> {
+        let downloading = self
+            .storage
+            .list_downloads_by_status(QueueStatus::Downloading)
+            .await?;
+
+        let count = downloading.len() as u32;
+        for d in &downloading {
+            info!("Recovering interrupted download: {} ({})", d.id, d.url);
+            self.storage
+                .update_download_status(&d.id, QueueStatus::Queued)
+                .await?;
+        }
+
+        if count > 0 {
+            info!("Recovered {count} interrupted downloads — re-queued");
+            self.try_start_next().await?;
+        }
+
+        Ok(count)
+    }
 }
 
 /// Run a single HTTP download to completion.
@@ -305,9 +329,7 @@ async fn run_http_download(
 }
 
 fn detect_protocol(url: &str) -> Protocol {
-    if url.starts_with("magnet:") || url.ends_with(".torrent") {
-        Protocol::Torrent
-    } else if url.ends_with(".nzb") {
+    if url.ends_with(".nzb") {
         Protocol::Usenet
     } else {
         Protocol::Http
@@ -328,7 +350,6 @@ impl Protocol {
         match self {
             Protocol::Http => "http",
             Protocol::Usenet => "usenet",
-            Protocol::Torrent => "torrent",
         }
     }
 }

@@ -5,8 +5,6 @@ services:
     ports:
       - "8080:8080"
       - "9666:9666"    # Click'n'Load
-      - "6881:6881"    # BitTorrent
-      - "6881:6881/udp"
     volumes:
       - ./config:/config
       - ./downloads:/downloads

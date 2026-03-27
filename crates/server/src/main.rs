@@ -1,4 +1,5 @@
 mod api;
+mod clicknload;
 mod static_files;
 mod update_api;
 mod ws;
@@ -25,7 +26,7 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let config = Config::default();
+    let config = Config::load_auto();
 
     let storage = Storage::open(
         PathBuf::from("amigo.db"),
@@ -48,6 +49,12 @@ async fn main() -> anyhow::Result<()> {
     let discovered = plugin_loader.discover().await.unwrap_or_default();
     tracing::info!("Loaded {} plugins", discovered.len());
 
+    // Recover any downloads that were in-progress when the server last stopped
+    let recovered = coordinator.recover_downloads().await.unwrap_or(0);
+    if recovered > 0 {
+        tracing::info!("Recovered {recovered} interrupted downloads");
+    }
+
     // Plugin updater
     let registry_config = RegistryConfig {
         index_url: config.update.plugin_registry_url.clone(),
@@ -69,6 +76,14 @@ async fn main() -> anyhow::Result<()> {
         .merge(ws::ws_router(state.clone()))
         .merge(update_api::update_router(state))
         .layer(CorsLayer::permissive());
+
+    // Start Click'n'Load listener on port 9666 in background
+    let cnl_coordinator = coordinator.clone();
+    tokio::spawn(async move {
+        if let Err(e) = clicknload::start_clicknload(cnl_coordinator).await {
+            tracing::warn!("Click'n'Load listener failed: {e}");
+        }
+    });
 
     let bind = "0.0.0.0:8080";
     tracing::info!("Starting amigo-server on {bind}");

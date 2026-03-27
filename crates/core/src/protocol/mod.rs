@@ -1,7 +1,6 @@
-//! Protocol backends: HTTP, Usenet, BitTorrent.
+//! Protocol backends: HTTP, Usenet.
 
 pub mod http;
-pub mod torrent;
 pub mod usenet;
 
 use serde::{Deserialize, Serialize};
@@ -10,7 +9,6 @@ use serde::{Deserialize, Serialize};
 pub enum Protocol {
     Http,
     Usenet,
-    Torrent,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
