@@ -21,6 +21,39 @@ pub enum QueueStatus {
     Verifying,
 }
 
+impl QueueStatus {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Self::Queued => "queued",
+            Self::Downloading => "downloading",
+            Self::Paused => "paused",
+            Self::Completed => "completed",
+            Self::Failed => "failed",
+            Self::Extracting => "extracting",
+            Self::Verifying => "verifying",
+        }
+    }
+
+    pub fn from_str(s: &str) -> Option<Self> {
+        match s {
+            "queued" => Some(Self::Queued),
+            "downloading" => Some(Self::Downloading),
+            "paused" => Some(Self::Paused),
+            "completed" => Some(Self::Completed),
+            "failed" => Some(Self::Failed),
+            "extracting" => Some(Self::Extracting),
+            "verifying" => Some(Self::Verifying),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for QueueStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
 pub struct QueueManager {
     max_concurrent: u32,
 }
