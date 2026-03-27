@@ -1,0 +1,46 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" style="image-rendering:pixelated">
+  <!-- Background -->
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+
+  <!-- Amigo mascot centered on 16x16 grid, each pixel = 24px, offset 64,40 -->
+  <g transform="translate(64,40) scale(24)">
+    <!-- Body -->
+    <rect x="4" y="3" width="8" height="9" fill="#3b82f6"/>
+    <rect x="3" y="4" width="10" height="7" fill="#3b82f6"/>
+
+    <!-- Screen/Face -->
+    <rect x="5" y="4" width="6" height="5" fill="#f1f5f9"/>
+
+    <!-- Eyes -->
+    <rect x="6" y="5" width="1" height="2" fill="#3b82f6"/>
+    <rect x="9" y="5" width="1" height="2" fill="#3b82f6"/>
+
+    <!-- Smile -->
+    <rect x="6" y="7" width="1" height="1" fill="#3b82f6" opacity="0.5"/>
+    <rect x="7" y="8" width="2" height="1" fill="#3b82f6" opacity="0.5"/>
+    <rect x="9" y="7" width="1" height="1" fill="#3b82f6" opacity="0.5"/>
+
+    <!-- Antenna -->
+    <rect x="7" y="1" width="2" height="2" fill="#3b82f6"/>
+    <rect x="7" y="0" width="2" height="1" fill="#60a5fa"/>
+
+    <!-- Arms -->
+    <rect x="2" y="5" width="1" height="4" fill="#3b82f6"/>
+    <rect x="13" y="5" width="1" height="4" fill="#3b82f6"/>
+
+    <!-- Hands -->
+    <rect x="1" y="8" width="2" height="2" fill="#3b82f6"/>
+    <rect x="13" y="8" width="2" height="2" fill="#3b82f6"/>
+
+    <!-- Download arrow on chest -->
+    <rect x="7" y="9" width="2" height="2" fill="#f1f5f9" opacity="0.8"/>
+    <rect x="6" y="10" width="4" height="1" fill="#f1f5f9" opacity="0.6"/>
+
+    <!-- Feet -->
+    <rect x="4" y="12" width="3" height="2" fill="#3b82f6"/>
+    <rect x="9" y="12" width="3" height="2" fill="#3b82f6"/>
+
+    <!-- Highlight -->
+    <rect x="5" y="4" width="1" height="1" fill="white" opacity="0.3"/>
+  </g>
+</svg>

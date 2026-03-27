@@ -32,6 +32,9 @@
     document.documentElement.classList.toggle("dark", $theme === "dark");
     document.documentElement.classList.add(`accent-${$accent}`);
 
+    // Handle PWA Share Target — receives URLs via ?share=true&url=... or ?share=true&text=...
+    handleShareTarget();
+
     // Fetch initial data
     loadData();
     const interval = setInterval(loadData, 2000);
@@ -49,6 +52,39 @@
 
     return () => clearInterval(interval);
   });
+
+  function handleShareTarget() {
+    const params = new URLSearchParams(window.location.search);
+    if (!params.has("share")) return;
+
+    // Get URL from share params — could be in 'url' or 'text' field
+    const sharedUrl = params.get("url") || params.get("text") || "";
+    const extracted = extractUrl(sharedUrl);
+
+    if (extracted) {
+      addDownload(extracted).then(() => {
+        addToast("success", "Download added!", extracted);
+        loadData();
+      }).catch(() => {
+        addToast("error", "Failed to add download", extracted);
+      });
+    }
+
+    // Clean URL so it doesn't re-trigger on refresh
+    history.replaceState({}, "", "/");
+  }
+
+  /** Extract first URL from a string (share text may contain extra text around the URL) */
+  function extractUrl(text: string): string | null {
+    const trimmed = text.trim();
+    // If it's already a clean URL
+    if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+      return trimmed.split(/\s/)[0];
+    }
+    // Try to find a URL in the text
+    const match = trimmed.match(/https?:\/\/[^\s]+/);
+    return match ? match[0] : null;
+  }
 
   async function loadData() {
     try {
