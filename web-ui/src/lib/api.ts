@@ -2,8 +2,17 @@
 
 const API_BASE = "/api/v1";
 
+// ========================================
+// REST API
+// ========================================
+
 export async function getStatus() {
   const res = await fetch(`${API_BASE}/status`);
+  return res.json();
+}
+
+export async function getStats() {
+  const res = await fetch(`${API_BASE}/stats`);
   return res.json();
 }
 
@@ -12,12 +21,61 @@ export async function getDownloads() {
   return res.json();
 }
 
-export async function addDownload(url: string) {
+export async function addDownload(url: string, filename?: string) {
   const res = await fetch(`${API_BASE}/downloads`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, filename }),
   });
+  return res.json();
+}
+
+export async function addBatch(urls: string[]) {
+  const res = await fetch(`${API_BASE}/downloads/batch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ urls }),
+  });
+  return res.json();
+}
+
+export async function pauseDownload(id: string) {
+  return fetch(`${API_BASE}/downloads/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "pause" }),
+  });
+}
+
+export async function resumeDownload(id: string) {
+  return fetch(`${API_BASE}/downloads/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "resume" }),
+  });
+}
+
+export async function deleteDownload(id: string) {
+  return fetch(`${API_BASE}/downloads/${id}`, { method: "DELETE" });
+}
+
+export async function getQueue() {
+  const res = await fetch(`${API_BASE}/queue`);
+  return res.json();
+}
+
+export async function getHistory() {
+  const res = await fetch(`${API_BASE}/history`);
+  return res.json();
+}
+
+export async function getPlugins() {
+  const res = await fetch(`${API_BASE}/plugins`);
+  return res.json();
+}
+
+export async function checkUpdates() {
+  const res = await fetch(`${API_BASE}/updates/check`);
   return res.json();
 }
 
@@ -31,8 +89,59 @@ export async function importDlc(file: File) {
   return res.json();
 }
 
-export async function exportDlc(ids?: string[]) {
-  const params = ids ? `?ids=${ids.join(",")}` : "";
-  const res = await fetch(`${API_BASE}/downloads/export/dlc${params}`);
-  return res.blob();
+export async function uploadNzb(nzbData: string) {
+  const res = await fetch(`${API_BASE}/downloads/nzb`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ nzb_data: nzbData }),
+  });
+  return res.json();
+}
+
+// ========================================
+// WEBSOCKET
+// ========================================
+
+export type WsMessage = {
+  type: string;
+  id: string;
+  data: Record<string, unknown>;
+};
+
+export function connectWebSocket(
+  onMessage: (msg: WsMessage) => void
+): WebSocket {
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new WebSocket(`${protocol}//${window.location.host}${API_BASE}/ws`);
+
+  ws.onmessage = (event) => {
+    try {
+      const msg = JSON.parse(event.data) as WsMessage;
+      onMessage(msg);
+    } catch {
+      // ignore parse errors
+    }
+  };
+
+  ws.onclose = () => {
+    // Auto-reconnect after 3s
+    setTimeout(() => connectWebSocket(onMessage), 3000);
+  };
+
+  return ws;
+}
+
+// ========================================
+// HELPERS
+// ========================================
+
+export function formatBytes(bytes: number): string {
+  if (bytes === 0) return "0 B";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
+}
+
+export function formatSpeed(bytesPerSec: number): string {
+  return `${formatBytes(bytesPerSec)}/s`;
 }
