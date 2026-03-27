@@ -123,4 +123,4 @@ declare const amigo: {
 
 // ─── Module ─────────────────────────────────────────────────────────
 
-declare var module: { exports: AmigoPlugin };
+declare var module: { exports: any };
