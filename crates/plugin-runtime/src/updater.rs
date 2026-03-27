@@ -2,13 +2,12 @@
 //!
 //! Coordinates registry checks, downloads, and hot-reload of plugins.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use tracing::{info, warn};
 
 use crate::loader::PluginLoader;
-use crate::registry::{self, PluginUpdateInfo, RegistryConfig, RegistryIndex, RegistryPlugin};
+use crate::registry::{self, PluginUpdateInfo, RegistryConfig, RegistryPlugin};
 use crate::types::PluginMeta;
 
 /// Orchestrates plugin updates.

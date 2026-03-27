@@ -102,15 +102,15 @@ pub fn check_plugin_updates(
                 let local_ver = semver::Version::parse(&local_plugin.version).ok();
                 let remote_ver = semver::Version::parse(&registry_plugin.version).ok();
 
-                if let (Some(local_v), Some(remote_v)) = (local_ver, remote_ver) {
-                    if remote_v > local_v {
-                        updates.push(PluginUpdateInfo {
-                            plugin_id: registry_plugin.id.clone(),
-                            current_version: Some(local_plugin.version.clone()),
-                            available_version: registry_plugin.version.clone(),
-                            is_new: false,
-                        });
-                    }
+                if let (Some(local_v), Some(remote_v)) = (local_ver, remote_ver)
+                    && remote_v > local_v
+                {
+                    updates.push(PluginUpdateInfo {
+                        plugin_id: registry_plugin.id.clone(),
+                        current_version: Some(local_plugin.version.clone()),
+                        available_version: registry_plugin.version.clone(),
+                        is_new: false,
+                    });
                 }
             }
             None => {
@@ -129,7 +129,7 @@ pub fn check_plugin_updates(
 }
 
 /// Download a plugin file, verify SHA256, and write to destination.
-/// Returns the path of the installed .rn file.
+/// Returns the path of the installed plugin file.
 pub async fn download_plugin(
     client: &reqwest::Client,
     registry_plugin: &RegistryPlugin,
@@ -164,8 +164,8 @@ pub async fn download_plugin(
     debug!("SHA256 verified for plugin {}", registry_plugin.id);
 
     // Write to temp file first, then atomic rename
-    let final_path = dest_dir.join(format!("{}.rn", registry_plugin.id.replace('-', "_")));
-    let tmp_path = dest_dir.join(format!("{}.rn.new", registry_plugin.id.replace('-', "_")));
+    let final_path = dest_dir.join(format!("{}.js", registry_plugin.id.replace('-', "_")));
+    let tmp_path = dest_dir.join(format!("{}.js.new", registry_plugin.id.replace('-', "_")));
 
     std::fs::create_dir_all(dest_dir)
         .map_err(|e| crate::Error::Other(format!("Failed to create dir: {e}")))?;

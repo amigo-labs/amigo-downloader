@@ -1,22 +1,24 @@
 //! Plugin discovery, loading, validation, and URL matching.
+//!
+//! Loads JavaScript (.js) and TypeScript (.ts) plugins via QuickJS-NG.
+//! TypeScript files are transpiled to JavaScript via SWC before loading.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use regex::Regex;
-use rune::runtime::RuntimeContext;
-use rune::{Context, Diagnostics, Source, Sources, Unit, Vm};
 use tokio::sync::Mutex;
 use tracing::{debug, info, warn};
 
-use crate::host_api::HostApi;
+use crate::engine::{EngineConfig, PluginContext, PluginEngine};
+use crate::host_api::{self, HostApi};
 use crate::sandbox::SandboxLimits;
 use crate::types::{DownloadInfo, PluginMeta};
 
 /// A loaded, ready-to-execute plugin.
 struct LoadedPlugin {
     meta: PluginMeta,
-    unit: Arc<Unit>,
+    context: PluginContext,
     url_regex: Regex,
 }
 
@@ -26,26 +28,27 @@ pub struct PluginLoader {
     plugins: Arc<Mutex<Vec<LoadedPlugin>>>,
     host_api: HostApi,
     sandbox_limits: SandboxLimits,
-    context: Arc<Context>,
-    runtime: Arc<RuntimeContext>,
+    engine: Arc<PluginEngine>,
 }
 
 impl PluginLoader {
     pub fn new(plugin_dir: PathBuf, sandbox_limits: SandboxLimits) -> Self {
-        let context = Context::with_default_modules().expect("Failed to create Rune context");
-        let runtime = context.runtime().expect("Failed to create runtime context");
+        let engine = PluginEngine::new(EngineConfig {
+            max_memory: sandbox_limits.max_memory_bytes as usize,
+            ..Default::default()
+        })
+        .expect("Failed to create QuickJS engine");
 
         Self {
             plugin_dir,
             plugins: Arc::new(Mutex::new(Vec::new())),
             host_api: HostApi::new(sandbox_limits.max_http_requests),
             sandbox_limits,
-            context: Arc::new(context),
-            runtime: Arc::new(runtime),
+            engine: Arc::new(engine),
         }
     }
 
-    /// Scan plugin directory and load all .rn files.
+    /// Scan plugin directory and load all .js/.ts files.
     pub async fn discover(&self) -> Result<Vec<PluginMeta>, crate::Error> {
         let mut metas = Vec::new();
 
@@ -71,7 +74,7 @@ impl PluginLoader {
 
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().is_some_and(|e| e == "rn") {
+            if is_plugin_file(&path) {
                 match self.load_plugin(&path).await {
                     Ok(meta) => {
                         info!("Loaded plugin: {} ({})", meta.name, meta.id);
@@ -87,52 +90,78 @@ impl PluginLoader {
         Ok(metas)
     }
 
-    /// Load a single .rn plugin file, extract metadata, and register it.
+    /// Load a single .js/.ts plugin file, extract metadata, and register it.
     async fn load_plugin(&self, path: &Path) -> Result<PluginMeta, crate::Error> {
         let source_code = std::fs::read_to_string(path)
             .map_err(|e| crate::Error::Other(format!("Failed to read {}: {e}", path.display())))?;
 
-        let mut sources = Sources::new();
-        sources
-            .insert(
-                Source::new(path.display().to_string(), &source_code)
-                    .map_err(|e| crate::Error::Other(e.to_string()))?,
-            )
-            .map_err(|e| crate::Error::Other(e.to_string()))?;
-
-        let mut diagnostics = Diagnostics::new();
-        let result = rune::prepare(&mut sources)
-            .with_context(&self.context)
-            .with_diagnostics(&mut diagnostics)
-            .build();
-
-        let unit = match result {
-            Ok(unit) => unit,
-            Err(e) => {
-                return Err(crate::Error::Execution(format!(
-                    "Compilation failed for {}: {e}",
-                    path.display()
-                )));
-            }
+        // TypeScript → JS: transpile via SWC
+        let js_source = if crate::transpiler::is_typescript(path) {
+            let filename = path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("plugin.ts");
+            crate::transpiler::transpile(&source_code, filename)?
+        } else {
+            source_code
         };
 
-        let unit = Arc::new(unit);
+        // Create a QuickJS context for this plugin
+        let context = self.engine.create_context()?;
 
-        // Extract metadata by calling the metadata functions
-        let mut vm = Vm::new(self.runtime.clone(), unit.clone());
+        // Preliminary plugin ID from filename
+        let temp_id = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("unknown");
 
-        let id = call_string_fn(&mut vm, "plugin_id")?;
-        let name = call_string_fn(&mut vm, "plugin_name")?;
-        let version = call_string_fn(&mut vm, "plugin_version")?;
-        let url_pattern = call_string_fn(&mut vm, "url_pattern")?;
+        // Register host API
+        context.with(|ctx| {
+            host_api::register_host_api(&ctx, Arc::new(self.host_api.clone()), temp_id)
+        })?;
+
+        // Evaluate plugin source at global scope so `function` declarations
+        // end up on globalThis, then collect exports into __plugin_exports.
+        let wrapped = format!(
+            r#"{js_source}
+
+var __plugin_exports = {{}};
+(function() {{
+    var exportNames = [
+        'pluginId', 'pluginName', 'pluginVersion', 'urlPattern',
+        'pluginDescription', 'pluginAuthor',
+        'resolve', 'login', 'supportsPremium',
+        'decryptContainer', 'resolveFolder', 'checkOnline',
+    ];
+    for (var i = 0; i < exportNames.length; i++) {{
+        var name = exportNames[i];
+        if (typeof globalThis[name] === 'function') {{
+            __plugin_exports[name] = globalThis[name];
+        }}
+    }}
+}})();
+"#
+        );
+
+        let filename = path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("plugin.js");
+        context.eval_source(&wrapped, filename)?;
+
+        // Extract metadata
+        let id = context.call_export_string("pluginId")?;
+        let name = context.call_export_string("pluginName")?;
+        let version = context.call_export_string("pluginVersion")?;
+        let url_pattern = context.call_export_string("urlPattern")?;
 
         let url_regex = Regex::new(&url_pattern).map_err(|e| {
             crate::Error::Execution(format!("Invalid url_pattern in plugin {id}: {e}"))
         })?;
 
-        // Optional metadata (don't fail if not present)
-        let description = call_string_fn(&mut vm, "plugin_description").ok();
-        let author = call_string_fn(&mut vm, "plugin_author").ok();
+        // Optional metadata
+        let description = context.call_export_string("pluginDescription").ok();
+        let author = context.call_export_string("pluginAuthor").ok();
 
         let meta = PluginMeta {
             id: id.clone(),
@@ -150,7 +179,7 @@ impl PluginLoader {
         plugins.retain(|p| p.meta.id != id);
         plugins.push(LoadedPlugin {
             meta: meta.clone(),
-            unit,
+            context,
             url_regex,
         });
 
@@ -189,47 +218,21 @@ impl PluginLoader {
             .find(|p| p.meta.id == plugin_id)
             .ok_or_else(|| crate::Error::NotFound(plugin_id.to_string()))?;
 
-        let mut vm = Vm::new(self.runtime.clone(), plugin.unit.clone());
         self.host_api.reset_request_count().await;
 
-        let timeout = tokio::time::Duration::from_secs(self.sandbox_limits.max_execution_secs);
+        let timeout = std::time::Duration::from_secs(self.sandbox_limits.max_execution_secs);
 
-        let execution = vm.execute(["resolve"], (url.to_string(),));
-        let mut execution = match execution {
-            Ok(e) => e,
-            Err(e) => {
-                return Err(crate::Error::Execution(format!(
-                    "Failed to call resolve(): {e}"
-                )));
-            }
-        };
+        let json_result = plugin.context.call_resolve(url, timeout)?;
 
-        // Run with timeout
-        let vm_result = tokio::time::timeout(timeout, async { execution.async_complete().await })
-            .await
-            .map_err(|_| crate::Error::Timeout(self.sandbox_limits.max_execution_secs))?;
+        // Parse JSON result into DownloadInfo
+        let info: DownloadInfo = serde_json::from_str(&json_result).map_err(|e| {
+            crate::Error::Execution(format!(
+                "Plugin {plugin_id} returned invalid JSON: {e}\nGot: {json_result}"
+            ))
+        })?;
 
-        let result = vm_result
-            .into_result()
-            .map_err(|e| crate::Error::Execution(format!("Plugin execution error: {e}")))?;
-
-        // Convert Rune Value to DownloadInfo
-        // For now, return a basic DownloadInfo — full conversion requires Rune value introspection
-        debug!("Plugin {plugin_id} resolve returned: {:?}", result);
-
-        // TODO: Proper Rune Value → DownloadInfo conversion
-        // For now, plugins that just return the URL work via the generic path
-        Ok(DownloadInfo {
-            url: url.to_string(),
-            filename: String::new(),
-            filesize: None,
-            chunks_supported: true,
-            max_chunks: Some(8),
-            headers: None,
-            cookies: None,
-            wait_seconds: None,
-            mirrors: Vec::new(),
-        })
+        debug!("Plugin {plugin_id} resolved: {:?}", info.url);
+        Ok(info)
     }
 
     /// List all loaded plugins.
@@ -248,7 +251,7 @@ impl PluginLoader {
     }
 
     /// Get the plugin directory path.
-    pub fn plugin_dir(&self) -> &std::path::Path {
+    pub fn plugin_dir(&self) -> &Path {
         &self.plugin_dir
     }
 
@@ -287,16 +290,12 @@ impl PluginLoader {
     }
 }
 
-/// Call a simple string-returning function on a Rune VM.
-fn call_string_fn(vm: &mut Vm, name: &str) -> Result<String, crate::Error> {
-    let result = vm
-        .call([name], ())
-        .map_err(|e| crate::Error::Execution(format!("Failed to call {name}(): {e}")))?;
-
-    let s: String = rune::from_value(result)
-        .map_err(|e| crate::Error::Execution(format!("{name}() did not return a string: {e}")))?;
-
-    Ok(s)
+/// Check if a file is a JavaScript or TypeScript plugin.
+fn is_plugin_file(path: &Path) -> bool {
+    matches!(
+        path.extension().and_then(|e| e.to_str()),
+        Some("js") | Some("ts") | Some("mjs") | Some("mts")
+    )
 }
 
 #[cfg(test)]
@@ -304,20 +303,19 @@ mod tests {
     use super::*;
 
     #[tokio::test]
-    async fn test_load_and_match_plugin() {
-        // Create a temp plugin that only uses metadata functions (no host API calls)
-        let dir = std::env::temp_dir().join("amigo-test-plugins");
+    async fn test_load_and_match_js_plugin() {
+        let dir = std::env::temp_dir().join("amigo-test-plugins-js");
         let hosters = dir.join("hosters");
         std::fs::create_dir_all(&hosters).unwrap();
 
         std::fs::write(
-            hosters.join("test_hoster.rn"),
+            hosters.join("test_hoster.js"),
             r#"
-pub fn plugin_id() { "test-hoster" }
-pub fn plugin_name() { "Test Hoster" }
-pub fn plugin_version() { "1.0.0" }
-pub fn url_pattern() { "https?://test-hoster\\.com/.+" }
-pub async fn resolve(url) { Ok(#{url: url}) }
+function pluginId() { return "test-hoster"; }
+function pluginName() { return "Test Hoster"; }
+function pluginVersion() { return "1.0.0"; }
+function urlPattern() { return "https?://test-hoster\\.com/.+"; }
+function resolve(url) { return JSON.stringify({url: url, filename: "file.bin", filesize: null, chunks_supported: true, max_chunks: 8, headers: null, cookies: null, wait_seconds: null, mirrors: []}); }
 "#,
         )
         .unwrap();
@@ -336,7 +334,6 @@ pub async fn resolve(url) { Ok(#{url: url}) }
         assert!(matched.is_some());
         assert_eq!(matched.unwrap().id, "test-hoster");
 
-        // Non-matching URL should not match
         let no_match = loader.match_url("https://other-site.com/file.zip").await;
         assert!(no_match.is_none());
 
