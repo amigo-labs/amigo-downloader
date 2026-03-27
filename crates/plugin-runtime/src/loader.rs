@@ -129,6 +129,10 @@ impl PluginLoader {
             ))
         })?;
 
+        // Optional metadata (don't fail if not present)
+        let description = call_string_fn(&mut vm, "plugin_description").ok();
+        let author = call_string_fn(&mut vm, "plugin_author").ok();
+
         let meta = PluginMeta {
             id: id.clone(),
             name,
@@ -136,6 +140,8 @@ impl PluginLoader {
             url_pattern,
             file_path: path.display().to_string(),
             enabled: true,
+            description,
+            author,
         };
 
         let mut plugins = self.plugins.lock().await;
@@ -225,6 +231,17 @@ impl PluginLoader {
     pub async fn list_plugins(&self) -> Vec<PluginMeta> {
         let plugins = self.plugins.lock().await;
         plugins.iter().map(|p| p.meta.clone()).collect()
+    }
+
+    /// Get metadata for a single plugin by ID.
+    pub async fn get_plugin_meta(&self, plugin_id: &str) -> Option<PluginMeta> {
+        let plugins = self.plugins.lock().await;
+        plugins.iter().find(|p| p.meta.id == plugin_id).map(|p| p.meta.clone())
+    }
+
+    /// Get the plugin directory path.
+    pub fn plugin_dir(&self) -> &std::path::Path {
+        &self.plugin_dir
     }
 
     /// Enable or disable a plugin.

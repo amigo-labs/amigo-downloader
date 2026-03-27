@@ -8,6 +8,8 @@ pub mod protocol;
 pub mod queue;
 pub mod retry;
 pub mod storage;
+pub mod update_events;
+pub mod updater;
 
 /// Core error type.
 #[derive(Debug, thiserror::Error)]
@@ -23,6 +25,15 @@ pub enum Error {
 
     #[error("JSON error: {0}")]
     Json(#[from] serde_json::Error),
+
+    #[error("Update error: {0}")]
+    Update(String),
+
+    #[error("Self-update not supported in Docker — pull the new image")]
+    DockerSelfUpdateNotSupported,
+
+    #[error("Checksum verification failed")]
+    ChecksumMismatch,
 
     #[error("{0}")]
     Other(String),

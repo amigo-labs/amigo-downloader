@@ -13,3 +13,7 @@ tracing = { workspace = true }
 reqwest = { workspace = true }
 rune = "0.14"
 regex = "1"
+semver = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+tempfile = { workspace = true }

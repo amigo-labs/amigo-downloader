@@ -67,6 +67,11 @@ impl Coordinator {
         &self.storage
     }
 
+    /// Get a reference to config.
+    pub fn config(&self) -> &Config {
+        &self.config
+    }
+
     /// Add a new download and start it if slots are available.
     pub async fn add_download(&self, url: &str, filename: Option<String>) -> Result<String, crate::Error> {
         let id = Uuid::new_v4().to_string();

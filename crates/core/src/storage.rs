@@ -79,6 +79,12 @@ CREATE TABLE IF NOT EXISTS plugin_storage (
     PRIMARY KEY (plugin_id, key)
 );
 
+CREATE TABLE IF NOT EXISTS update_state (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_downloads_package ON downloads(package_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_download ON chunks(download_id);
@@ -261,6 +267,24 @@ impl Storage {
             |row| row.get(0),
         )?;
         Ok(count)
+    }
+
+    // --- Update state ---
+
+    pub async fn get_update_state(&self, key: &str) -> Result<Option<String>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare("SELECT value FROM update_state WHERE key = ?1")?;
+        let mut rows = stmt.query_map(rusqlite::params![key], |row| row.get::<_, String>(0))?;
+        Ok(rows.next().transpose()?)
+    }
+
+    pub async fn set_update_state(&self, key: &str, value: &str) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "INSERT OR REPLACE INTO update_state (key, value, updated_at) VALUES (?1, ?2, datetime('now'))",
+            rusqlite::params![key, value],
+        )?;
+        Ok(())
     }
 }
 

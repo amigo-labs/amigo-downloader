@@ -13,12 +13,15 @@ use serde::{Deserialize, Serialize};
 use amigo_core::coordinator::Coordinator;
 use amigo_core::queue::QueueStatus;
 use amigo_plugin_runtime::loader::PluginLoader;
+use amigo_plugin_runtime::updater::PluginUpdater;
 
 /// Shared application state.
 #[derive(Clone)]
 pub struct AppState {
     pub coordinator: Arc<Coordinator>,
     pub plugins: Arc<PluginLoader>,
+    pub plugin_updater: Arc<PluginUpdater>,
+    pub http_client: reqwest::Client,
 }
 
 pub fn router(state: AppState) -> Router {

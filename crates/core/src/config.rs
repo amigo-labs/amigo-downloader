@@ -14,6 +14,19 @@ pub struct Config {
     pub http: HttpConfig,
     pub usenet: UsenetProcessingConfig,
     pub postprocessing: PostProcessConfig,
+    pub update: UpdateConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateConfig {
+    /// Automatically check for updates periodically.
+    pub auto_check: bool,
+    /// Hours between automatic update checks.
+    pub check_interval_hours: u64,
+    /// URL of the plugin registry index.json.
+    pub plugin_registry_url: String,
+    /// GitHub repository for core releases.
+    pub github_repo: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -43,6 +56,7 @@ impl Default for Config {
             http: HttpConfig::default(),
             usenet: UsenetProcessingConfig::default(),
             postprocessing: PostProcessConfig::default(),
+            update: UpdateConfig::default(),
         }
     }
 }
@@ -54,6 +68,17 @@ impl Default for UsenetProcessingConfig {
             auto_unrar: true,
             delete_archives_after_extract: true,
             delete_par2_after_repair: true,
+        }
+    }
+}
+
+impl Default for UpdateConfig {
+    fn default() -> Self {
+        Self {
+            auto_check: true,
+            check_interval_hours: 24,
+            plugin_registry_url: "https://raw.githubusercontent.com/amigo-labs/amigo-downloader-plugins/main/index.json".into(),
+            github_repo: "amigo-labs/amigo-downloader".into(),
         }
     }
 }

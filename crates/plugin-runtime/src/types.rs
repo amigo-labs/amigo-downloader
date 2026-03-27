@@ -33,6 +33,8 @@ pub struct PluginMeta {
     pub url_pattern: String,
     pub file_path: String,
     pub enabled: bool,
+    pub description: Option<String>,
+    pub author: Option<String>,
 }
 
 /// HTTP response returned to plugins.

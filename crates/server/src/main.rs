@@ -1,5 +1,6 @@
 mod api;
 mod static_files;
+mod update_api;
 mod ws;
 
 use std::path::PathBuf;
@@ -12,7 +13,9 @@ use amigo_core::config::Config;
 use amigo_core::coordinator::Coordinator;
 use amigo_core::storage::Storage;
 use amigo_plugin_runtime::loader::PluginLoader;
+use amigo_plugin_runtime::registry::RegistryConfig;
 use amigo_plugin_runtime::sandbox::SandboxLimits;
+use amigo_plugin_runtime::updater::PluginUpdater;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -30,7 +33,12 @@ async fn main() -> anyhow::Result<()> {
         PathBuf::from(&config.temp_dir),
     )?;
 
-    let coordinator = Arc::new(Coordinator::new(config, storage));
+    let coordinator = Arc::new(Coordinator::new(config.clone(), storage));
+
+    // Shared HTTP client
+    let http_client = reqwest::Client::builder()
+        .user_agent("amigo-downloader")
+        .build()?;
 
     // Load plugins
     let plugin_loader = Arc::new(PluginLoader::new(
@@ -40,13 +48,26 @@ async fn main() -> anyhow::Result<()> {
     let discovered = plugin_loader.discover().await.unwrap_or_default();
     tracing::info!("Loaded {} plugins", discovered.len());
 
+    // Plugin updater
+    let registry_config = RegistryConfig {
+        index_url: config.update.plugin_registry_url.clone(),
+    };
+    let plugin_updater = Arc::new(PluginUpdater::new(
+        registry_config,
+        http_client.clone(),
+        plugin_loader.clone(),
+    ));
+
     let state = api::AppState {
         coordinator: coordinator.clone(),
         plugins: plugin_loader,
+        plugin_updater,
+        http_client,
     };
 
     let app = api::router(state.clone())
-        .merge(ws::ws_router(state))
+        .merge(ws::ws_router(state.clone()))
+        .merge(update_api::update_router(state))
         .layer(CorsLayer::permissive());
 
     let bind = "0.0.0.0:8080";

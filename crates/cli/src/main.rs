@@ -56,6 +56,11 @@ enum Commands {
         #[command(subcommand)]
         action: PluginAction,
     },
+    /// Check for and apply updates
+    Update {
+        #[command(subcommand)]
+        action: UpdateAction,
+    },
     /// Start the web server
     Serve {
         #[arg(long, default_value = "8080")]
@@ -73,13 +78,76 @@ enum ConfigAction {
 
 #[derive(Subcommand)]
 enum PluginAction {
+    /// List installed plugins
     List,
+    /// Enable a plugin
     Enable { id: String },
+    /// Login to a plugin account
     Login { id: String },
+    /// Update plugins (all or specific)
+    Update {
+        /// Plugin ID (all if omitted)
+        id: Option<String>,
+    },
+    /// Install a plugin from the registry
+    Install { id: String },
+    /// Search the plugin registry
+    Search { query: String },
+}
+
+#[derive(Subcommand)]
+enum UpdateAction {
+    /// Check for available updates (core + plugins)
+    Check,
+    /// Apply core binary update
+    Apply {
+        /// Skip confirmation prompt
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    let _cli = Cli::parse();
-    todo!("Implement CLI commands")
+    let cli = Cli::parse();
+
+    match cli.command {
+        Commands::Update { action } => match action {
+            UpdateAction::Check => {
+                let client = reqwest::Client::builder()
+                    .user_agent("amigo-downloader")
+                    .build()?;
+                let config = amigo_core::config::Config::default();
+
+                println!("Checking for updates...");
+
+                // Check core update
+                match amigo_core::updater::check_for_update(&client, &config.update.github_repo).await {
+                    Ok(amigo_core::updater::CoreUpdateStatus::UpdateAvailable { current, latest, .. }) => {
+                        println!("Core update available: {current} → {latest}");
+                    }
+                    Ok(amigo_core::updater::CoreUpdateStatus::UpToDate) => {
+                        println!("Core is up to date (v{})", amigo_core::updater::CURRENT_VERSION);
+                    }
+                    Err(e) => {
+                        println!("Could not check for core updates: {e}");
+                    }
+                }
+
+                println!("Done.");
+            }
+            UpdateAction::Apply { yes } => {
+                if !yes {
+                    println!("Use --yes to confirm the update.");
+                    return Ok(());
+                }
+                println!("Self-update not yet fully implemented.");
+            }
+        },
+        _ => {
+            todo!("Implement remaining CLI commands")
+        }
+    }
+
+    Ok(())
 }
