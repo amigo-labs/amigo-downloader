@@ -72,6 +72,7 @@ struct ErrorContext {
 struct FeedbackResponse {
     issue_number: u64,
     issue_url: String,
+    deduplicated: bool,
 }
 
 #[derive(Serialize)]
@@ -252,6 +253,51 @@ async fn submit_feedback(
         FeedbackType::Crash => "[Crash]",
     };
 
+    // Deduplication: hash error_message + host (not full URL) + version
+    // Same error from same hoster = same bug, regardless of specific file
+    let dedup_hash = {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+        let mut hasher = DefaultHasher::new();
+        if let Some(ref ctx) = req.error_context {
+            ctx.error_message.as_deref().unwrap_or("").hash(&mut hasher);
+            // Only hash the host part of the URL, not the full path
+            if let Some(ref url) = ctx.url {
+                let host = url.split("//").nth(1).and_then(|s| s.split('/').next()).unwrap_or("");
+                host.hash(&mut hasher);
+            }
+        }
+        title.hash(&mut hasher);
+        env!("CARGO_PKG_VERSION").hash(&mut hasher);
+        format!("amigo-dedup-{:016x}", hasher.finish())
+    };
+
+    let repo = &config.feedback.github_repo;
+
+    // Check if an issue with this dedup hash already exists
+    if matches!(req.feedback_type, FeedbackType::Crash) {
+        match check_duplicate_issue(&state.http_client, token, repo, &dedup_hash).await {
+            Ok(Some(existing)) => {
+                info!("Duplicate crash found: #{} — skipping", existing.number);
+                return Ok((
+                    StatusCode::OK,
+                    Json(FeedbackResponse {
+                        issue_number: existing.number,
+                        issue_url: existing.html_url,
+                        deduplicated: true,
+                    }),
+                ));
+            }
+            Ok(None) => {} // No duplicate, proceed
+            Err(e) => {
+                warn!("Dedup check failed (proceeding anyway): {e}");
+            }
+        }
+    }
+
+    // Append dedup hash to body (hidden, for future searches)
+    body.push_str(&format!("\n<!-- {dedup_hash} -->\n"));
+
     let issue = GitHubCreateIssue {
         title: format!("{type_prefix} {title}"),
         body,
@@ -259,7 +305,6 @@ async fn submit_feedback(
     };
 
     // Create GitHub issue
-    let repo = &config.feedback.github_repo;
     let url = format!("https://api.github.com/repos/{repo}/issues");
 
     let resp = state
@@ -307,8 +352,65 @@ async fn submit_feedback(
         Json(FeedbackResponse {
             issue_number: gh_issue.number,
             issue_url: gh_issue.html_url,
+            deduplicated: false,
         }),
     ))
+}
+
+/// Search GitHub for an existing issue containing the dedup hash.
+async fn check_duplicate_issue(
+    client: &reqwest::Client,
+    token: &str,
+    repo: &str,
+    dedup_hash: &str,
+) -> Result<Option<GitHubIssueResponse>, String> {
+    let query = format!("{dedup_hash} repo:{repo} is:issue");
+    let url = format!(
+        "https://api.github.com/search/issues?q={}&per_page=1",
+        urlencoding(&query)
+    );
+
+    let resp = client
+        .get(&url)
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Accept", "application/vnd.github+json")
+        .header("X-GitHub-Api-Version", "2022-11-28")
+        .header("User-Agent", "amigo-downloader")
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+
+    if !resp.status().is_success() {
+        return Err(format!("GitHub search API returned {}", resp.status()));
+    }
+
+    #[derive(Deserialize)]
+    struct SearchResult {
+        total_count: u64,
+        items: Vec<GitHubIssueResponse>,
+    }
+
+    let result: SearchResult = resp.json().await.map_err(|e| e.to_string())?;
+
+    if result.total_count > 0 {
+        Ok(result.items.into_iter().next())
+    } else {
+        Ok(None)
+    }
+}
+
+/// Simple URL encoding for query parameters.
+fn urlencoding(s: &str) -> String {
+    s.chars()
+        .map(|c| match c {
+            ' ' => "+".to_string(),
+            '&' | '=' | '?' | '#' | '+' | ':' | '/' => format!("%{:02X}", c as u8),
+            _ if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '~' => {
+                c.to_string()
+            }
+            _ => format!("%{:02X}", c as u8),
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -338,5 +440,34 @@ mod tests {
         let req: FeedbackRequest = serde_json::from_str(json).unwrap();
         assert!(matches!(req.feedback_type, FeedbackType::Crash));
         assert_eq!(req.error_context.unwrap().download_id.unwrap(), "abc");
+    }
+
+    #[test]
+    fn test_dedup_hash_same_error_same_host() {
+        use std::collections::hash_map::DefaultHasher;
+        use std::hash::{Hash, Hasher};
+
+        fn make_hash(error: &str, url: &str, title: &str) -> String {
+            let mut hasher = DefaultHasher::new();
+            error.hash(&mut hasher);
+            let host = url.split("//").nth(1).and_then(|s| s.split('/').next()).unwrap_or("");
+            host.hash(&mut hasher);
+            title.hash(&mut hasher);
+            "0.1.0".hash(&mut hasher);
+            format!("amigo-dedup-{:016x}", hasher.finish())
+        }
+
+        // Same error + same host = same hash
+        let h1 = make_hash("timeout", "https://example.com/file1.zip", "timeout");
+        let h2 = make_hash("timeout", "https://example.com/file2.zip", "timeout");
+        assert_eq!(h1, h2, "Same error on same host should produce same hash");
+
+        // Same error + different host = different hash
+        let h3 = make_hash("timeout", "https://other.com/file1.zip", "timeout");
+        assert_ne!(h1, h3, "Same error on different host should produce different hash");
+
+        // Different error + same host = different hash
+        let h4 = make_hash("connection reset", "https://example.com/file1.zip", "connection reset");
+        assert_ne!(h1, h4, "Different error on same host should produce different hash");
     }
 }

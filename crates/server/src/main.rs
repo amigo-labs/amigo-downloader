@@ -80,6 +80,7 @@ async fn main() -> anyhow::Result<()> {
         .merge(ws::ws_router(state.clone()))
         .merge(update_api::update_router(state.clone()))
         .merge(feedback::feedback_router(state, feedback_limiter))
+        .merge(static_files::static_router())
         .layer(CorsLayer::permissive());
 
     // Start Click'n'Load listener on port 9666 in background

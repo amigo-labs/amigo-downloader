@@ -43,7 +43,11 @@
         const data = await res.json();
         autoReported = true;
         resultUrl = data.issue_url;
-        addToast("info", `Crash reported as #${data.issue_number}`);
+        if (data.deduplicated) {
+          addToast("info", `Known issue #${data.issue_number}`, "Already reported");
+        } else {
+          addToast("info", `Crash reported as #${data.issue_number}`);
+        }
       }
     } catch { /* silent */ }
   }
