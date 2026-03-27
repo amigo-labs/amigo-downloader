@@ -6,13 +6,14 @@
   <p><strong>Fast, modular download manager</strong> built in Rust with a responsive Web UI, plugin system, and native apps.</p>
   <p>Faster than JDownloader, lighter than pyLoad, extensible for HTTP, Usenet, and more.</p>
 
+  <!-- Badges will work once the repo is public on github.com -->
+  <!--
   <p>
-    <img src="https://img.shields.io/badge/Rust-2024_edition-orange?style=flat-square&logo=rust" alt="Rust" />
-    <img src="https://img.shields.io/badge/Svelte-5-ff3e00?style=flat-square&logo=svelte" alt="Svelte 5" />
-    <img src="https://img.shields.io/badge/Docker-ready-blue?style=flat-square&logo=docker" alt="Docker" />
-    <img src="https://img.shields.io/badge/License-MIT-green?style=flat-square" alt="License" />
-    <img src="https://img.shields.io/badge/PWA-Share_Target-blueviolet?style=flat-square&logo=pwa" alt="PWA" />
+    <a href="https://github.com/amigo-labs/amigo-downloader/actions"><img src="https://img.shields.io/github/actions/workflow/status/amigo-labs/amigo-downloader/ci.yml?branch=main&style=flat-square&logo=github&label=CI" alt="CI" /></a>
+    <a href="https://github.com/amigo-labs/amigo-downloader/releases"><img src="https://img.shields.io/github/v/release/amigo-labs/amigo-downloader?style=flat-square&logo=rust&label=Release" alt="Release" /></a>
+    <a href="https://github.com/amigo-labs/amigo-downloader/blob/main/LICENSE"><img src="https://img.shields.io/github/license/amigo-labs/amigo-downloader?style=flat-square" alt="License" /></a>
   </p>
+  -->
 </div>
 
 ---
