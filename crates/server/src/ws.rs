@@ -1,7 +1,5 @@
 //! WebSocket handler for live progress updates.
 
-use std::sync::Arc;
-
 use axum::{
     Router,
     extract::{State, WebSocketUpgrade, ws::Message},
@@ -11,7 +9,7 @@ use axum::{
 use serde::Serialize;
 use tracing::{debug, warn};
 
-use amigo_core::coordinator::{Coordinator, DownloadEvent};
+use amigo_core::coordinator::DownloadEvent;
 
 use crate::api::AppState;
 
@@ -23,17 +21,17 @@ pub fn ws_router(state: AppState) -> Router {
 
 async fn ws_handler(
     ws: WebSocketUpgrade,
-    State(coord): State<AppState>,
+    State(state): State<AppState>,
 ) -> Response {
-    ws.on_upgrade(move |socket| handle_socket(socket, coord))
+    ws.on_upgrade(move |socket| handle_socket(socket, state))
 }
 
 async fn handle_socket(
     mut socket: axum::extract::ws::WebSocket,
-    coord: Arc<Coordinator>,
+    state: AppState,
 ) {
     debug!("WebSocket client connected");
-    let mut rx = coord.subscribe();
+    let mut rx = state.coordinator.subscribe();
 
     loop {
         match rx.recv().await {

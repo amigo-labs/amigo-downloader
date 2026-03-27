@@ -12,8 +12,14 @@ use serde::{Deserialize, Serialize};
 
 use amigo_core::coordinator::Coordinator;
 use amigo_core::queue::QueueStatus;
+use amigo_plugin_runtime::loader::PluginLoader;
 
-pub type AppState = Arc<Coordinator>;
+/// Shared application state.
+#[derive(Clone)]
+pub struct AppState {
+    pub coordinator: Arc<Coordinator>,
+    pub plugins: Arc<PluginLoader>,
+}
 
 pub fn router(state: AppState) -> Router {
     Router::new()
@@ -27,6 +33,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/downloads/batch", post(add_batch))
         .route("/api/v1/queue", get(get_queue))
         .route("/api/v1/history", get(get_history))
+        // Plugin endpoints
+        .route("/api/v1/plugins", get(list_plugins))
+        .route("/api/v1/plugins/{id}", patch(update_plugin))
         .with_state(state)
 }
 
@@ -46,6 +55,11 @@ struct BatchRequest {
 #[derive(Deserialize)]
 struct UpdateDownloadRequest {
     action: String, // "pause", "resume"
+}
+
+#[derive(Deserialize)]
+struct UpdatePluginRequest {
+    enabled: Option<bool>,
 }
 
 #[derive(Serialize)]
@@ -88,6 +102,15 @@ struct DownloadResponse {
 }
 
 #[derive(Serialize)]
+struct PluginResponse {
+    id: String,
+    name: String,
+    version: String,
+    url_pattern: String,
+    enabled: bool,
+}
+
+#[derive(Serialize)]
 struct ErrorResponse {
     error: String,
 }
@@ -101,11 +124,11 @@ async fn status() -> Json<StatusResponse> {
     })
 }
 
-async fn stats(State(coord): State<AppState>) -> Json<StatsResponse> {
-    let active = coord.active_count().await;
-    let speed = coord.total_speed().await;
-    let queued = coord.storage().count_by_status(QueueStatus::Queued).await.unwrap_or(0);
-    let completed = coord.storage().count_by_status(QueueStatus::Completed).await.unwrap_or(0);
+async fn stats(State(state): State<AppState>) -> Json<StatsResponse> {
+    let active = state.coordinator.active_count().await;
+    let speed = state.coordinator.total_speed().await;
+    let queued = state.coordinator.storage().count_by_status(QueueStatus::Queued).await.unwrap_or(0);
+    let completed = state.coordinator.storage().count_by_status(QueueStatus::Completed).await.unwrap_or(0);
 
     Json(StatsResponse {
         active_downloads: active,
@@ -116,10 +139,10 @@ async fn stats(State(coord): State<AppState>) -> Json<StatsResponse> {
 }
 
 async fn add_download(
-    State(coord): State<AppState>,
+    State(state): State<AppState>,
     Json(req): Json<AddDownloadRequest>,
 ) -> Result<(StatusCode, Json<AddResponse>), (StatusCode, Json<ErrorResponse>)> {
-    match coord.add_download(&req.url, req.filename).await {
+    match state.coordinator.add_download(&req.url, req.filename).await {
         Ok(id) => Ok((StatusCode::CREATED, Json(AddResponse { id }))),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -129,12 +152,12 @@ async fn add_download(
 }
 
 async fn add_batch(
-    State(coord): State<AppState>,
+    State(state): State<AppState>,
     Json(req): Json<BatchRequest>,
 ) -> Result<(StatusCode, Json<BatchResponse>), (StatusCode, Json<ErrorResponse>)> {
     let mut ids = Vec::new();
     for url in &req.urls {
-        match coord.add_download(url, None).await {
+        match state.coordinator.add_download(url, None).await {
             Ok(id) => ids.push(id),
             Err(e) => {
                 return Err((
@@ -147,29 +170,29 @@ async fn add_batch(
     Ok((StatusCode::CREATED, Json(BatchResponse { ids })))
 }
 
-async fn list_downloads(State(coord): State<AppState>) -> Json<Vec<DownloadResponse>> {
-    let rows = coord.storage().list_downloads().await.unwrap_or_default();
+async fn list_downloads(State(state): State<AppState>) -> Json<Vec<DownloadResponse>> {
+    let rows = state.coordinator.storage().list_downloads().await.unwrap_or_default();
     Json(rows.into_iter().map(row_to_response).collect())
 }
 
 async fn get_download(
-    State(coord): State<AppState>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<Json<DownloadResponse>, StatusCode> {
-    match coord.storage().get_download(&id).await {
+    match state.coordinator.storage().get_download(&id).await {
         Ok(Some(row)) => Ok(Json(row_to_response(row))),
         _ => Err(StatusCode::NOT_FOUND),
     }
 }
 
 async fn update_download(
-    State(coord): State<AppState>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
     Json(req): Json<UpdateDownloadRequest>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     let result = match req.action.as_str() {
-        "pause" => coord.pause(&id).await,
-        "resume" => coord.resume(&id).await,
+        "pause" => state.coordinator.pause(&id).await,
+        "resume" => state.coordinator.resume(&id).await,
         _ => return Err((
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse { error: "Invalid action. Use 'pause' or 'resume'.".into() }),
@@ -186,10 +209,10 @@ async fn update_download(
 }
 
 async fn delete_download(
-    State(coord): State<AppState>,
+    State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    match coord.cancel(&id).await {
+    match state.coordinator.cancel(&id).await {
         Ok(()) => Ok(StatusCode::NO_CONTENT),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -198,8 +221,9 @@ async fn delete_download(
     }
 }
 
-async fn get_queue(State(coord): State<AppState>) -> Json<Vec<DownloadResponse>> {
-    let rows = coord
+async fn get_queue(State(state): State<AppState>) -> Json<Vec<DownloadResponse>> {
+    let rows = state
+        .coordinator
         .storage()
         .list_downloads_by_status(QueueStatus::Queued)
         .await
@@ -207,9 +231,47 @@ async fn get_queue(State(coord): State<AppState>) -> Json<Vec<DownloadResponse>>
     Json(rows.into_iter().map(row_to_response).collect())
 }
 
-async fn get_history(State(coord): State<AppState>) -> Json<Vec<DownloadResponse>> {
-    let rows = coord.storage().get_history().await.unwrap_or_default();
+async fn get_history(State(state): State<AppState>) -> Json<Vec<DownloadResponse>> {
+    let rows = state.coordinator.storage().get_history().await.unwrap_or_default();
     Json(rows.into_iter().map(row_to_response).collect())
+}
+
+// --- Plugin handlers ---
+
+async fn list_plugins(State(state): State<AppState>) -> Json<Vec<PluginResponse>> {
+    let plugins = state.plugins.list_plugins().await;
+    Json(
+        plugins
+            .into_iter()
+            .map(|p| PluginResponse {
+                id: p.id,
+                name: p.name,
+                version: p.version,
+                url_pattern: p.url_pattern,
+                enabled: p.enabled,
+            })
+            .collect(),
+    )
+}
+
+async fn update_plugin(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<UpdatePluginRequest>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    if let Some(enabled) = req.enabled {
+        state
+            .plugins
+            .set_enabled(&id, enabled)
+            .await
+            .map_err(|e| {
+                (
+                    StatusCode::NOT_FOUND,
+                    Json(ErrorResponse { error: e.to_string() }),
+                )
+            })?;
+    }
+    Ok(StatusCode::OK)
 }
 
 fn row_to_response(row: amigo_core::storage::DownloadRow) -> DownloadResponse {

@@ -2,6 +2,7 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Information returned by a plugin's resolve() function.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownloadInfo {
     pub url: String,
@@ -15,6 +16,7 @@ pub struct DownloadInfo {
     pub mirrors: Vec<String>,
 }
 
+/// Online check result.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum OnlineStatus {
     Online,
@@ -22,10 +24,21 @@ pub enum OnlineStatus {
     Unknown,
 }
 
+/// Metadata about a loaded plugin.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginMeta {
     pub id: String,
     pub name: String,
     pub version: String,
     pub url_pattern: String,
+    pub file_path: String,
+    pub enabled: bool,
+}
+
+/// HTTP response returned to plugins.
+#[derive(Debug, Clone)]
+pub struct PluginHttpResponse {
+    pub status: u16,
+    pub body: String,
+    pub headers: std::collections::HashMap<String, String>,
 }

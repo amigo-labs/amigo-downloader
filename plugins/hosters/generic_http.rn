@@ -5,7 +5,7 @@ pub fn plugin_name() { "Generic HTTP" }
 pub fn plugin_version() { "1.0.0" }
 
 pub fn url_pattern() {
-    r"https?://.+"
+    "https?://.+"
 }
 
 pub async fn resolve(url) {

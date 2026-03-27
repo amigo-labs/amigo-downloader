@@ -11,6 +11,8 @@ use tracing_subscriber::EnvFilter;
 use amigo_core::config::Config;
 use amigo_core::coordinator::Coordinator;
 use amigo_core::storage::Storage;
+use amigo_plugin_runtime::loader::PluginLoader;
+use amigo_plugin_runtime::sandbox::SandboxLimits;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -30,8 +32,21 @@ async fn main() -> anyhow::Result<()> {
 
     let coordinator = Arc::new(Coordinator::new(config, storage));
 
-    let app = api::router(coordinator.clone())
-        .merge(ws::ws_router(coordinator.clone()))
+    // Load plugins
+    let plugin_loader = Arc::new(PluginLoader::new(
+        PathBuf::from("plugins"),
+        SandboxLimits::default(),
+    ));
+    let discovered = plugin_loader.discover().await.unwrap_or_default();
+    tracing::info!("Loaded {} plugins", discovered.len());
+
+    let state = api::AppState {
+        coordinator: coordinator.clone(),
+        plugins: plugin_loader,
+    };
+
+    let app = api::router(state.clone())
+        .merge(ws::ws_router(state))
         .layer(CorsLayer::permissive());
 
     let bind = "0.0.0.0:8080";
