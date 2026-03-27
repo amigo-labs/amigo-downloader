@@ -120,26 +120,13 @@ impl PluginLoader {
             host_api::register_host_api(&ctx, Arc::new(self.host_api.clone()), temp_id)
         })?;
 
-        // Evaluate plugin source at global scope so `function` declarations
-        // end up on globalThis, then collect exports into __plugin_exports.
+        // Inject `module.exports` for CommonJS-style default export.
+        // Plugin writes: module.exports = { pluginId() {}, resolve(url) {}, ... }
+        // After eval, __plugin_exports points to module.exports.
         let wrapped = format!(
-            r#"{js_source}
-
-var __plugin_exports = {{}};
-(function() {{
-    var exportNames = [
-        'pluginId', 'pluginName', 'pluginVersion', 'urlPattern',
-        'pluginDescription', 'pluginAuthor',
-        'resolve', 'login', 'supportsPremium',
-        'decryptContainer', 'resolveFolder', 'checkOnline',
-    ];
-    for (var i = 0; i < exportNames.length; i++) {{
-        var name = exportNames[i];
-        if (typeof globalThis[name] === 'function') {{
-            __plugin_exports[name] = globalThis[name];
-        }}
-    }}
-}})();
+            r#"var module = {{ exports: {{}} }};
+{js_source}
+var __plugin_exports = module.exports;
 "#
         );
 
@@ -311,11 +298,13 @@ mod tests {
         std::fs::write(
             hosters.join("test_hoster.js"),
             r#"
-function pluginId() { return "test-hoster"; }
-function pluginName() { return "Test Hoster"; }
-function pluginVersion() { return "1.0.0"; }
-function urlPattern() { return "https?://test-hoster\\.com/.+"; }
-function resolve(url) { return JSON.stringify({url: url, filename: "file.bin", filesize: null, chunks_supported: true, max_chunks: 8, headers: null, cookies: null, wait_seconds: null, mirrors: []}); }
+module.exports = {
+    pluginId() { return "test-hoster"; },
+    pluginName() { return "Test Hoster"; },
+    pluginVersion() { return "1.0.0"; },
+    urlPattern() { return "https?://test-hoster\\.com/.+"; },
+    resolve(url) { return { url: url, filename: "file.bin", filesize: null, chunks_supported: true, max_chunks: 8, headers: null, cookies: null, wait_seconds: null, mirrors: [] }; },
+};
 "#,
         )
         .unwrap();
