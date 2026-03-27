@@ -1,6 +1,6 @@
 <script lang="ts">
-  // Pixel-art "Amigo" mascot — a friendly download robot
-  // Built on an 16x16 pixel grid, scaled up with crisp rendering
+  // Pixel-art "Orb Bot" mascot — round head with headphones
+  // Built on a 16x16 pixel grid, scaled up with crisp rendering
   let { size = 64, animate = false }: { size?: number; animate?: boolean } = $props();
 </script>
 
@@ -14,45 +14,60 @@
   class:mascot-bounce={animate}
   style="image-rendering: pixelated"
 >
-  <!-- Body (rounded robot shape) -->
-  <rect x="4" y="3" width="8" height="9" rx="0" fill="var(--accent-color)" />
-  <rect x="3" y="4" width="10" height="7" rx="0" fill="var(--accent-color)" />
+  <!-- Headphones band -->
+  <rect x="4" y="1" width="8" height="1" fill="var(--text-secondary-color)" opacity="0.5" />
+  <!-- Headphones left -->
+  <rect x="2" y="2" width="2" height="3" fill="var(--accent-color)" />
+  <rect x="2" y="2" width="2" height="1" fill="var(--accent-color)" opacity="0.7" class:headphone-pulse={animate} />
+  <!-- Headphones right -->
+  <rect x="12" y="2" width="2" height="3" fill="var(--accent-color)" />
+  <rect x="12" y="2" width="2" height="1" fill="var(--accent-color)" opacity="0.7" class:headphone-pulse={animate} />
 
-  <!-- Screen/Face area -->
-  <rect x="5" y="4" width="6" height="5" fill="var(--surface-color)" />
+  <!-- Head (large sphere) -->
+  <rect x="5" y="1" width="6" height="7" fill="var(--surface-color)" />
+  <rect x="4" y="2" width="8" height="5" fill="var(--surface-color)" />
 
-  <!-- Eyes -->
-  <rect x="6" y="5" width="1" height="2" fill="var(--accent-color)" class:eye-blink={animate} />
-  <rect x="9" y="5" width="1" height="2" fill="var(--accent-color)" class:eye-blink={animate} />
+  <!-- Visor -->
+  <rect x="5" y="3" width="6" height="3" fill="var(--text-color)" opacity="0.05" />
 
-  <!-- Smile -->
-  <rect x="6" y="7" width="1" height="1" fill="var(--accent-color)" opacity="0.5" />
-  <rect x="7" y="8" width="2" height="1" fill="var(--accent-color)" opacity="0.5" />
-  <rect x="9" y="7" width="1" height="1" fill="var(--accent-color)" opacity="0.5" />
+  <!-- Eyes (LED style) -->
+  <rect x="5" y="3" width="2" height="2" fill="var(--accent-color)" class:eye-blink={animate} />
+  <rect x="9" y="3" width="2" height="2" fill="var(--accent-color)" class:eye-blink={animate} />
+  <!-- Eye inner -->
+  <rect x="6" y="4" width="1" height="1" fill="white" />
+  <rect x="9" y="4" width="1" height="1" fill="white" />
 
-  <!-- Antenna -->
-  <rect x="7" y="1" width="2" height="2" fill="var(--accent-color)" />
-  <rect x="7" y="0" width="2" height="1" fill="var(--accent-color)" class:antenna-glow={animate} />
+  <!-- Mouth (LED bar) -->
+  <rect x="6" y="6" width="4" height="1" fill="var(--accent-color)" opacity="0.4" />
+
+  <!-- Neck -->
+  <rect x="7" y="8" width="2" height="1" fill="var(--text-secondary-color)" opacity="0.4" />
+
+  <!-- Body -->
+  <rect x="5" y="9" width="6" height="4" fill="var(--accent-color)" />
+  <rect x="4" y="10" width="8" height="2" fill="var(--accent-color)" />
+
+  <!-- Chest light -->
+  <rect x="7" y="10" width="2" height="2" fill="var(--accent-color)" class:chest-glow={animate} />
+  <rect x="7" y="10" width="1" height="1" fill="white" opacity="0.5" />
 
   <!-- Arms -->
-  <rect x="2" y="5" width="1" height="4" fill="var(--accent-color)" />
-  <rect x="13" y="5" width="1" height="4" fill="var(--accent-color)" />
+  <rect x="2" y="9" width="2" height="1" fill="var(--accent-color)" />
+  <rect x="1" y="10" width="2" height="3" fill="var(--accent-color)" />
+  <rect x="12" y="9" width="2" height="1" fill="var(--accent-color)" />
+  <rect x="13" y="10" width="2" height="3" fill="var(--accent-color)" />
 
-  <!-- Hands -->
-  <rect x="1" y="8" width="2" height="2" fill="var(--accent-color)" />
-  <rect x="13" y="8" width="2" height="2" fill="var(--accent-color)" />
+  <!-- Waving hand -->
+  <rect x="0" y="12" width="2" height="1" fill="var(--accent-color)" opacity="0.7" class:wave={animate} />
+  <rect x="14" y="10" width="1" height="1" fill="var(--accent-color)" opacity="0.7" />
 
-  <!-- Download arrow on chest -->
-  <rect x="7" y="9" width="2" height="2" fill="var(--surface-color)" opacity="0.8" />
-  <rect x="7" y="10" width="2" height="1" fill="var(--surface-color)" />
-  <rect x="6" y="10" width="4" height="1" fill="var(--surface-color)" opacity="0.6" />
+  <!-- Legs -->
+  <rect x="5" y="13" width="2" height="2" fill="var(--text-color)" opacity="0.3" />
+  <rect x="9" y="13" width="2" height="2" fill="var(--text-color)" opacity="0.3" />
 
   <!-- Feet -->
-  <rect x="4" y="12" width="3" height="2" fill="var(--accent-color)" />
-  <rect x="9" y="12" width="3" height="2" fill="var(--accent-color)" />
-
-  <!-- Highlight/shine -->
-  <rect x="5" y="4" width="1" height="1" fill="white" opacity="0.3" />
+  <rect x="4" y="15" width="3" height="1" fill="var(--text-color)" opacity="0.2" />
+  <rect x="9" y="15" width="3" height="1" fill="var(--text-color)" opacity="0.2" />
 </svg>
 
 <style>
@@ -67,8 +82,14 @@
   }
 
   @keyframes glow {
-    0%, 100% { opacity: 0.6; }
+    0%, 100% { opacity: 0.5; }
     50% { opacity: 1; }
+  }
+
+  @keyframes wave {
+    0%, 80%, 100% { transform: translateY(0); }
+    40% { transform: translateY(-1px); }
+    60% { transform: translateY(1px); }
   }
 
   .mascot-bounce {
@@ -79,7 +100,15 @@
     animation: blink 4s ease-in-out infinite;
   }
 
-  .antenna-glow {
+  .chest-glow {
     animation: glow 1.5s ease-in-out infinite;
+  }
+
+  .headphone-pulse {
+    animation: glow 2s ease-in-out infinite;
+  }
+
+  .wave {
+    animation: wave 3s ease-in-out infinite;
   }
 </style>

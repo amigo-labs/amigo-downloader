@@ -1,21 +1,22 @@
-```
-                 ___
-                |   |
-       ___   ___| | |___
-      |   |_|   | | |   |
-      | O   O   | | |   |
-      |  ___    |_| |   |
-      | |   |       |   |
-  ____|_|   |_______|___|____
- |  a m i g o - d o w n l o a d e r  |
- |____________________________________|
-```
+<div align="center">
+  <img src="web-ui/public/icon-512.svg" width="128" height="128" alt="amigo-downloader mascot" />
 
-# amigo-downloader
+  <h1>amigo-downloader</h1>
 
-**Fast, modular download manager** built in Rust with a responsive Web UI, plugin system, and native apps.
+  <p><strong>Fast, modular download manager</strong> built in Rust with a responsive Web UI, plugin system, and native apps.</p>
+  <p>Faster than JDownloader, lighter than pyLoad, extensible for HTTP, Usenet, and more.</p>
 
-Faster than JDownloader, lighter than pyLoad, extensible for HTTP, Usenet, and more.
+  <p>
+    <a href="https://github.com/amigo-labs/amigo-downloader/actions"><img src="https://img.shields.io/github/actions/workflow/status/amigo-labs/amigo-downloader/ci.yml?branch=main&style=flat-square&logo=github&label=CI" alt="CI" /></a>
+    <a href="https://github.com/amigo-labs/amigo-downloader/releases"><img src="https://img.shields.io/github/v/release/amigo-labs/amigo-downloader?style=flat-square&logo=rust&label=Release" alt="Release" /></a>
+    <a href="https://github.com/amigo-labs/amigo-downloader/pkgs/container/amigo-downloader"><img src="https://img.shields.io/badge/Docker-ghcr.io-blue?style=flat-square&logo=docker" alt="Docker" /></a>
+    <a href="https://github.com/amigo-labs/amigo-downloader/blob/main/LICENSE"><img src="https://img.shields.io/github/license/amigo-labs/amigo-downloader?style=flat-square" alt="License" /></a>
+    <img src="https://img.shields.io/badge/Rust-2024_edition-orange?style=flat-square&logo=rust" alt="Rust" />
+    <img src="https://img.shields.io/badge/Svelte-5-ff3e00?style=flat-square&logo=svelte" alt="Svelte 5" />
+  </p>
+</div>
+
+---
 
 ## Features
 

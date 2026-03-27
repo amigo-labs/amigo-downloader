@@ -1,46 +1,48 @@
 <svg width="192" height="192" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg" style="image-rendering:pixelated">
-  <!-- Background -->
   <rect width="192" height="192" rx="40" fill="#0f172a"/>
-
-  <!-- Amigo mascot centered on 16x16 grid, each pixel = 9px, offset 24,18 -->
-  <g transform="translate(24,18) scale(9)">
-    <!-- Body -->
-    <rect x="4" y="3" width="8" height="9" fill="#3b82f6"/>
-    <rect x="3" y="4" width="10" height="7" fill="#3b82f6"/>
-
-    <!-- Screen/Face -->
-    <rect x="5" y="4" width="6" height="5" fill="#f1f5f9"/>
-
+  <!-- "Orb Bot" — spherical head, headphones, compact body -->
+  <g transform="translate(24,12) scale(9)">
+    <!-- Headphones band -->
+    <rect x="4" y="1" width="8" height="1" fill="#64748b"/>
+    <!-- Headphones left -->
+    <rect x="2" y="2" width="2" height="3" fill="#3b82f6"/>
+    <rect x="2" y="2" width="2" height="1" fill="#60a5fa"/>
+    <!-- Headphones right -->
+    <rect x="12" y="2" width="2" height="3" fill="#3b82f6"/>
+    <rect x="12" y="2" width="2" height="1" fill="#60a5fa"/>
+    <!-- Head -->
+    <rect x="5" y="1" width="6" height="7" fill="#f1f5f9"/>
+    <rect x="4" y="2" width="8" height="5" fill="#f1f5f9"/>
+    <!-- Visor -->
+    <rect x="5" y="3" width="6" height="3" fill="#0f172a" opacity="0.1"/>
     <!-- Eyes -->
-    <rect x="6" y="5" width="1" height="2" fill="#3b82f6"/>
-    <rect x="9" y="5" width="1" height="2" fill="#3b82f6"/>
-
-    <!-- Smile -->
-    <rect x="6" y="7" width="1" height="1" fill="#3b82f6" opacity="0.5"/>
-    <rect x="7" y="8" width="2" height="1" fill="#3b82f6" opacity="0.5"/>
-    <rect x="9" y="7" width="1" height="1" fill="#3b82f6" opacity="0.5"/>
-
-    <!-- Antenna -->
-    <rect x="7" y="1" width="2" height="2" fill="#3b82f6"/>
-    <rect x="7" y="0" width="2" height="1" fill="#60a5fa"/>
-
+    <rect x="5" y="3" width="2" height="2" fill="#3b82f6"/>
+    <rect x="9" y="3" width="2" height="2" fill="#3b82f6"/>
+    <rect x="6" y="4" width="1" height="1" fill="white"/>
+    <rect x="9" y="4" width="1" height="1" fill="white"/>
+    <!-- Mouth -->
+    <rect x="6" y="6" width="4" height="1" fill="#3b82f6" opacity="0.5"/>
+    <!-- Neck -->
+    <rect x="7" y="8" width="2" height="1" fill="#94a3b8"/>
+    <!-- Body -->
+    <rect x="5" y="9" width="6" height="4" fill="#3b82f6"/>
+    <rect x="4" y="10" width="8" height="2" fill="#3b82f6"/>
+    <!-- Chest light -->
+    <rect x="7" y="10" width="2" height="2" fill="#60a5fa"/>
+    <rect x="7" y="10" width="1" height="1" fill="white" opacity="0.6"/>
     <!-- Arms -->
-    <rect x="2" y="5" width="1" height="4" fill="#3b82f6"/>
-    <rect x="13" y="5" width="1" height="4" fill="#3b82f6"/>
-
+    <rect x="2" y="9" width="2" height="1" fill="#3b82f6"/>
+    <rect x="1" y="10" width="2" height="3" fill="#3b82f6"/>
+    <rect x="12" y="9" width="2" height="1" fill="#3b82f6"/>
+    <rect x="13" y="10" width="2" height="3" fill="#3b82f6"/>
     <!-- Hands -->
-    <rect x="1" y="8" width="2" height="2" fill="#3b82f6"/>
-    <rect x="13" y="8" width="2" height="2" fill="#3b82f6"/>
-
-    <!-- Download arrow on chest -->
-    <rect x="7" y="9" width="2" height="2" fill="#f1f5f9" opacity="0.8"/>
-    <rect x="6" y="10" width="4" height="1" fill="#f1f5f9" opacity="0.6"/>
-
+    <rect x="0" y="12" width="2" height="1" fill="#60a5fa"/>
+    <rect x="14" y="10" width="1" height="1" fill="#60a5fa"/>
+    <!-- Legs -->
+    <rect x="5" y="13" width="2" height="2" fill="#1e293b"/>
+    <rect x="9" y="13" width="2" height="2" fill="#1e293b"/>
     <!-- Feet -->
-    <rect x="4" y="12" width="3" height="2" fill="#3b82f6"/>
-    <rect x="9" y="12" width="3" height="2" fill="#3b82f6"/>
-
-    <!-- Highlight -->
-    <rect x="5" y="4" width="1" height="1" fill="white" opacity="0.3"/>
+    <rect x="4" y="15" width="3" height="1" fill="#334155"/>
+    <rect x="9" y="15" width="3" height="1" fill="#334155"/>
   </g>
 </svg>
