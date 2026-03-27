@@ -1,0 +1,21 @@
+[package]
+name = "amigo-server"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "amigo-server"
+path = "src/main.rs"
+
+[dependencies]
+amigo-core = { workspace = true }
+amigo-plugin-runtime = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+axum = { workspace = true }
+tower-http = { workspace = true }

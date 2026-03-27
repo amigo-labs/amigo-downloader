@@ -1,0 +1,29 @@
+// Plugin Template for amigo-downloader
+// Copy this file and adapt it for your hoster.
+
+pub fn plugin_id() { "my-hoster" }
+pub fn plugin_name() { "My Hoster" }
+pub fn plugin_version() { "1.0.0" }
+
+pub fn url_pattern() {
+    r"https?://(www\.)?my-hoster\.com/file/[a-zA-Z0-9]+"
+}
+
+pub async fn resolve(url) {
+    log_info(`Resolving: ${url}`);
+
+    let html = http_get(url, None).await?;
+    let download_url = regex_match(r#"href="(https://dl\.my-hoster\.com/[^"]+)"#, html.body)?;
+
+    Ok(#{
+        url: download_url,
+        filename: "file.bin",
+        filesize: None,
+        chunks_supported: true,
+        max_chunks: Some(4),
+        headers: None,
+        cookies: None,
+        wait_seconds: None,
+        mirrors: [],
+    })
+}

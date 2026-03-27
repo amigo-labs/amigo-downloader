@@ -1,0 +1,28 @@
+# Rust
+/target/
+Cargo.lock
+
+# Node
+web-ui/node_modules/
+web-ui/dist/
+web-ui/.svelte-kit/
+
+# Tauri
+tauri/target/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Runtime
+*.db
+*.sqlite
+config.toml
+/downloads/
+/config/

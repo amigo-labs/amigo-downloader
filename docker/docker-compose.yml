@@ -1,0 +1,18 @@
+services:
+  amigo-downloader:
+    image: ghcr.io/amigo-labs/amigo-downloader:latest
+    container_name: amigo-downloader
+    ports:
+      - "8080:8080"
+      - "9666:9666"    # Click'n'Load
+      - "6881:6881"    # BitTorrent
+      - "6881:6881/udp"
+    volumes:
+      - ./config:/config
+      - ./downloads:/downloads
+    environment:
+      - TZ=Europe/Berlin
+      - AMIGO_API_KEY=changeme
+      - AMIGO_MAX_DOWNLOADS=10
+      - AMIGO_BANDWIDTH_LIMIT=0
+    restart: unless-stopped
