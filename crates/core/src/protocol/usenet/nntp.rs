@@ -72,7 +72,10 @@ impl NntpConnection {
 
         // Read welcome banner
         let banner = conn.read_response().await?;
-        debug!("[{}] Banner: {} {}", config.name, banner.code, banner.message);
+        debug!(
+            "[{}] Banner: {} {}",
+            config.name, banner.code, banner.message
+        );
 
         if banner.code != 200 && banner.code != 201 {
             return Err(crate::Error::Other(format!(
@@ -83,19 +86,22 @@ impl NntpConnection {
 
         // Authenticate if credentials provided
         if !config.username.is_empty() {
-            conn.authenticate(&config.username, &config.password).await?;
+            conn.authenticate(&config.username, &config.password)
+                .await?;
         }
 
         Ok(conn)
     }
 
     async fn authenticate(&mut self, username: &str, password: &str) -> Result<(), crate::Error> {
-        self.send_command(&format!("AUTHINFO USER {username}")).await?;
+        self.send_command(&format!("AUTHINFO USER {username}"))
+            .await?;
         let resp = self.read_response().await?;
 
         if resp.code == 381 {
             // Password required
-            self.send_command(&format!("AUTHINFO PASS {password}")).await?;
+            self.send_command(&format!("AUTHINFO PASS {password}"))
+                .await?;
             let resp = self.read_response().await?;
             if resp.code != 281 {
                 return Err(crate::Error::Other(format!(
@@ -148,7 +154,9 @@ impl NntpConnection {
             .write_all(format!("{cmd}\r\n").as_bytes())
             .await
             .map_err(|e| crate::Error::Other(format!("NNTP write error: {e}")))?;
-        self.writer.flush().await
+        self.writer
+            .flush()
+            .await
             .map_err(|e| crate::Error::Other(format!("NNTP flush error: {e}")))?;
         Ok(())
     }
@@ -178,13 +186,16 @@ impl NntpConnection {
 
         loop {
             line.clear();
-            let n = self.reader
+            let n = self
+                .reader
                 .read_line(&mut line)
                 .await
                 .map_err(|e| crate::Error::Other(format!("NNTP read error: {e}")))?;
 
             if n == 0 {
-                return Err(crate::Error::Other("NNTP connection closed unexpectedly".into()));
+                return Err(crate::Error::Other(
+                    "NNTP connection closed unexpectedly".into(),
+                ));
             }
 
             let trimmed = line.trim_end_matches('\n').trim_end_matches('\r');

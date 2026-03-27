@@ -4,13 +4,16 @@ use std::sync::Arc;
 use clap::{Parser, Subcommand};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use tokio::sync::watch;
+use tracing::debug;
 
 use amigo_core::config::Config;
 use amigo_core::coordinator::Coordinator;
+use amigo_core::protocol::dash::{self, DashDownloader};
+use amigo_core::protocol::hls::{self, HlsDownloader};
 use amigo_core::protocol::http::{DownloadProgress, HttpDownloader};
-use amigo_core::protocol::youtube;
 use amigo_core::queue::QueueStatus;
 use amigo_core::storage::Storage;
+use amigo_extractors::youtube;
 
 #[derive(Parser)]
 #[command(name = "amigo-dl", about = "amigo-dl — fast, modular download manager")]
@@ -25,6 +28,10 @@ struct Cli {
     /// Number of chunks per download (0 = auto)
     #[arg(short, long, default_value_t = 0)]
     chunks: u32,
+
+    /// Enable verbose/debug logging
+    #[arg(short, long)]
+    verbose: bool,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -168,6 +175,26 @@ fn filename_from_url(url: &str) -> String {
         .to_string()
 }
 
+/// Detected download protocol for a URL.
+enum DownloadProtocol {
+    Http,
+    Hls,
+    Dash,
+    YouTube,
+}
+
+fn detect_protocol(url: &str) -> DownloadProtocol {
+    if youtube::is_youtube_url(url) {
+        DownloadProtocol::YouTube
+    } else if hls::is_hls_url(url) {
+        DownloadProtocol::Hls
+    } else if dash::is_dash_url(url) {
+        DownloadProtocol::Dash
+    } else {
+        DownloadProtocol::Http
+    }
+}
+
 /// Resolve a URL — extracts the actual download URL and filename.
 /// For YouTube, this calls the innertube API. For plain URLs, uses HEAD.
 struct ResolvedUrl {
@@ -175,38 +202,73 @@ struct ResolvedUrl {
     filename: String,
     filesize: Option<u64>,
     accepts_ranges: bool,
+    protocol: DownloadProtocol,
 }
 
 async fn resolve_url(user_agent: &str, url: &str, pb: &ProgressBar) -> anyhow::Result<ResolvedUrl> {
-    if youtube::is_youtube_url(url) {
-        pb.set_message("Resolving YouTube video...");
-        let client = reqwest::Client::builder()
-            .user_agent(user_agent)
-            .build()?;
-        let video = youtube::resolve(&client, url).await?;
-        pb.set_message(format!("{} [{}]", video.title, video.quality));
+    let protocol = detect_protocol(url);
 
-        Ok(ResolvedUrl {
-            download_url: video.stream_url,
-            filename: video.filename,
-            filesize: video.filesize,
-            // YouTube throttles chunked downloads
-            accepts_ranges: false,
-        })
-    } else {
-        let http = HttpDownloader::new(user_agent);
-        let head = http.head(url).await?;
-        let filename = head
-            .filename
-            .clone()
-            .unwrap_or_else(|| filename_from_url(url));
+    match protocol {
+        DownloadProtocol::YouTube => {
+            pb.set_message("Resolving YouTube video...");
+            let client = reqwest::Client::builder()
+                .user_agent(user_agent)
+                .cookie_store(true)
+                .build()?;
+            let video = youtube::resolve(&client, url)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            pb.set_message(format!("{} [{}]", video.title, video.quality));
 
-        Ok(ResolvedUrl {
-            download_url: url.to_string(),
-            filename,
-            filesize: head.content_length,
-            accepts_ranges: head.accepts_ranges,
-        })
+            Ok(ResolvedUrl {
+                download_url: video.stream_url,
+                filename: video.filename,
+                filesize: video.filesize,
+                // YouTube throttles chunked downloads
+                accepts_ranges: false,
+                protocol: DownloadProtocol::Http, // resolved to direct HTTP URL
+            })
+        }
+        DownloadProtocol::Hls => {
+            pb.set_message("HLS stream detected");
+            let filename = filename_from_url(url)
+                .replace(".m3u8", ".ts")
+                .replace(".m3u", ".ts");
+            Ok(ResolvedUrl {
+                download_url: url.to_string(),
+                filename,
+                filesize: None,
+                accepts_ranges: false,
+                protocol: DownloadProtocol::Hls,
+            })
+        }
+        DownloadProtocol::Dash => {
+            pb.set_message("DASH stream detected");
+            let filename = filename_from_url(url).replace(".mpd", ".mp4");
+            Ok(ResolvedUrl {
+                download_url: url.to_string(),
+                filename,
+                filesize: None,
+                accepts_ranges: false,
+                protocol: DownloadProtocol::Dash,
+            })
+        }
+        DownloadProtocol::Http => {
+            let http = HttpDownloader::new(user_agent);
+            let head = http.head(url).await?;
+            let filename = head
+                .filename
+                .clone()
+                .unwrap_or_else(|| filename_from_url(url));
+
+            Ok(ResolvedUrl {
+                download_url: url.to_string(),
+                filename,
+                filesize: head.content_length,
+                accepts_ranges: head.accepts_ranges,
+                protocol: DownloadProtocol::Http,
+            })
+        }
     }
 }
 
@@ -235,39 +297,73 @@ async fn direct_download(
         speed_bytes_per_sec: 0,
     });
 
-    // Decide chunk count
-    let max_chunks = if chunks_override > 0 {
-        chunks_override
-    } else {
-        Config::load_auto().http.max_chunks_per_download
-    };
-
-    let use_chunked = resolved.accepts_ranges
-        && resolved.filesize.is_some_and(|s| s > 1024 * 1024)
-        && max_chunks > 1;
-
     let download_url = resolved.download_url;
     let filename = resolved.filename;
     let dest_clone = dest.clone();
-    let temp_dir = PathBuf::from(output_dir).join(".amigo-tmp");
-    tokio::fs::create_dir_all(&temp_dir).await?;
-
     let ua = user_agent.to_string();
-    let download_handle = if use_chunked {
-        let total = resolved.filesize.unwrap();
-        let num_chunks = max_chunks.min((total / (512 * 1024)).max(1) as u32);
-        let chunk_dir = temp_dir.join(&filename);
-        tokio::fs::create_dir_all(&chunk_dir).await?;
 
-        tokio::spawn(async move {
-            let http = HttpDownloader::new(&ua);
-            http.download_chunked(&download_url, &dest_clone, &chunk_dir, total, num_chunks, progress_tx).await
-        })
-    } else {
-        tokio::spawn(async move {
-            let http = HttpDownloader::new(&ua);
-            http.download_single(&download_url, &dest_clone, progress_tx).await
-        })
+    let download_handle = match resolved.protocol {
+        DownloadProtocol::Hls => {
+            debug!("Starting HLS download: {download_url}");
+            tokio::spawn(async move {
+                let hls = HlsDownloader::new(&ua, 8);
+                hls.download(&download_url, &dest_clone, progress_tx)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e}"))
+            })
+        }
+        DownloadProtocol::Dash => {
+            debug!("Starting DASH download: {download_url}");
+            tokio::spawn(async move {
+                let dash = DashDownloader::new(&ua, 8);
+                dash.download(&download_url, &dest_clone, progress_tx)
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e}"))
+            })
+        }
+        DownloadProtocol::Http | DownloadProtocol::YouTube => {
+            // Decide chunk count
+            let max_chunks = if chunks_override > 0 {
+                chunks_override
+            } else {
+                Config::load_auto().http.max_chunks_per_download
+            };
+
+            let use_chunked = resolved.accepts_ranges
+                && resolved.filesize.is_some_and(|s| s > 1024 * 1024)
+                && max_chunks > 1;
+
+            let temp_dir = PathBuf::from(output_dir).join(".amigo-tmp");
+            tokio::fs::create_dir_all(&temp_dir).await?;
+
+            if use_chunked {
+                let total = resolved.filesize.unwrap();
+                let num_chunks = max_chunks.min((total / (512 * 1024)).max(1) as u32);
+                let chunk_dir = temp_dir.join(&filename);
+                tokio::fs::create_dir_all(&chunk_dir).await?;
+
+                tokio::spawn(async move {
+                    let http = HttpDownloader::new(&ua);
+                    http.download_chunked(
+                        &download_url,
+                        &dest_clone,
+                        &chunk_dir,
+                        total,
+                        num_chunks,
+                        progress_tx,
+                    )
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e}"))
+                })
+            } else {
+                tokio::spawn(async move {
+                    let http = HttpDownloader::new(&ua);
+                    http.download_single(&download_url, &dest_clone, progress_tx)
+                        .await
+                        .map_err(|e| anyhow::anyhow!("{e}"))
+                })
+            }
+        }
     };
 
     // Poll progress until download completes
@@ -283,7 +379,11 @@ async fn direct_download(
             pb.set_length(total);
         }
         if p.speed_bytes_per_sec > 0 {
-            pb.set_message(format!("{} — {}/s", filename_display, format_bytes(p.speed_bytes_per_sec)));
+            pb.set_message(format!(
+                "{} — {}/s",
+                filename_display,
+                format_bytes(p.speed_bytes_per_sec)
+            ));
         }
     }
 
@@ -292,6 +392,7 @@ async fn direct_download(
     pb.finish_with_message(format!("{} — {} done", filename, format_bytes(bytes)));
 
     // Clean up temp dir if empty
+    let temp_dir = PathBuf::from(output_dir).join(".amigo-tmp");
     let _ = tokio::fs::remove_dir(&temp_dir).await;
 
     Ok(())
@@ -308,7 +409,7 @@ async fn run_direct_downloads(urls: &[String], output: &str, chunks: u32) -> any
 
     let multi = MultiProgress::new();
     let style = ProgressStyle::with_template(
-        "{spinner:.green} [{bar:40.cyan/dim}] {bytes}/{total_bytes} {msg}"
+        "{spinner:.green} [{bar:40.cyan/dim}] {bytes}/{total_bytes} {msg}",
     )?
     .progress_chars("━╸─");
 
@@ -321,9 +422,26 @@ async fn run_direct_downloads(urls: &[String], output: &str, chunks: u32) -> any
     Ok(())
 }
 
+fn init_tracing(verbose: bool) {
+    use tracing_subscriber::EnvFilter;
+
+    let default_level = if verbose { "debug" } else { "warn" };
+
+    // RUST_LOG env takes precedence
+    let filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(default_level));
+
+    tracing_subscriber::fmt()
+        .with_env_filter(filter)
+        .with_target(false)
+        .init();
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+
+    init_tracing(cli.verbose);
 
     // Bare URLs without subcommand → direct download
     if cli.command.is_none() {
@@ -334,7 +452,11 @@ async fn main() -> anyhow::Result<()> {
     }
 
     match cli.command.unwrap() {
-        Commands::Get { urls, output, chunks } => {
+        Commands::Get {
+            urls,
+            output,
+            chunks,
+        } => {
             run_direct_downloads(&urls, &output, chunks).await?;
         }
 
@@ -348,13 +470,17 @@ async fn main() -> anyhow::Result<()> {
                 let nzb = amigo_core::protocol::usenet::nzb::parse_nzb(&data)?;
                 println!("NZB contains {} files", nzb.files.len());
                 for file in &nzb.files {
-                    println!("  {} ({} segments, {} bytes)", file.filename(), file.segments.len(), file.total_bytes());
+                    println!(
+                        "  {} ({} segments, {} bytes)",
+                        file.filename(),
+                        file.segments.len(),
+                        file.total_bytes()
+                    );
                 }
                 for file in &nzb.files {
-                    let id = coord.add_download(
-                        &format!("nzb://{}", file.filename()),
-                        Some(file.filename()),
-                    ).await?;
+                    let id = coord
+                        .add_download(&format!("nzb://{}", file.filename()), Some(file.filename()))
+                        .await?;
                     println!("  Queued: {} → {id}", file.filename());
                 }
                 println!("NZB import complete ({} files queued).", nzb.files.len());
@@ -408,7 +534,13 @@ async fn main() -> anyhow::Result<()> {
                 println!("No active downloads.");
             } else {
                 for d in &downloads {
-                    let pct = d.filesize.map(|s| if s > 0 { d.bytes_downloaded * 100 / s } else { 0 });
+                    let pct = d.filesize.map(|s| {
+                        if s > 0 {
+                            d.bytes_downloaded * 100 / s
+                        } else {
+                            0
+                        }
+                    });
                     println!(
                         "[{}] {} — {} {}",
                         d.status,
@@ -440,12 +572,20 @@ async fn main() -> anyhow::Result<()> {
 
         Commands::Queue => {
             let coord = init_coordinator()?;
-            let queued = coord.storage().list_downloads_by_status(QueueStatus::Queued).await?;
+            let queued = coord
+                .storage()
+                .list_downloads_by_status(QueueStatus::Queued)
+                .await?;
             if queued.is_empty() {
                 println!("Queue is empty.");
             } else {
                 for (i, d) in queued.iter().enumerate() {
-                    println!("{}. {} — {}", i + 1, d.filename.as_deref().unwrap_or(&d.url), d.id);
+                    println!(
+                        "{}. {} — {}",
+                        i + 1,
+                        d.filename.as_deref().unwrap_or(&d.url),
+                        d.id
+                    );
                 }
             }
         }
@@ -455,11 +595,16 @@ async fn main() -> anyhow::Result<()> {
             let active = coord.active_count().await;
             let speed = coord.total_speed().await;
             let queued = coord.storage().count_by_status(QueueStatus::Queued).await?;
-            let completed = coord.storage().count_by_status(QueueStatus::Completed).await?;
+            let completed = coord
+                .storage()
+                .count_by_status(QueueStatus::Completed)
+                .await?;
             let failed = coord.storage().count_by_status(QueueStatus::Failed).await?;
 
             println!("amigo-dl v{}", amigo_core::updater::CURRENT_VERSION);
-            println!("Active: {active}  Queued: {queued}  Completed: {completed}  Failed: {failed}");
+            println!(
+                "Active: {active}  Queued: {queued}  Completed: {completed}  Failed: {failed}"
+            );
             println!("Speed: {} KB/s", speed / 1024);
         }
 
@@ -499,7 +644,11 @@ async fn main() -> anyhow::Result<()> {
                             match val {
                                 serde_json::Value::Object(map) => {
                                     for (k, v) in map {
-                                        let full = if prefix.is_empty() { k.clone() } else { format!("{prefix}.{k}") };
+                                        let full = if prefix.is_empty() {
+                                            k.clone()
+                                        } else {
+                                            format!("{prefix}.{k}")
+                                        };
                                         print_keys(&full, v);
                                     }
                                 }
@@ -516,7 +665,9 @@ async fn main() -> anyhow::Result<()> {
             PluginAction::List | PluginAction::Enable { .. } | PluginAction::Login { .. } => {
                 println!("Plugin management requires the server. Use: amigo-dl serve");
             }
-            PluginAction::Update { .. } | PluginAction::Install { .. } | PluginAction::Search { .. } => {
+            PluginAction::Update { .. }
+            | PluginAction::Install { .. }
+            | PluginAction::Search { .. } => {
                 println!("Plugin updates require the server. Use the web UI or API.");
             }
         },
@@ -530,8 +681,15 @@ async fn main() -> anyhow::Result<()> {
 
                 println!("Checking for updates...");
 
-                match amigo_core::updater::check_for_update(&client, &config.update.github_repo).await {
-                    Ok(amigo_core::updater::CoreUpdateStatus::UpdateAvailable { current, latest, release_notes, .. }) => {
+                match amigo_core::updater::check_for_update(&client, &config.update.github_repo)
+                    .await
+                {
+                    Ok(amigo_core::updater::CoreUpdateStatus::UpdateAvailable {
+                        current,
+                        latest,
+                        release_notes,
+                        ..
+                    }) => {
                         println!("Update available: {current} → {latest}");
                         if !release_notes.is_empty() {
                             println!("\nRelease notes:\n{release_notes}");
@@ -551,21 +709,37 @@ async fn main() -> anyhow::Result<()> {
                     .build()?;
                 let config = Config::load_auto();
 
-                let status = amigo_core::updater::check_for_update(&client, &config.update.github_repo).await?;
+                let status =
+                    amigo_core::updater::check_for_update(&client, &config.update.github_repo)
+                        .await?;
 
                 match status {
-                    amigo_core::updater::CoreUpdateStatus::UpdateAvailable { current, latest, download_url, sha256_url, .. } => {
+                    amigo_core::updater::CoreUpdateStatus::UpdateAvailable {
+                        current,
+                        latest,
+                        download_url,
+                        sha256_url,
+                        ..
+                    } => {
                         if !yes {
                             println!("Update available: {current} → {latest}");
                             println!("Run with --yes to apply.");
                             return Ok(());
                         }
                         println!("Updating {current} → {latest}...");
-                        amigo_core::updater::download_and_apply(&client, &download_url, sha256_url.as_deref()).await?;
+                        amigo_core::updater::download_and_apply(
+                            &client,
+                            &download_url,
+                            sha256_url.as_deref(),
+                        )
+                        .await?;
                         println!("Update applied! Restart amigo-dl to use v{latest}.");
                     }
                     amigo_core::updater::CoreUpdateStatus::UpToDate => {
-                        println!("Already up to date (v{}).", amigo_core::updater::CURRENT_VERSION);
+                        println!(
+                            "Already up to date (v{}).",
+                            amigo_core::updater::CURRENT_VERSION
+                        );
                     }
                 }
             }

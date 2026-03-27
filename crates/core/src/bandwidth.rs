@@ -79,7 +79,9 @@ impl BandwidthLimiter {
             let current_minutes = now.hour() * 60 + now.minute();
 
             for schedule in &config.schedules {
-                if let (Some(start), Some(end)) = (parse_time(&schedule.start), parse_time(&schedule.end)) {
+                if let (Some(start), Some(end)) =
+                    (parse_time(&schedule.start), parse_time(&schedule.end))
+                {
                     let in_range = if start <= end {
                         current_minutes >= start && current_minutes < end
                     } else {

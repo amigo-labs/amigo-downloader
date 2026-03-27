@@ -16,8 +16,14 @@ pub fn update_router(state: AppState) -> Router {
     Router::new()
         .route("/api/v1/updates/check", get(check_updates))
         .route("/api/v1/updates/core", post(apply_core_update))
-        .route("/api/v1/updates/plugins/available", get(list_available_plugins))
-        .route("/api/v1/updates/plugins/update-all", post(update_all_plugins))
+        .route(
+            "/api/v1/updates/plugins/available",
+            get(list_available_plugins),
+        )
+        .route(
+            "/api/v1/updates/plugins/update-all",
+            post(update_all_plugins),
+        )
         .route("/api/v1/updates/plugins/{id}", post(update_plugin))
         .route("/api/v1/updates/plugins/{id}/install", post(install_plugin))
         .with_state(state)
@@ -145,7 +151,9 @@ async fn apply_core_update(
     .map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
         )
     })?;
 
@@ -174,7 +182,9 @@ async fn apply_core_update(
             let client = state.http_client.clone();
             let ver = latest.clone();
             tokio::spawn(async move {
-                match updater::download_and_apply(&client, &download_url, sha256_url.as_deref()).await {
+                match updater::download_and_apply(&client, &download_url, sha256_url.as_deref())
+                    .await
+                {
                     Ok(()) => tracing::info!("Core update to v{ver} applied — restart needed"),
                     Err(e) => tracing::error!("Core update failed: {e}"),
                 }
@@ -197,7 +207,9 @@ async fn list_available_plugins(
     let available = state.plugin_updater.list_available().await.map_err(|e| {
         (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(ErrorResponse { error: e.to_string() }),
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
         )
     })?;
 
@@ -222,19 +234,26 @@ async fn list_available_plugins(
 
 async fn update_all_plugins() -> (StatusCode, Json<serde_json::Value>) {
     // TODO: Rune's types aren't Send — needs spawn_blocking wrapper for PluginLoader operations
-    (StatusCode::ACCEPTED, Json(serde_json::json!({"message": "Plugin update triggered. Check /api/v1/plugins for results."})))
+    (
+        StatusCode::ACCEPTED,
+        Json(
+            serde_json::json!({"message": "Plugin update triggered. Check /api/v1/plugins for results."}),
+        ),
+    )
 }
 
-async fn update_plugin(
-    Path(id): Path<String>,
-) -> (StatusCode, Json<serde_json::Value>) {
+async fn update_plugin(Path(id): Path<String>) -> (StatusCode, Json<serde_json::Value>) {
     // TODO: Rune's types aren't Send — needs spawn_blocking wrapper
-    (StatusCode::ACCEPTED, Json(serde_json::json!({"message": format!("Update for plugin {id} triggered.")})))
+    (
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({"message": format!("Update for plugin {id} triggered.")})),
+    )
 }
 
-async fn install_plugin(
-    Path(id): Path<String>,
-) -> (StatusCode, Json<serde_json::Value>) {
+async fn install_plugin(Path(id): Path<String>) -> (StatusCode, Json<serde_json::Value>) {
     // TODO: Rune's types aren't Send — needs spawn_blocking wrapper
-    (StatusCode::ACCEPTED, Json(serde_json::json!({"message": format!("Install of plugin {id} triggered.")})))
+    (
+        StatusCode::ACCEPTED,
+        Json(serde_json::json!({"message": format!("Install of plugin {id} triggered.")})),
+    )
 }

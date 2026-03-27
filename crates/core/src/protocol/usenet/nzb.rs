@@ -139,7 +139,9 @@ fn parse_segments(xml: &str) -> Vec<NzbSegment> {
         // Message-ID is the text content
         let content_start = tag_end + 1;
         if let Some(seg_end) = xml[content_start..].find("</segment>") {
-            let message_id = xml[content_start..content_start + seg_end].trim().to_string();
+            let message_id = xml[content_start..content_start + seg_end]
+                .trim()
+                .to_string();
             segments.push(NzbSegment {
                 number,
                 bytes,

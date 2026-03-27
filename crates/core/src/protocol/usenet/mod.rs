@@ -116,10 +116,7 @@ impl UsenetDownloader {
                     segments_ok += 1;
                 }
                 Err(e) => {
-                    warn!(
-                        "Segment {} of {filename} failed: {e}",
-                        segment.number
-                    );
+                    warn!("Segment {} of {filename} failed: {e}", segment.number);
                     segments_failed += 1;
                 }
             }

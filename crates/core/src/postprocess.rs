@@ -53,7 +53,10 @@ enum ArchiveType {
 }
 
 /// Run post-processing pipeline on a completed download.
-pub async fn run_pipeline(download_path: &Path, config: &PostProcessConfig) -> Result<(), crate::Error> {
+pub async fn run_pipeline(
+    download_path: &Path,
+    config: &PostProcessConfig,
+) -> Result<(), crate::Error> {
     if !config.auto_extract {
         return Ok(());
     }
@@ -63,11 +66,12 @@ pub async fn run_pipeline(download_path: &Path, config: &PostProcessConfig) -> R
         None => return Ok(()), // Not an archive, nothing to do
     };
 
-    let output_dir = download_path
-        .parent()
-        .unwrap_or(Path::new("."));
+    let output_dir = download_path.parent().unwrap_or(Path::new("."));
 
-    info!("Post-processing: extracting {:?} ({:?})", download_path, archive);
+    info!(
+        "Post-processing: extracting {:?} ({:?})",
+        download_path, archive
+    );
 
     let result = match archive {
         ArchiveType::Rar => extract_rar(download_path, output_dir),
@@ -93,19 +97,51 @@ pub async fn run_pipeline(download_path: &Path, config: &PostProcessConfig) -> R
 }
 
 fn extract_rar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
-    run_external("unrar", &["x", "-o+", &archive.to_string_lossy(), &format!("{}/", output_dir.to_string_lossy())])
+    run_external(
+        "unrar",
+        &[
+            "x",
+            "-o+",
+            &archive.to_string_lossy(),
+            &format!("{}/", output_dir.to_string_lossy()),
+        ],
+    )
 }
 
 fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
-    run_external("unzip", &["-o", &archive.to_string_lossy(), "-d", &output_dir.to_string_lossy()])
+    run_external(
+        "unzip",
+        &[
+            "-o",
+            &archive.to_string_lossy(),
+            "-d",
+            &output_dir.to_string_lossy(),
+        ],
+    )
 }
 
 fn extract_7z(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
-    run_external("7z", &["x", &archive.to_string_lossy(), &format!("-o{}", output_dir.to_string_lossy()), "-y"])
+    run_external(
+        "7z",
+        &[
+            "x",
+            &archive.to_string_lossy(),
+            &format!("-o{}", output_dir.to_string_lossy()),
+            "-y",
+        ],
+    )
 }
 
 fn extract_tar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
-    run_external("tar", &["xf", &archive.to_string_lossy(), "-C", &output_dir.to_string_lossy()])
+    run_external(
+        "tar",
+        &[
+            "xf",
+            &archive.to_string_lossy(),
+            "-C",
+            &output_dir.to_string_lossy(),
+        ],
+    )
 }
 
 fn run_external(cmd: &str, args: &[&str]) -> Result<(), crate::Error> {
@@ -128,12 +164,30 @@ mod tests {
 
     #[test]
     fn test_archive_type_detection() {
-        assert!(matches!(archive_type(Path::new("file.rar")), Some(ArchiveType::Rar)));
-        assert!(matches!(archive_type(Path::new("file.zip")), Some(ArchiveType::Zip)));
-        assert!(matches!(archive_type(Path::new("file.7z")), Some(ArchiveType::SevenZip)));
-        assert!(matches!(archive_type(Path::new("file.tar.gz")), Some(ArchiveType::Gzip)));
-        assert!(matches!(archive_type(Path::new("file.r00")), Some(ArchiveType::Rar)));
-        assert!(matches!(archive_type(Path::new("file.r15")), Some(ArchiveType::Rar)));
+        assert!(matches!(
+            archive_type(Path::new("file.rar")),
+            Some(ArchiveType::Rar)
+        ));
+        assert!(matches!(
+            archive_type(Path::new("file.zip")),
+            Some(ArchiveType::Zip)
+        ));
+        assert!(matches!(
+            archive_type(Path::new("file.7z")),
+            Some(ArchiveType::SevenZip)
+        ));
+        assert!(matches!(
+            archive_type(Path::new("file.tar.gz")),
+            Some(ArchiveType::Gzip)
+        ));
+        assert!(matches!(
+            archive_type(Path::new("file.r00")),
+            Some(ArchiveType::Rar)
+        ));
+        assert!(matches!(
+            archive_type(Path::new("file.r15")),
+            Some(ArchiveType::Rar)
+        ));
         assert!(archive_type(Path::new("file.txt")).is_none());
         assert!(archive_type(Path::new("file.mkv")).is_none());
     }

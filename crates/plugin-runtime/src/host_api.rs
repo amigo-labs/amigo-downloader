@@ -108,10 +108,7 @@ impl HostApi {
         Ok((status, body, resp_headers))
     }
 
-    pub async fn http_head(
-        &self,
-        url: &str,
-    ) -> Result<(u16, HashMap<String, String>), String> {
+    pub async fn http_head(&self, url: &str) -> Result<(u16, HashMap<String, String>), String> {
         self.check_request_limit().await?;
         debug!("Plugin http_head: {url}");
 

@@ -4,26 +4,42 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tokio::sync::{broadcast, watch, Mutex};
+use tokio::sync::{Mutex, broadcast, watch};
 use tracing::{error, info};
 use uuid::Uuid;
 
 use crate::bandwidth::BandwidthLimiter;
 use crate::config::Config;
-use crate::protocol::http::{DownloadProgress, HttpDownloader};
 use crate::protocol::Protocol;
+use crate::protocol::http::{DownloadProgress, HttpDownloader};
 use crate::queue::QueueStatus;
 use crate::storage::{DownloadRow, Storage};
 
 /// Events broadcast to subscribers (WebSocket clients, etc.)
 #[derive(Debug, Clone)]
 pub enum DownloadEvent {
-    Added { id: String, url: String },
-    Progress { id: String, progress: DownloadProgress },
-    StatusChanged { id: String, status: String },
-    Completed { id: String },
-    Failed { id: String, error: String },
-    Removed { id: String },
+    Added {
+        id: String,
+        url: String,
+    },
+    Progress {
+        id: String,
+        progress: DownloadProgress,
+    },
+    StatusChanged {
+        id: String,
+        status: String,
+    },
+    Completed {
+        id: String,
+    },
+    Failed {
+        id: String,
+        error: String,
+    },
+    Removed {
+        id: String,
+    },
 }
 
 /// Tracks an active download task.
@@ -73,7 +89,11 @@ impl Coordinator {
     }
 
     /// Add a new download and start it if slots are available.
-    pub async fn add_download(&self, url: &str, filename: Option<String>) -> Result<String, crate::Error> {
+    pub async fn add_download(
+        &self,
+        url: &str,
+        filename: Option<String>,
+    ) -> Result<String, crate::Error> {
         let id = Uuid::new_v4().to_string();
         let protocol = detect_protocol(url);
 
@@ -122,7 +142,10 @@ impl Coordinator {
             return Ok(());
         }
 
-        let queued = self.storage.list_downloads_by_status(QueueStatus::Queued).await?;
+        let queued = self
+            .storage
+            .list_downloads_by_status(QueueStatus::Queued)
+            .await?;
         if let Some(next) = queued.into_iter().next() {
             self.start_download(&next.id).await?;
         }
@@ -132,10 +155,15 @@ impl Coordinator {
 
     /// Start downloading a specific item.
     async fn start_download(&self, id: &str) -> Result<(), crate::Error> {
-        let row = self.storage.get_download(id).await?
+        let row = self
+            .storage
+            .get_download(id)
+            .await?
             .ok_or_else(|| crate::Error::Other(format!("Download not found: {id}")))?;
 
-        self.storage.update_download_status(id, QueueStatus::Downloading).await?;
+        self.storage
+            .update_download_status(id, QueueStatus::Downloading)
+            .await?;
         let _ = self.event_tx.send(DownloadEvent::StatusChanged {
             id: id.to_string(),
             status: "downloading".to_string(),
@@ -150,10 +178,13 @@ impl Coordinator {
 
         {
             let mut active = self.active.lock().await;
-            active.insert(id.to_string(), ActiveDownload {
-                cancel_tx,
-                progress_rx: progress_rx.clone(),
-            });
+            active.insert(
+                id.to_string(),
+                ActiveDownload {
+                    cancel_tx,
+                    progress_rx: progress_rx.clone(),
+                },
+            );
         }
 
         // Spawn the download task
@@ -169,23 +200,39 @@ impl Coordinator {
 
         tokio::spawn(async move {
             let result = run_http_download(
-                &http, &url, &download_dir, &temp_dir,
-                row.filename.as_deref(), max_chunks,
-                progress_tx, cancel_rx,
-            ).await;
+                &http,
+                &url,
+                &download_dir,
+                &temp_dir,
+                row.filename.as_deref(),
+                max_chunks,
+                progress_tx,
+                cancel_rx,
+            )
+            .await;
 
             match result {
                 Ok(bytes) => {
-                    let _ = storage.update_download_progress(&download_id, bytes, 0).await;
-                    let _ = storage.update_download_status(&download_id, QueueStatus::Completed).await;
-                    let _ = event_tx.send(DownloadEvent::Completed { id: download_id.clone() });
+                    let _ = storage
+                        .update_download_progress(&download_id, bytes, 0)
+                        .await;
+                    let _ = storage
+                        .update_download_status(&download_id, QueueStatus::Completed)
+                        .await;
+                    let _ = event_tx.send(DownloadEvent::Completed {
+                        id: download_id.clone(),
+                    });
                     info!("Download completed: {download_id}");
                 }
                 Err(e) => {
                     let err_msg = e.to_string();
                     error!("Download failed: {download_id} — {err_msg}");
-                    let _ = storage.update_download_status(&download_id, QueueStatus::Failed).await;
-                    let _ = storage.update_download_error(&download_id, &err_msg, 0).await;
+                    let _ = storage
+                        .update_download_status(&download_id, QueueStatus::Failed)
+                        .await;
+                    let _ = storage
+                        .update_download_error(&download_id, &err_msg, 0)
+                        .await;
                     let _ = event_tx.send(DownloadEvent::Failed {
                         id: download_id.clone(),
                         error: err_msg,
@@ -205,7 +252,9 @@ impl Coordinator {
         if let Some(dl) = active.remove(id) {
             let _ = dl.cancel_tx.send(());
         }
-        self.storage.update_download_status(id, QueueStatus::Paused).await?;
+        self.storage
+            .update_download_status(id, QueueStatus::Paused)
+            .await?;
         let _ = self.event_tx.send(DownloadEvent::StatusChanged {
             id: id.to_string(),
             status: "paused".to_string(),
@@ -215,7 +264,9 @@ impl Coordinator {
 
     /// Resume a paused download.
     pub async fn resume(&self, id: &str) -> Result<(), crate::Error> {
-        self.storage.update_download_status(id, QueueStatus::Queued).await?;
+        self.storage
+            .update_download_status(id, QueueStatus::Queued)
+            .await?;
         self.try_start_next().await?;
         Ok(())
     }
@@ -228,7 +279,9 @@ impl Coordinator {
         }
         drop(active);
         self.storage.delete_download(id).await?;
-        let _ = self.event_tx.send(DownloadEvent::Removed { id: id.to_string() });
+        let _ = self
+            .event_tx
+            .send(DownloadEvent::Removed { id: id.to_string() });
         Ok(())
     }
 
@@ -246,7 +299,10 @@ impl Coordinator {
     /// Get current aggregate speed.
     pub async fn total_speed(&self) -> u64 {
         let active = self.active.lock().await;
-        active.values().map(|dl| dl.progress_rx.borrow().speed_bytes_per_sec).sum()
+        active
+            .values()
+            .map(|dl| dl.progress_rx.borrow().speed_bytes_per_sec)
+            .sum()
     }
 
     /// Recover downloads that were in-progress when the app crashed.
@@ -299,7 +355,9 @@ async fn run_http_download(
     tokio::fs::create_dir_all(temp_dir).await?;
 
     // Choose strategy and race against cancellation
-    let use_chunked = head.accepts_ranges && head.content_length.is_some_and(|s| s > 1024 * 1024) && max_chunks > 1;
+    let use_chunked = head.accepts_ranges
+        && head.content_length.is_some_and(|s| s > 1024 * 1024)
+        && max_chunks > 1;
 
     if use_chunked {
         let total = head.content_length.unwrap();
@@ -329,8 +387,13 @@ async fn run_http_download(
 }
 
 fn detect_protocol(url: &str) -> Protocol {
+    let path = url.split('?').next().unwrap_or(url);
     if url.ends_with(".nzb") {
         Protocol::Usenet
+    } else if path.ends_with(".m3u8") || path.ends_with(".m3u") {
+        Protocol::Hls
+    } else if path.ends_with(".mpd") {
+        Protocol::Dash
     } else {
         Protocol::Http
     }
@@ -349,6 +412,8 @@ impl Protocol {
     pub fn as_str(&self) -> &'static str {
         match self {
             Protocol::Http => "http",
+            Protocol::Hls => "hls",
+            Protocol::Dash => "dash",
             Protocol::Usenet => "usenet",
         }
     }

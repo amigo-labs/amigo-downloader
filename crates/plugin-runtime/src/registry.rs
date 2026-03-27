@@ -176,7 +176,10 @@ pub async fn download_plugin(
     std::fs::rename(&tmp_path, &final_path)
         .map_err(|e| crate::Error::Other(format!("Failed to rename plugin: {e}")))?;
 
-    info!("Plugin {} installed at {:?}", registry_plugin.id, final_path);
+    info!(
+        "Plugin {} installed at {:?}",
+        registry_plugin.id, final_path
+    );
     Ok(final_path)
 }
 

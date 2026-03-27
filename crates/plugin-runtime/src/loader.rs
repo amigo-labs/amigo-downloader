@@ -94,7 +94,10 @@ impl PluginLoader {
 
         let mut sources = Sources::new();
         sources
-            .insert(Source::new(path.display().to_string(), &source_code).map_err(|e| crate::Error::Other(e.to_string()))?)
+            .insert(
+                Source::new(path.display().to_string(), &source_code)
+                    .map_err(|e| crate::Error::Other(e.to_string()))?,
+            )
             .map_err(|e| crate::Error::Other(e.to_string()))?;
 
         let mut diagnostics = Diagnostics::new();
@@ -124,9 +127,7 @@ impl PluginLoader {
         let url_pattern = call_string_fn(&mut vm, "url_pattern")?;
 
         let url_regex = Regex::new(&url_pattern).map_err(|e| {
-            crate::Error::Execution(format!(
-                "Invalid url_pattern in plugin {id}: {e}"
-            ))
+            crate::Error::Execution(format!("Invalid url_pattern in plugin {id}: {e}"))
         })?;
 
         // Optional metadata (don't fail if not present)
@@ -161,13 +162,19 @@ impl PluginLoader {
         let plugins = self.plugins.lock().await;
         // Find most specific match (non-generic first)
         for plugin in plugins.iter() {
-            if plugin.meta.enabled && plugin.meta.id != "generic-http" && plugin.url_regex.is_match(url) {
+            if plugin.meta.enabled
+                && plugin.meta.id != "generic-http"
+                && plugin.url_regex.is_match(url)
+            {
                 return Some(plugin.meta.clone());
             }
         }
         // Fall back to generic-http
         for plugin in plugins.iter() {
-            if plugin.meta.enabled && plugin.meta.id == "generic-http" && plugin.url_regex.is_match(url) {
+            if plugin.meta.enabled
+                && plugin.meta.id == "generic-http"
+                && plugin.url_regex.is_match(url)
+            {
                 return Some(plugin.meta.clone());
             }
         }
@@ -198,11 +205,9 @@ impl PluginLoader {
         };
 
         // Run with timeout
-        let vm_result = tokio::time::timeout(timeout, async {
-            execution.async_complete().await
-        })
-        .await
-        .map_err(|_| crate::Error::Timeout(self.sandbox_limits.max_execution_secs))?;
+        let vm_result = tokio::time::timeout(timeout, async { execution.async_complete().await })
+            .await
+            .map_err(|_| crate::Error::Timeout(self.sandbox_limits.max_execution_secs))?;
 
         let result = vm_result
             .into_result()
@@ -236,7 +241,10 @@ impl PluginLoader {
     /// Get metadata for a single plugin by ID.
     pub async fn get_plugin_meta(&self, plugin_id: &str) -> Option<PluginMeta> {
         let plugins = self.plugins.lock().await;
-        plugins.iter().find(|p| p.meta.id == plugin_id).map(|p| p.meta.clone())
+        plugins
+            .iter()
+            .find(|p| p.meta.id == plugin_id)
+            .map(|p| p.meta.clone())
     }
 
     /// Get the plugin directory path.
@@ -317,7 +325,11 @@ pub async fn resolve(url) { Ok(#{url: url}) }
         let loader = PluginLoader::new(dir.clone(), SandboxLimits::default());
         let plugins = loader.discover().await.unwrap();
 
-        assert!(!plugins.is_empty(), "Should discover at least one plugin. Dir: {:?}", dir);
+        assert!(
+            !plugins.is_empty(),
+            "Should discover at least one plugin. Dir: {:?}",
+            dir
+        );
         assert!(plugins.iter().any(|p| p.id == "test-hoster"));
 
         let matched = loader.match_url("https://test-hoster.com/file.zip").await;

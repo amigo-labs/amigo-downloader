@@ -8,9 +8,7 @@ use std::sync::Arc;
 use tracing::{info, warn};
 
 use crate::loader::PluginLoader;
-use crate::registry::{
-    self, PluginUpdateInfo, RegistryConfig, RegistryIndex, RegistryPlugin,
-};
+use crate::registry::{self, PluginUpdateInfo, RegistryConfig, RegistryIndex, RegistryPlugin};
 use crate::types::PluginMeta;
 
 /// Orchestrates plugin updates.
@@ -51,12 +49,9 @@ impl PluginUpdater {
         // Re-discover to pick up the new plugin
         self.loader.discover().await?;
 
-        self.loader
-            .get_plugin_meta(plugin_id)
-            .await
-            .ok_or_else(|| {
-                crate::Error::Other(format!("Plugin {plugin_id} installed but failed to load"))
-            })
+        self.loader.get_plugin_meta(plugin_id).await.ok_or_else(|| {
+            crate::Error::Other(format!("Plugin {plugin_id} installed but failed to load"))
+        })
     }
 
     /// Update an existing plugin to the latest version.
@@ -92,10 +87,7 @@ impl PluginUpdater {
             match self.update_plugin(&update_info.plugin_id).await {
                 Ok(meta) => updated.push(meta),
                 Err(e) => {
-                    warn!(
-                        "Failed to update plugin {}: {e}",
-                        update_info.plugin_id
-                    );
+                    warn!("Failed to update plugin {}: {e}", update_info.plugin_id);
                 }
             }
         }
