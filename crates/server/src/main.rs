@@ -1,5 +1,6 @@
 mod api;
 mod clicknload;
+mod feedback;
 mod static_files;
 mod update_api;
 mod ws;
@@ -72,9 +73,13 @@ async fn main() -> anyhow::Result<()> {
         http_client,
     };
 
+    // Feedback rate limiter
+    let feedback_limiter = feedback::new_rate_limiter(config.feedback.max_issues_per_hour);
+
     let app = api::router(state.clone())
         .merge(ws::ws_router(state.clone()))
-        .merge(update_api::update_router(state))
+        .merge(update_api::update_router(state.clone()))
+        .merge(feedback::feedback_router(state, feedback_limiter))
         .layer(CorsLayer::permissive());
 
     // Start Click'n'Load listener on port 9666 in background

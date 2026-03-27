@@ -75,7 +75,17 @@
     </div>
 
     <!-- Actions -->
-    <div class="flex gap-1">
+    <div class="flex gap-1 items-center">
+      {#if download.status === "failed" && download.error}
+        <button
+          onclick={() => (window as any).__amigo_report_crash?.({ download_id: download.id, error_message: download.error })}
+          class="px-2 py-1 rounded-lg text-[10px] font-medium transition-all hover:scale-105"
+          style="background: color-mix(in srgb, var(--color-warning) 15%, transparent); color: var(--color-warning)"
+          title="Report this error"
+        >
+          Report
+        </button>
+      {/if}
       {#if download.status === "downloading"}
         <button onclick={handlePause} class="px-2.5 py-1 rounded-lg text-xs font-medium transition-all hover:scale-105" style="background: var(--surface-3-color)" title="Pause">
           ⏸

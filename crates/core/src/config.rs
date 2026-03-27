@@ -18,6 +18,7 @@ pub struct Config {
     pub usenet: UsenetProcessingConfig,
     pub postprocessing: PostProcessConfig,
     pub update: UpdateConfig,
+    pub feedback: FeedbackConfig,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -30,6 +31,19 @@ pub struct UpdateConfig {
     pub plugin_registry_url: String,
     /// GitHub repository for core releases.
     pub github_repo: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeedbackConfig {
+    /// Enable in-app feedback (requires github_token).
+    pub enabled: bool,
+    /// GitHub Personal Access Token with `repo` scope.
+    /// Can also be set via AMIGO_GITHUB_TOKEN env var.
+    pub github_token: String,
+    /// Target GitHub repo for issues (owner/repo).
+    pub github_repo: String,
+    /// Max issues per hour (rate limiting).
+    pub max_issues_per_hour: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -60,6 +74,18 @@ impl Default for Config {
             usenet: UsenetProcessingConfig::default(),
             postprocessing: PostProcessConfig::default(),
             update: UpdateConfig::default(),
+            feedback: FeedbackConfig::default(),
+        }
+    }
+}
+
+impl Default for FeedbackConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            github_token: std::env::var("AMIGO_GITHUB_TOKEN").unwrap_or_default(),
+            github_repo: "amigo-labs/amigo-downloader".into(),
+            max_issues_per_hour: 5,
         }
     }
 }

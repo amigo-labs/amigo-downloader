@@ -13,11 +13,24 @@
   import Sparkline from "./components/Sparkline.svelte";
   import Toasts from "./components/Toasts.svelte";
   import DropZone from "./components/DropZone.svelte";
+  import FeedbackDialog from "./components/FeedbackDialog.svelte";
 
   let showAddDialog = $state(false);
+  let showFeedback = $state(false);
+  let feedbackPrefill = $state<any>(undefined);
   let sidebarOpen = $state(false);
   let speedHistory = $state<number[]>([]);
   let pageKey = $state(0);
+
+  // Expose for DownloadCard to trigger crash report
+  function openCrashReport(errorContext: any) {
+    feedbackPrefill = { error_context: errorContext };
+    showFeedback = true;
+  }
+  // Make it available globally for child components
+  if (typeof window !== "undefined") {
+    (window as any).__amigo_report_crash = openCrashReport;
+  }
 
   const navItems: { id: Page; label: string; icon: string }[] = [
     { id: "downloads", label: "Downloads", icon: "arrow-down" },
@@ -202,6 +215,13 @@
             <span class="font-mono text-white">{$stats.queued}</span>
           </div>
         </div>
+        <button
+          onclick={() => { feedbackPrefill = undefined; showFeedback = true; }}
+          class="mt-2 text-[10px] opacity-50 hover:opacity-100 transition-opacity"
+          style="color: var(--sidebar-text)"
+        >
+          Feedback &middot; Report Issue
+        </button>
       </div>
     </div>
   </aside>
@@ -262,6 +282,11 @@
 <!-- Add Download Dialog -->
 {#if showAddDialog}
   <AddDialog onclose={() => (showAddDialog = false)} />
+{/if}
+
+<!-- Feedback Dialog -->
+{#if showFeedback}
+  <FeedbackDialog onclose={() => (showFeedback = false)} prefill={feedbackPrefill} />
 {/if}
 
 <!-- Toast Notifications -->

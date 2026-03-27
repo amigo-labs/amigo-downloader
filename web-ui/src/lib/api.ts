@@ -98,6 +98,26 @@ export async function uploadNzb(nzbData: string) {
   return res.json();
 }
 
+export async function getSystemInfo() {
+  const res = await fetch(`${API_BASE}/system-info`);
+  return res.json();
+}
+
+export async function submitFeedback(data: {
+  type: "bug" | "feature" | "crash";
+  title: string;
+  description: string;
+  include_system_info?: boolean;
+  error_context?: { download_id?: string; error_message?: string; url?: string };
+}) {
+  const res = await fetch(`${API_BASE}/feedback`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+  return res.json();
+}
+
 // ========================================
 // WEBSOCKET
 // ========================================
