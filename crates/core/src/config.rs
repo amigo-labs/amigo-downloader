@@ -12,7 +12,16 @@ pub struct Config {
     pub max_concurrent_downloads: u32,
     pub bandwidth: BandwidthConfig,
     pub http: HttpConfig,
+    pub usenet: UsenetProcessingConfig,
     pub postprocessing: PostProcessConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsenetProcessingConfig {
+    pub par2_repair: bool,
+    pub auto_unrar: bool,
+    pub delete_archives_after_extract: bool,
+    pub delete_par2_after_repair: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -32,7 +41,19 @@ impl Default for Config {
             max_concurrent_downloads: 10,
             bandwidth: BandwidthConfig::default(),
             http: HttpConfig::default(),
+            usenet: UsenetProcessingConfig::default(),
             postprocessing: PostProcessConfig::default(),
+        }
+    }
+}
+
+impl Default for UsenetProcessingConfig {
+    fn default() -> Self {
+        Self {
+            par2_repair: true,
+            auto_unrar: true,
+            delete_archives_after_extract: true,
+            delete_par2_after_repair: true,
         }
     }
 }

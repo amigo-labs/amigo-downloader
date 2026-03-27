@@ -33,6 +33,11 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/downloads/batch", post(add_batch))
         .route("/api/v1/queue", get(get_queue))
         .route("/api/v1/history", get(get_history))
+        // Usenet endpoints
+        .route("/api/v1/downloads/nzb", post(upload_nzb))
+        .route("/api/v1/usenet/servers", get(list_usenet_servers))
+        .route("/api/v1/usenet/servers", post(add_usenet_server))
+        .route("/api/v1/usenet/servers/{id}", delete(delete_usenet_server))
         // Plugin endpoints
         .route("/api/v1/plugins", get(list_plugins))
         .route("/api/v1/plugins/{id}", patch(update_plugin))
@@ -272,6 +277,83 @@ async fn update_plugin(
             })?;
     }
     Ok(StatusCode::OK)
+}
+
+// --- Usenet handlers ---
+
+#[derive(Deserialize)]
+struct NzbUploadRequest {
+    nzb_data: String,
+}
+
+#[derive(Deserialize)]
+struct AddUsenetServerRequest {
+    name: String,
+    host: String,
+    port: u16,
+    ssl: bool,
+    username: String,
+    password: String,
+    connections: u32,
+    priority: u32,
+}
+
+#[derive(Serialize)]
+struct UsenetServerResponse {
+    id: String,
+    name: String,
+    host: String,
+    port: u16,
+    ssl: bool,
+    connections: u32,
+    priority: u32,
+}
+
+async fn upload_nzb(
+    State(state): State<AppState>,
+    Json(req): Json<NzbUploadRequest>,
+) -> Result<(StatusCode, Json<AddResponse>), (StatusCode, Json<ErrorResponse>)> {
+    // Parse NZB to validate it
+    amigo_core::protocol::usenet::nzb::parse_nzb(&req.nzb_data).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse { error: format!("Invalid NZB: {e}") }),
+        )
+    })?;
+
+    // Add as a download with usenet protocol
+    match state.coordinator.add_download("nzb://upload", Some("nzb-import".into())).await {
+        Ok(id) => Ok((StatusCode::CREATED, Json(AddResponse { id }))),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e.to_string() }),
+        )),
+    }
+}
+
+async fn list_usenet_servers() -> Json<Vec<UsenetServerResponse>> {
+    // TODO: Load from config/database
+    Json(Vec::new())
+}
+
+async fn add_usenet_server(
+    Json(_req): Json<AddUsenetServerRequest>,
+) -> Result<(StatusCode, Json<UsenetServerResponse>), (StatusCode, Json<ErrorResponse>)> {
+    // TODO: Persist to config/database
+    Err((
+        StatusCode::NOT_IMPLEMENTED,
+        Json(ErrorResponse { error: "Not yet implemented".into() }),
+    ))
+}
+
+async fn delete_usenet_server(
+    Path(_id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    // TODO: Remove from config/database
+    Err((
+        StatusCode::NOT_IMPLEMENTED,
+        Json(ErrorResponse { error: "Not yet implemented".into() }),
+    ))
 }
 
 fn row_to_response(row: amigo_core::storage::DownloadRow) -> DownloadResponse {

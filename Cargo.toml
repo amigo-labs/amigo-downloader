@@ -32,6 +32,10 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # HTTP
 reqwest = { version = "0.12", features = ["json", "cookies", "stream"] }
 
+# TLS
+native-tls = "0.2"
+tokio-native-tls = "0.3"
+
 # Database
 rusqlite = { version = "0.32", features = ["bundled"] }
 
