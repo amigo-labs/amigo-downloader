@@ -4,7 +4,7 @@
 
 use std::time::Duration;
 
-use rquickjs::{Context, Ctx, Function, Object, Runtime, Value};
+use rquickjs::{Context, Ctx, FromJs, Function, Object, Runtime, Value};
 
 /// Engine configuration.
 pub struct EngineConfig {
@@ -74,20 +74,44 @@ impl PluginContext {
         })
     }
 
-    /// Call a function stored in `__plugin_exports` and return the result as a string.
-    pub fn call_export_string(&self, func_name: &str) -> Result<String, crate::Error> {
+    /// Read an export as a string — works for both properties and zero-arg functions.
+    /// If the export is a function, it gets called. If it's a string, it's returned directly.
+    pub fn get_export_string(&self, name: &str) -> Result<String, crate::Error> {
         self.context.with(|ctx| {
             let global = ctx.globals();
             let exports: Object<'_> = global
                 .get("__plugin_exports")
                 .map_err(|e| crate::Error::Execution(format!("__plugin_exports not found: {e}")))?;
-            let func: Function<'_> = exports.get(func_name).map_err(|e| {
-                crate::Error::Execution(format!("Export {func_name} not found: {e}"))
-            })?;
-            let result: String = func
-                .call(())
-                .map_err(|e| crate::Error::Execution(format!("{func_name}() failed: {e}")))?;
-            Ok(result)
+            let value: Value<'_> = exports
+                .get(name)
+                .map_err(|e| crate::Error::Execution(format!("Export '{name}' not found: {e}")))?;
+
+            // If it's a function, call it; otherwise coerce to string
+            if value.is_function() {
+                let func = Function::from_js(&ctx, value).map_err(|e| {
+                    crate::Error::Execution(format!("'{name}' is not callable: {e}"))
+                })?;
+                let result: String = func
+                    .call(())
+                    .map_err(|e| crate::Error::Execution(format!("{name}() failed: {e}")))?;
+                Ok(result)
+            } else if value.is_string() {
+                let s: String = String::from_js(&ctx, value).map_err(|e| {
+                    crate::Error::Execution(format!("'{name}' is not a string: {e}"))
+                })?;
+                Ok(s)
+            } else if value.is_undefined() || value.is_null() {
+                Err(crate::Error::Execution(format!(
+                    "Export '{name}' not found"
+                )))
+            } else {
+                // Numbers, booleans etc. — coerce via JS String()
+                let script = format!("String(__plugin_exports.{name})");
+                let result: String = ctx.eval(script).map_err(|e| {
+                    crate::Error::Execution(format!("Could not coerce '{name}' to string: {e}"))
+                })?;
+                Ok(result)
+            }
         })
     }
 
@@ -205,14 +229,13 @@ mod tests {
 
         ctx.eval_source(
             r#"
-            var __plugin_exports = {};
-            __plugin_exports.pluginId = function() { return "test"; };
+            var __plugin_exports = { id: "test", name: "Test Plugin" };
             "#,
             "test.js",
         )
         .unwrap();
 
-        let id = ctx.call_export_string("pluginId").unwrap();
+        let id = ctx.get_export_string("id").unwrap();
         assert_eq!(id, "test");
     }
 

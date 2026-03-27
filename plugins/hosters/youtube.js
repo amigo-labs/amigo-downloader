@@ -14,12 +14,12 @@ function extractVideoId(url) {
 }
 
 module.exports = {
-    pluginId() { return "youtube"; },
-    pluginName() { return "YouTube"; },
-    pluginVersion() { return "1.0.0"; },
-    pluginDescription() { return "Download videos from YouTube"; },
-    pluginAuthor() { return "amigo-labs"; },
-    urlPattern() { return "https?://(www\\.)?(youtube\\.com/(watch|shorts|embed)|youtu\\.be/)"; },
+    id: "youtube",
+    name: "YouTube",
+    version: "1.0.0",
+    description: "Download videos from YouTube",
+    author: "amigo-labs",
+    urlPattern: "https?://(www\\.)?(youtube\\.com/(watch|shorts|embed)|youtu\\.be/)",
 
     resolve(url) {
         var videoId = extractVideoId(url);

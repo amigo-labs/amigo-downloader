@@ -1,10 +1,10 @@
 // Generic HTTP fallback plugin — handles direct download URLs.
 
 module.exports = {
-    pluginId() { return "generic-http"; },
-    pluginName() { return "Generic HTTP"; },
-    pluginVersion() { return "1.0.0"; },
-    urlPattern() { return "https?://.+"; },
+    id: "generic-http",
+    name: "Generic HTTP",
+    version: "1.0.0",
+    urlPattern: "https?://.+",
 
     resolve(url) {
         var resp = JSON.parse(amigo.httpHead(url));

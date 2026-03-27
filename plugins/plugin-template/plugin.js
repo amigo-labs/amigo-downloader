@@ -5,13 +5,10 @@
 // Plugins do NOT have direct network or filesystem access.
 
 module.exports = {
-    pluginId() { return "my-hoster"; },
-    pluginName() { return "My Hoster"; },
-    pluginVersion() { return "1.0.0"; },
-
-    urlPattern() {
-        return "https?://(www\\.)?my-hoster\\.com/file/[a-zA-Z0-9]+";
-    },
+    id: "my-hoster",
+    name: "My Hoster",
+    version: "1.0.0",
+    urlPattern: "https?://(www\\.)?my-hoster\\.com/file/[a-zA-Z0-9]+",
 
     resolve(url) {
         amigo.logInfo("Resolving: " + url);

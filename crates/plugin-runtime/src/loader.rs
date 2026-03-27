@@ -136,19 +136,19 @@ var __plugin_exports = module.exports;
             .unwrap_or("plugin.js");
         context.eval_source(&wrapped, filename)?;
 
-        // Extract metadata
-        let id = context.call_export_string("pluginId")?;
-        let name = context.call_export_string("pluginName")?;
-        let version = context.call_export_string("pluginVersion")?;
-        let url_pattern = context.call_export_string("urlPattern")?;
+        // Extract metadata — supports both properties and functions
+        let id = context.get_export_string("id")?;
+        let name = context.get_export_string("name")?;
+        let version = context.get_export_string("version")?;
+        let url_pattern = context.get_export_string("urlPattern")?;
 
         let url_regex = Regex::new(&url_pattern).map_err(|e| {
-            crate::Error::Execution(format!("Invalid url_pattern in plugin {id}: {e}"))
+            crate::Error::Execution(format!("Invalid urlPattern in plugin {id}: {e}"))
         })?;
 
         // Optional metadata
-        let description = context.call_export_string("pluginDescription").ok();
-        let author = context.call_export_string("pluginAuthor").ok();
+        let description = context.get_export_string("description").ok();
+        let author = context.get_export_string("author").ok();
 
         let meta = PluginMeta {
             id: id.clone(),
@@ -299,10 +299,10 @@ mod tests {
             hosters.join("test_hoster.js"),
             r#"
 module.exports = {
-    pluginId() { return "test-hoster"; },
-    pluginName() { return "Test Hoster"; },
-    pluginVersion() { return "1.0.0"; },
-    urlPattern() { return "https?://test-hoster\\.com/.+"; },
+    id: "test-hoster",
+    name: "Test Hoster",
+    version: "1.0.0",
+    urlPattern: "https?://test-hoster\\.com/.+",
     resolve(url) { return { url: url, filename: "file.bin", filesize: null, chunks_supported: true, max_chunks: 8, headers: null, cookies: null, wait_seconds: null, mirrors: [] }; },
 };
 "#,
