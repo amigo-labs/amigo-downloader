@@ -1,0 +1,51 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" style="image-rendering:pixelated">
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <!-- Alt 3: "Arrow Bot" — sleek, arrow-shaped head, speed lines, minimal -->
+  <g transform="translate(64,32) scale(24)">
+    <!-- Arrow/chevron head shape -->
+    <rect x="6" y="0" width="4" height="1" fill="#3b82f6"/>
+    <rect x="5" y="1" width="6" height="1" fill="#3b82f6"/>
+    <rect x="4" y="2" width="8" height="5" fill="#3b82f6"/>
+    <rect x="3" y="3" width="10" height="3" fill="#3b82f6"/>
+
+    <!-- Face plate -->
+    <rect x="5" y="3" width="6" height="3" fill="#0f172a"/>
+
+    <!-- Eyes (angular, sharp) -->
+    <rect x="5" y="3" width="2" height="1" fill="#60a5fa"/>
+    <rect x="9" y="3" width="2" height="1" fill="#60a5fa"/>
+
+    <!-- Mouth (thin line) -->
+    <rect x="6" y="5" width="4" height="1" fill="#3b82f6" opacity="0.6"/>
+
+    <!-- Body (tapered) -->
+    <rect x="5" y="7" width="6" height="1" fill="#475569"/>
+    <rect x="4" y="8" width="8" height="5" fill="#1e293b"/>
+    <rect x="5" y="8" width="6" height="5" fill="#334155"/>
+
+    <!-- Core / power source -->
+    <rect x="7" y="9" width="2" height="2" fill="#3b82f6"/>
+    <rect x="7" y="9" width="1" height="1" fill="#93c5fd"/>
+
+    <!-- Download arrow below core -->
+    <rect x="7" y="11" width="2" height="1" fill="#60a5fa"/>
+    <rect x="6" y="12" width="4" height="1" fill="#3b82f6" opacity="0.6"/>
+
+    <!-- Arms (angular, speed-line style) -->
+    <rect x="2" y="8" width="2" height="1" fill="#3b82f6"/>
+    <rect x="1" y="9" width="2" height="1" fill="#3b82f6"/>
+    <rect x="0" y="10" width="2" height="1" fill="#3b82f6" opacity="0.7"/>
+
+    <rect x="12" y="8" width="2" height="1" fill="#3b82f6"/>
+    <rect x="13" y="9" width="2" height="1" fill="#3b82f6"/>
+    <rect x="14" y="10" width="2" height="1" fill="#3b82f6" opacity="0.7"/>
+
+    <!-- Legs (jet/thruster style) -->
+    <rect x="5" y="13" width="2" height="2" fill="#3b82f6"/>
+    <rect x="9" y="13" width="2" height="2" fill="#3b82f6"/>
+
+    <!-- Thruster glow -->
+    <rect x="5" y="15" width="2" height="1" fill="#60a5fa" opacity="0.5"/>
+    <rect x="9" y="15" width="2" height="1" fill="#60a5fa" opacity="0.5"/>
+  </g>
+</svg>

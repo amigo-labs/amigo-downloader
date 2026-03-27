@@ -1,0 +1,46 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg" style="image-rendering:pixelated">
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <!-- Alt 1: "Amigo Cap" — friendlier round robot with a baseball cap -->
+  <g transform="translate(64,48) scale(24)">
+    <!-- Cap -->
+    <rect x="3" y="1" width="10" height="2" fill="#3b82f6"/>
+    <rect x="2" y="2" width="12" height="1" fill="#3b82f6"/>
+    <rect x="11" y="1" width="3" height="1" fill="#3b82f6"/><!-- brim -->
+
+    <!-- Head (round-ish) -->
+    <rect x="4" y="3" width="8" height="6" fill="#e2e8f0"/>
+    <rect x="3" y="4" width="10" height="4" fill="#e2e8f0"/>
+
+    <!-- Eyes (friendly, larger) -->
+    <rect x="5" y="4" width="2" height="2" fill="#0f172a"/>
+    <rect x="9" y="4" width="2" height="2" fill="#0f172a"/>
+    <!-- Eye shine -->
+    <rect x="5" y="4" width="1" height="1" fill="#3b82f6"/>
+    <rect x="9" y="4" width="1" height="1" fill="#3b82f6"/>
+
+    <!-- Smile -->
+    <rect x="6" y="7" width="4" height="1" fill="#0f172a" opacity="0.3"/>
+    <rect x="5" y="6" width="1" height="1" fill="#0f172a" opacity="0.2"/>
+    <rect x="10" y="6" width="1" height="1" fill="#0f172a" opacity="0.2"/>
+
+    <!-- Body -->
+    <rect x="4" y="9" width="8" height="4" fill="#3b82f6"/>
+    <rect x="3" y="10" width="10" height="2" fill="#3b82f6"/>
+
+    <!-- Download arrow on body -->
+    <rect x="7" y="9" width="2" height="1" fill="white" opacity="0.9"/>
+    <rect x="7" y="10" width="2" height="1" fill="white" opacity="0.9"/>
+    <rect x="6" y="11" width="4" height="1" fill="white" opacity="0.7"/>
+    <rect x="7" y="12" width="2" height="1" fill="white" opacity="0.5"/>
+
+    <!-- Arms (rounded) -->
+    <rect x="1" y="10" width="2" height="2" fill="#3b82f6"/>
+    <rect x="2" y="9" width="1" height="1" fill="#3b82f6"/>
+    <rect x="13" y="10" width="2" height="2" fill="#3b82f6"/>
+    <rect x="13" y="9" width="1" height="1" fill="#3b82f6"/>
+
+    <!-- Feet -->
+    <rect x="4" y="13" width="3" height="1" fill="#1e293b"/>
+    <rect x="9" y="13" width="3" height="1" fill="#1e293b"/>
+  </g>
+</svg>
