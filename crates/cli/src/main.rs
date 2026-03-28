@@ -421,12 +421,47 @@ async fn run_direct_downloads(urls: &[String], output: &str, chunks: u32) -> any
     .progress_chars("━╸─");
 
     for url in urls {
+        // Check if a plugin from the registry could handle this URL
+        check_plugin_suggestion(url).await;
+
         let pb = multi.add(ProgressBar::new(0));
         pb.set_style(style.clone());
         direct_download(&user_agent, url, output, chunks, &pb).await?;
     }
 
     Ok(())
+}
+
+/// Check the plugin registry for a plugin that can handle this URL.
+/// If found, print a suggestion. Non-blocking — doesn't interrupt the download.
+async fn check_plugin_suggestion(url: &str) {
+    // Skip URLs we already handle natively
+    if youtube::is_youtube_url(url) || hls::is_hls_url(url) || dash::is_dash_url(url) {
+        return;
+    }
+
+    // Quick registry check — fail silently on network errors
+    let client = match reqwest::Client::builder()
+        .user_agent("amigo-downloader")
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let config = amigo_plugin_runtime::registry::RegistryConfig::default();
+    let index = match amigo_plugin_runtime::registry::fetch_index(&client, &config).await {
+        Ok(idx) => idx,
+        Err(_) => return,
+    };
+
+    if let Some(plugin) = amigo_plugin_runtime::registry::suggest_plugin_for_url(&index, url) {
+        eprintln!(
+            "hint: Plugin \"{}\" can handle this URL. Install with:\n  amigo-dl plugins install {}\n",
+            plugin.name, plugin.id
+        );
+    }
 }
 
 fn init_tracing(verbose: bool) {

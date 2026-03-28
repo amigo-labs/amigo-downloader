@@ -128,6 +128,21 @@ pub fn check_plugin_updates(
     updates
 }
 
+/// Find a registry plugin whose url_pattern matches the given URL.
+pub fn suggest_plugin_for_url<'a>(
+    index: &'a RegistryIndex,
+    url: &str,
+) -> Option<&'a RegistryPlugin> {
+    for plugin in &index.plugins {
+        if let Ok(re) = regex::Regex::new(&plugin.url_pattern) {
+            if re.is_match(url) {
+                return Some(plugin);
+            }
+        }
+    }
+    None
+}
+
 /// Download a plugin file, verify SHA256, and install into a plugin folder.
 /// Creates `<dest_dir>/<plugin-id>/plugin.ts` (or .js based on download URL).
 pub async fn download_plugin(
