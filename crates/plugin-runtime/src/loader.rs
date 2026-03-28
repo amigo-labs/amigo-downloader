@@ -13,7 +13,7 @@ use tracing::{debug, info, warn};
 use crate::engine::{EngineConfig, PluginContext, PluginEngine};
 use crate::host_api::{self, HostApi};
 use crate::sandbox::SandboxLimits;
-use crate::types::{DownloadInfo, PluginMeta};
+use crate::types::{DownloadPackage, PluginMeta};
 
 /// A loaded, ready-to-execute plugin.
 struct LoadedPlugin {
@@ -203,7 +203,12 @@ var __plugin_exports = module.exports;
     }
 
     /// Execute a plugin's resolve() function for a URL.
-    pub async fn resolve(&self, plugin_id: &str, url: &str) -> Result<DownloadInfo, crate::Error> {
+    /// Returns a DownloadPackage with a name and one or more downloads.
+    pub async fn resolve(
+        &self,
+        plugin_id: &str,
+        url: &str,
+    ) -> Result<DownloadPackage, crate::Error> {
         let plugins = self.plugins.lock().await;
         let plugin = plugins
             .iter()
@@ -216,15 +221,18 @@ var __plugin_exports = module.exports;
 
         let json_result = plugin.context.call_resolve(url, timeout)?;
 
-        // Parse JSON result into DownloadInfo
-        let info: DownloadInfo = serde_json::from_str(&json_result).map_err(|e| {
+        let pkg: DownloadPackage = serde_json::from_str(&json_result).map_err(|e| {
             crate::Error::Execution(format!(
                 "Plugin {plugin_id} returned invalid JSON: {e}\nGot: {json_result}"
             ))
         })?;
 
-        debug!("Plugin {plugin_id} resolved: {:?}", info.url);
-        Ok(info)
+        debug!(
+            "Plugin {plugin_id} resolved package '{}' with {} downloads",
+            pkg.name,
+            pkg.downloads.len()
+        );
+        Ok(pkg)
     }
 
     /// List all loaded plugins.
@@ -308,7 +316,7 @@ module.exports = {
     name: "Test Hoster",
     version: "1.0.0",
     urlPattern: "https?://test-hoster\\.com/.+",
-    resolve(url) { return { url: url, filename: "file.bin", filesize: null, chunks_supported: true, max_chunks: 8, headers: null, cookies: null, wait_seconds: null, mirrors: [] }; },
+    resolve(url) { return { name: "Test", downloads: [{ url: url, filename: null, filesize: null, chunks_supported: true, max_chunks: 8, headers: null, cookies: null, wait_seconds: null, mirrors: [] }] }; },
 };
 "#,
         )
@@ -349,8 +357,8 @@ module.exports = {
     name: "TS Hoster",
     version: "2.0.0",
     urlPattern: "https?://ts-hoster\\.com/.+",
-    resolve(url: string): DownloadInfo {
-        return { url: url, filename: null, filesize: null, chunks_supported: true, max_chunks: null, headers: null, cookies: null, wait_seconds: null, mirrors: [] };
+    resolve(url: string): DownloadPackage {
+        return { name: "Test", downloads: [{ url: url, filename: null, filesize: null, chunks_supported: true, max_chunks: null, headers: null, cookies: null, wait_seconds: null, mirrors: [] }] };
     },
 };
 "#,

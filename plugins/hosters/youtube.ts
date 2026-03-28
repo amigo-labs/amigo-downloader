@@ -17,7 +17,7 @@ module.exports = {
     author: "amigo-labs",
     urlPattern: "https?://(www\\.)?(youtube\\.com/(watch|shorts|embed)|youtu\\.be/)",
 
-    resolve(url: string): DownloadInfo {
+    resolve(url: string): DownloadPackage {
         const videoId = extractVideoId(url);
         if (!videoId) throw new Error("Could not extract video ID from URL");
 
@@ -101,15 +101,18 @@ module.exports = {
         amigo.logInfo("Selected: " + bestQuality + " (" + bestMime + ")");
 
         return {
-            url: bestUrl,
-            filename: filename,
-            filesize: bestSize,
-            chunks_supported: false,
-            max_chunks: null,
-            headers: null,
-            cookies: null,
-            wait_seconds: null,
-            mirrors: [],
+            name: title,
+            downloads: [{
+                url: bestUrl,
+                filename: filename,
+                filesize: bestSize,
+                chunks_supported: false,
+                max_chunks: null,
+                headers: null,
+                cookies: null,
+                wait_seconds: null,
+                mirrors: [],
+            }],
         };
     },
 

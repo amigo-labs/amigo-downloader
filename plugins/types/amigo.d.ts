@@ -18,8 +18,9 @@ interface AmigoPlugin {
 
     // ── Required functions ──
 
-    /** Resolve a URL to a direct download. Called by the download engine. */
-    resolve(url: string): DownloadInfo;
+    /** Resolve a URL into a download package. Always returns a package
+     *  with a name and one or more downloads — like JDownloader packages. */
+    resolve(url: string): DownloadPackage;
 
     // ── Optional properties ──
 
@@ -44,7 +45,15 @@ interface AmigoPlugin {
 
 // ─── Data Types ─────────────────────────────────────────────────────
 
-/** Returned by resolve() — tells the download engine what to download. */
+/** A download package — groups related downloads together (like JDownloader packages). */
+interface DownloadPackage {
+    /** Package name shown in the UI (e.g. page title, folder name). */
+    name: string;
+    /** The downloads in this package. */
+    downloads: DownloadInfo[];
+}
+
+/** A single downloadable file within a package. */
 interface DownloadInfo {
     /** Direct download URL. */
     url: string;
