@@ -125,6 +125,13 @@ enum PluginAction {
     Install { id: String },
     /// Search the plugin registry
     Search { query: String },
+    /// Test a plugin file against a URL
+    Test {
+        /// Path to plugin file (.js or .ts)
+        plugin: String,
+        /// URL to resolve
+        url: String,
+    },
 }
 
 #[derive(Subcommand)]
@@ -662,6 +669,48 @@ async fn main() -> anyhow::Result<()> {
         }
 
         Commands::Plugins { action } => match action {
+            PluginAction::Test { plugin, url } => {
+                use amigo_plugin_runtime::loader::PluginLoader;
+                use amigo_plugin_runtime::sandbox::SandboxLimits;
+
+                let path = std::path::Path::new(&plugin);
+                if !path.exists() {
+                    anyhow::bail!("Plugin file not found: {plugin}");
+                }
+
+                // Use the plugin's parent dir so the loader can find it
+                let plugin_dir = path.parent().unwrap_or(std::path::Path::new("."));
+                let loader = PluginLoader::new(plugin_dir.to_path_buf(), SandboxLimits::default());
+                loader
+                    .discover()
+                    .await
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
+
+                let plugins = loader.list_plugins().await;
+                if plugins.is_empty() {
+                    anyhow::bail!("No plugin found in {}", plugin);
+                }
+
+                let meta = &plugins[0];
+                println!("Plugin: {} v{} ({})", meta.name, meta.version, meta.id);
+                println!("Pattern: {}", meta.url_pattern);
+
+                let re = regex::Regex::new(&meta.url_pattern)?;
+                if !re.is_match(&url) {
+                    println!("\nURL does not match plugin's urlPattern.");
+                    return Ok(());
+                }
+
+                println!("\nResolving: {url}");
+                match loader.resolve(&meta.id, &url).await {
+                    Ok(info) => {
+                        println!("\n{}", serde_json::to_string_pretty(&info)?);
+                    }
+                    Err(e) => {
+                        println!("\nError: {e}");
+                    }
+                }
+            }
             PluginAction::List | PluginAction::Enable { .. } | PluginAction::Login { .. } => {
                 println!("Plugin management requires the server. Use: amigo-dl serve");
             }
