@@ -433,14 +433,13 @@ async fn run_direct_downloads(urls: &[String], output: &str, chunks: u32) -> any
 }
 
 /// Check the plugin registry for a plugin that can handle this URL.
-/// If found, print a suggestion. Non-blocking — doesn't interrupt the download.
+/// Uses local cached index (instant), falls back to remote fetch if no cache.
 async fn check_plugin_suggestion(url: &str) {
     // Skip URLs we already handle natively
     if youtube::is_youtube_url(url) || hls::is_hls_url(url) || dash::is_dash_url(url) {
         return;
     }
 
-    // Quick registry check — fail silently on network errors
     let client = match reqwest::Client::builder()
         .user_agent("amigo-downloader")
         .timeout(std::time::Duration::from_secs(3))
@@ -451,7 +450,7 @@ async fn check_plugin_suggestion(url: &str) {
     };
 
     let config = amigo_plugin_runtime::registry::RegistryConfig::default();
-    let index = match amigo_plugin_runtime::registry::fetch_index(&client, &config).await {
+    let index = match amigo_plugin_runtime::registry::load_index(&client, &config).await {
         Ok(idx) => idx,
         Err(_) => return,
     };

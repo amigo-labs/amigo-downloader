@@ -44,6 +44,7 @@ pub fn router(state: AppState) -> Router {
         // Plugin endpoints
         .route("/api/v1/plugins", get(list_plugins))
         .route("/api/v1/plugins/{id}", patch(update_plugin))
+        .route("/api/v1/plugins/suggest", post(suggest_plugin))
         .with_state(state)
 }
 
@@ -310,6 +311,49 @@ async fn update_plugin(
         })?;
     }
     Ok(StatusCode::OK)
+}
+
+// --- Plugin suggestion ---
+
+#[derive(Deserialize)]
+struct SuggestPluginRequest {
+    url: String,
+}
+
+#[derive(Serialize)]
+struct SuggestPluginResponse {
+    found: bool,
+    plugin_id: Option<String>,
+    plugin_name: Option<String>,
+    install_command: Option<String>,
+}
+
+async fn suggest_plugin(
+    State(state): State<AppState>,
+    Json(req): Json<SuggestPluginRequest>,
+) -> Json<SuggestPluginResponse> {
+    let config = amigo_plugin_runtime::registry::RegistryConfig::default();
+    let index = amigo_plugin_runtime::registry::load_index(&state.http_client, &config).await;
+
+    if let Ok(index) = index {
+        if let Some(plugin) =
+            amigo_plugin_runtime::registry::suggest_plugin_for_url(&index, &req.url)
+        {
+            return Json(SuggestPluginResponse {
+                found: true,
+                plugin_id: Some(plugin.id.clone()),
+                plugin_name: Some(plugin.name.clone()),
+                install_command: Some(format!("amigo-dl plugins install {}", plugin.id)),
+            });
+        }
+    }
+
+    Json(SuggestPluginResponse {
+        found: false,
+        plugin_id: None,
+        plugin_name: None,
+        install_command: None,
+    })
 }
 
 // --- Usenet handlers ---

@@ -49,9 +49,11 @@ impl PluginLoader {
     }
 
     /// Scan plugin directory and load all plugins.
-    /// Each plugin lives in its own folder with a `plugin.ts` or `plugin.js` entry point.
+    /// Supports category folders: plugins/<category>/<plugin-id>/plugin.ts
+    /// Also supports flat: plugins/<plugin-id>/plugin.ts
     pub async fn discover(&self) -> Result<Vec<PluginMeta>, crate::Error> {
         let mut metas = Vec::new();
+        let skip = ["types", "template"];
 
         let entries = match std::fs::read_dir(&self.plugin_dir) {
             Ok(e) => e,
@@ -64,26 +66,25 @@ impl PluginLoader {
                 continue;
             }
 
-            // Skip non-plugin directories (types, template, etc.)
             let dir_name = dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
-            if dir_name == "types" || dir_name == "template" {
+            if skip.contains(&dir_name) {
                 continue;
             }
 
-            // Look for plugin.ts or plugin.js
-            let plugin_file = ["plugin.ts", "plugin.js"]
-                .iter()
-                .map(|f| dir.join(f))
-                .find(|p| p.exists());
+            // Check if this dir has a plugin.ts/js directly (flat structure)
+            if let Some(path) = find_plugin_entry(&dir) {
+                self.try_load_plugin(&path, &mut metas).await;
+                continue;
+            }
 
-            if let Some(path) = plugin_file {
-                match self.load_plugin(&path).await {
-                    Ok(meta) => {
-                        info!("Loaded plugin: {} ({})", meta.name, meta.id);
-                        metas.push(meta);
-                    }
-                    Err(e) => {
-                        warn!("Failed to load plugin {:?}: {e}", path);
+            // Otherwise treat as category dir — scan subdirs
+            if let Ok(sub_entries) = std::fs::read_dir(&dir) {
+                for sub_entry in sub_entries.flatten() {
+                    let sub_dir = sub_entry.path();
+                    if sub_dir.is_dir() {
+                        if let Some(path) = find_plugin_entry(&sub_dir) {
+                            self.try_load_plugin(&path, &mut metas).await;
+                        }
                     }
                 }
             }
@@ -339,6 +340,26 @@ var __plugin_exports = module.exports;
             .unwrap_or("spec.js");
         Ok(plugin.context.run_tests(&spec_source, filename))
     }
+
+    async fn try_load_plugin(&self, path: &Path, metas: &mut Vec<PluginMeta>) {
+        match self.load_plugin(path).await {
+            Ok(meta) => {
+                info!("Loaded plugin: {} ({})", meta.name, meta.id);
+                metas.push(meta);
+            }
+            Err(e) => {
+                warn!("Failed to load plugin {:?}: {e}", path);
+            }
+        }
+    }
+}
+
+/// Find plugin.ts or plugin.js in a directory.
+fn find_plugin_entry(dir: &Path) -> Option<PathBuf> {
+    ["plugin.ts", "plugin.js"]
+        .iter()
+        .map(|f| dir.join(f))
+        .find(|p| p.exists())
 }
 
 #[cfg(test)]
@@ -423,6 +444,34 @@ module.exports = {
         let matched = loader.match_url("https://ts-hoster.com/file.zip").await;
         assert!(matched.is_some());
         assert_eq!(matched.unwrap().id, "ts-hoster");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test]
+    async fn test_load_from_category_subfolder() {
+        let dir = std::env::temp_dir().join("amigo-test-plugins-cat");
+        let plugin_dir = dir.join("hosters").join("cat-hoster");
+        std::fs::create_dir_all(&plugin_dir).unwrap();
+
+        std::fs::write(
+            plugin_dir.join("plugin.js"),
+            r#"
+module.exports = {
+    id: "cat-hoster",
+    name: "Category Hoster",
+    version: "1.0.0",
+    urlPattern: "https?://cat-hoster\\.com/.+",
+    resolve(url) { return { name: "Test", downloads: [{ url: url, filename: null, filesize: null, chunks_supported: true, max_chunks: null, headers: null, cookies: null, wait_seconds: null, mirrors: [] }] }; },
+};
+"#,
+        )
+        .unwrap();
+
+        let loader = PluginLoader::new(dir.clone(), SandboxLimits::default());
+        let plugins = loader.discover().await.unwrap();
+
+        assert!(plugins.iter().any(|p| p.id == "cat-hoster"));
 
         std::fs::remove_dir_all(&dir).ok();
     }

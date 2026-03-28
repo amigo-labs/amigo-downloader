@@ -59,6 +59,7 @@ async fn main() -> anyhow::Result<()> {
     // Plugin updater
     let registry_config = RegistryConfig {
         index_url: config.update.plugin_registry_url.clone(),
+        ..Default::default()
     };
     let plugin_updater = Arc::new(PluginUpdater::new(
         registry_config,

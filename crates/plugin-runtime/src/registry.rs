@@ -46,18 +46,93 @@ pub struct PluginUpdateInfo {
 #[derive(Debug, Clone)]
 pub struct RegistryConfig {
     pub index_url: String,
+    /// Local cache path for index.json.
+    pub cache_path: Option<PathBuf>,
+    /// Max age of the cache before auto-refresh (in seconds).
+    pub cache_max_age_secs: u64,
 }
 
 impl Default for RegistryConfig {
     fn default() -> Self {
         Self {
             index_url: "https://raw.githubusercontent.com/amigo-labs/amigo-downloader-plugins/main/index.json".into(),
+            cache_path: Some(PathBuf::from("plugins/index.json")),
+            cache_max_age_secs: 24 * 60 * 60, // 24 hours
         }
     }
 }
 
-/// Fetch the plugin registry index.
-pub async fn fetch_index(
+/// Load the registry index — from local cache if fresh, otherwise fetch remote and cache.
+pub async fn load_index(
+    client: &reqwest::Client,
+    config: &RegistryConfig,
+) -> Result<RegistryIndex, crate::Error> {
+    // Try local cache first
+    if let Some(cache_path) = &config.cache_path {
+        if let Some(index) = load_cached_index(cache_path, config.cache_max_age_secs) {
+            debug!("Using cached registry index from {:?}", cache_path);
+            return Ok(index);
+        }
+    }
+
+    // Fetch from remote
+    let index = fetch_index_remote(client, config).await?;
+
+    // Save to cache
+    if let Some(cache_path) = &config.cache_path {
+        save_cached_index(cache_path, &index);
+    }
+
+    Ok(index)
+}
+
+/// Force-refresh the registry index from remote, updating the local cache.
+pub async fn refresh_index(
+    client: &reqwest::Client,
+    config: &RegistryConfig,
+) -> Result<RegistryIndex, crate::Error> {
+    let index = fetch_index_remote(client, config).await?;
+
+    if let Some(cache_path) = &config.cache_path {
+        save_cached_index(cache_path, &index);
+    }
+
+    Ok(index)
+}
+
+/// Load the cached index if it exists and is not expired.
+fn load_cached_index(cache_path: &Path, max_age_secs: u64) -> Option<RegistryIndex> {
+    let metadata = std::fs::metadata(cache_path).ok()?;
+    let modified = metadata.modified().ok()?;
+    let age = modified.elapsed().ok()?;
+
+    if age.as_secs() > max_age_secs {
+        debug!("Cache expired ({:.0}h old)", age.as_secs() as f64 / 3600.0);
+        return None;
+    }
+
+    let data = std::fs::read_to_string(cache_path).ok()?;
+    let index: RegistryIndex = serde_json::from_str(&data).ok()?;
+    Some(index)
+}
+
+/// Save the index to the local cache file.
+fn save_cached_index(cache_path: &Path, index: &RegistryIndex) {
+    if let Some(parent) = cache_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match serde_json::to_string_pretty(index) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(cache_path, json) {
+                debug!("Failed to write index cache: {e}");
+            }
+        }
+        Err(e) => debug!("Failed to serialize index: {e}"),
+    }
+}
+
+/// Fetch the plugin registry index from the remote URL.
+async fn fetch_index_remote(
     client: &reqwest::Client,
     config: &RegistryConfig,
 ) -> Result<RegistryIndex, crate::Error> {
@@ -84,6 +159,14 @@ pub async fn fetch_index(
 
     info!("Registry index: {} plugins available", index.plugins.len());
     Ok(index)
+}
+
+/// Legacy alias — use `load_index` instead.
+pub async fn fetch_index(
+    client: &reqwest::Client,
+    config: &RegistryConfig,
+) -> Result<RegistryIndex, crate::Error> {
+    load_index(client, config).await
 }
 
 /// Compare installed plugins against registry to find available updates.
