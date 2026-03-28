@@ -383,6 +383,7 @@ amigo-dl serve [--port 8080 --bind 0.0.0.0]
 
 ## Coding-Konventionen
 
+- **Language**: All code, comments, commit messages, variable names, docs — **English only**
 - **Rust**: `cargo fmt` + `cargo clippy` (deny warnings), Rust 2024 Edition
 - **Error Handling**: `thiserror` für Library-Errors, `anyhow` nur in Binaries
 - **Async**: Alles async wo I/O involviert. Keine `block_on` im Core.
@@ -390,6 +391,7 @@ amigo-dl serve [--port 8080 --bind 0.0.0.0]
 - **Svelte**: TypeScript strict, Prettier, ESLint
 - **Git**: Conventional Commits (`feat:`, `fix:`, `refactor:`, `docs:`)
 - **CI**: `cargo test`, `cargo clippy`, `npm run check`, Docker Build
+- **i18n**: UI strings are multilingual (user selects language during install or in settings). Use a string table / i18n system — never hardcode UI text in English. Installer sets the initial language.
 
 ---
 
