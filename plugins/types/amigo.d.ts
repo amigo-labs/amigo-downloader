@@ -41,6 +41,8 @@ interface AmigoPlugin {
     decryptContainer?(data: string): string[];
     /** Resolve a folder URL into individual file URLs. */
     resolveFolder?(url: string): string[];
+    /** Post-processing hook called after download completion. */
+    postProcess?(context: PostProcessContext): PostProcessResult;
 }
 
 // ─── Data Types ─────────────────────────────────────────────────────
@@ -82,10 +84,51 @@ interface HttpResponse {
     headers: Record<string, string>;
 }
 
+/** Extended HTTP response with parsed JSON body, returned by amigo.httpGetJson. */
+interface HttpJsonResponse extends HttpResponse {
+    data: any;
+}
+
 /** HEAD response returned by amigo.httpHead. */
 interface HeadResponse {
     status: number;
     headers: Record<string, string>;
+}
+
+/** Parsed URL components returned by amigo.urlParse. */
+interface ParsedUrl {
+    protocol: string;
+    host: string;
+    port: number | null;
+    pathname: string;
+    search: string;
+    hash: string;
+    origin: string;
+}
+
+/** Context passed to postProcess() after a download completes. */
+interface PostProcessContext {
+    download_id: string;
+    filename: string;
+    filepath: string;
+    filesize: number;
+    mime_type: string | null;
+    protocol: string;
+    package_name: string;
+    all_files: string[];
+}
+
+/** Result returned by postProcess(). */
+interface PostProcessResult {
+    success: boolean;
+    files_created?: string[];
+    files_to_delete?: string[];
+    message?: string;
+}
+
+/** Options for HTTP request functions. */
+interface HttpRequestOptions {
+    headers?: Record<string, string>;
 }
 
 // ─── Host API ───────────────────────────────────────────────────────
@@ -94,12 +137,14 @@ interface HeadResponse {
 declare const amigo: {
     // ── Network (all requests go through the sandbox) ──
 
-    /** HTTP GET — returns JSON string, parse with JSON.parse(). */
-    httpGet(url: string): string;
-    /** HTTP POST — returns JSON string, parse with JSON.parse(). */
-    httpPost(url: string, body: string, contentType: string): string;
-    /** HTTP HEAD — returns JSON string, parse with JSON.parse(). */
-    httpHead(url: string): string;
+    /** HTTP GET — returns parsed response object directly. */
+    httpGet(url: string, opts?: HttpRequestOptions): HttpResponse;
+    /** HTTP POST — returns parsed response object directly. */
+    httpPost(url: string, body: string, contentType: string, opts?: HttpRequestOptions): HttpResponse;
+    /** HTTP HEAD — returns parsed response object directly. */
+    httpHead(url: string, opts?: HttpRequestOptions): HeadResponse;
+    /** HTTP GET + parse body as JSON — returns response with `data` field. */
+    httpGetJson(url: string, opts?: HttpRequestOptions): HttpJsonResponse;
 
     // ── Cookies ──
 
@@ -107,14 +152,61 @@ declare const amigo: {
     getCookie(domain: string, name: string): string | null;
     clearCookies(domain: string): void;
 
-    // ── Parsing helpers ──
+    // ── URL helpers ──
+
+    /** Resolve a relative URL against a base URL. */
+    urlResolve(base: string, relative: string): string;
+    /** Parse a URL into components. */
+    urlParse(url: string): ParsedUrl;
+    /** Extract the filename from a URL path (URL-decoded). */
+    urlFilename(url: string): string | null;
+
+    // ── HTML helpers (CSS selectors via scraper crate) ──
+
+    /** Query all elements matching a CSS selector, returns outer HTML strings. */
+    htmlQueryAll(html: string, selector: string): string[];
+    /** Get the text content of the first element matching a CSS selector. */
+    htmlQueryText(html: string, selector: string): string | null;
+    /** Get an attribute value from the first element matching a CSS selector. */
+    htmlQueryAttr(html: string, selector: string, attr: string): string | null;
+    /** Search meta tags by name or property, with fallback chain.
+     *  Checks both `name` and `property` attributes (supports OpenGraph). */
+    htmlSearchMeta(html: string, names: string | string[]): string | null;
+    /** Extract the page title from <title> tag. */
+    htmlExtractTitle(html: string): string | null;
+    /** Extract all hidden input fields as name→value pairs. */
+    htmlHiddenInputs(html: string): Record<string, string>;
+    /** Find and parse JSON embedded in HTML/JavaScript (e.g. `var config = {...}`).
+     *  `startPattern` is a regex that matches up to the opening `{` or `[`. */
+    searchJson(startPattern: string, html: string): any | null;
+
+    // ── Regex helpers ──
 
     /** Returns first capture group, or full match if no groups. */
     regexMatch(pattern: string, text: string): string | null;
     /** Returns all capture groups. */
     regexMatchAll(pattern: string, text: string): string[];
+    /** Replace all matches of a pattern. */
+    regexReplace(pattern: string, text: string, replacement: string): string | null;
+    /** Test if a pattern matches. */
+    regexTest(pattern: string, text: string): boolean;
+    /** Split text by a pattern. */
+    regexSplit(pattern: string, text: string): string[];
+
+    // ── Encoding ──
+
     base64Decode(input: string): string;
     base64Encode(input: string): string;
+
+    // ── Utility ──
+
+    /** Parse a duration string into seconds. Supports "1:23:45", "12:34", and ISO 8601 "PT1H23M45S". */
+    parseDuration(input: string): number | null;
+    /** Sanitize a filename by replacing invalid characters with underscores. */
+    sanitizeFilename(name: string): string;
+    /** Safe deep property access. Returns null if any part of the path is missing.
+     *  Path can be a dot-separated string or an array of keys. */
+    traverse(obj: any, path: string | (string | number)[]): any | null;
 
     // ── Logging ──
 

@@ -13,7 +13,7 @@ use tracing::{debug, info, warn};
 use crate::engine::{EngineConfig, PluginContext, PluginEngine};
 use crate::host_api::{self, HostApi};
 use crate::sandbox::SandboxLimits;
-use crate::types::{DownloadPackage, PluginMeta};
+use crate::types::{DownloadPackage, PluginMeta, PostProcessContext, PostProcessResult};
 
 /// A loaded, ready-to-execute plugin.
 struct LoadedPlugin {
@@ -237,6 +237,47 @@ var __plugin_exports = module.exports;
             pkg.downloads.len()
         );
         Ok(pkg)
+    }
+
+    /// Execute a plugin's postProcess() function if it exists.
+    pub async fn post_process(
+        &self,
+        plugin_id: &str,
+        context: &PostProcessContext,
+    ) -> Result<PostProcessResult, crate::Error> {
+        let plugins = self.plugins.lock().await;
+        let plugin = plugins
+            .iter()
+            .find(|p| p.meta.id == plugin_id)
+            .ok_or_else(|| crate::Error::NotFound(plugin_id.to_string()))?;
+
+        if !plugin.context.has_post_process() {
+            return Ok(PostProcessResult {
+                success: true,
+                files_created: None,
+                files_to_delete: None,
+                message: Some("No postProcess hook".into()),
+            });
+        }
+
+        let context_json = serde_json::to_string(context).map_err(|e| {
+            crate::Error::Execution(format!("Failed to serialize PostProcessContext: {e}"))
+        })?;
+
+        let timeout = std::time::Duration::from_secs(self.sandbox_limits.max_execution_secs);
+        let json_result = plugin.context.call_post_process(&context_json, timeout)?;
+
+        let result: PostProcessResult = serde_json::from_str(&json_result).map_err(|e| {
+            crate::Error::Execution(format!(
+                "Plugin {plugin_id} postProcess returned invalid JSON: {e}\nGot: {json_result}"
+            ))
+        })?;
+
+        debug!(
+            "Plugin {plugin_id} postProcess: success={}, message={:?}",
+            result.success, result.message
+        );
+        Ok(result)
     }
 
     /// List all loaded plugins.

@@ -12,6 +12,9 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 reqwest = { workspace = true }
 regex = "1"
+url = "2"
+urlencoding = "2"
+scraper = "0.22"
 semver = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }

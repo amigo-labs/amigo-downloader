@@ -5,11 +5,12 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use tokio::sync::{Mutex, broadcast, watch};
-use tracing::{error, info};
+use tracing::{error, info, warn};
 use uuid::Uuid;
 
 use crate::bandwidth::BandwidthLimiter;
 use crate::config::Config;
+use crate::postprocess::{self, PostProcessConfig};
 use crate::protocol::Protocol;
 use crate::protocol::http::{DownloadProgress, HttpDownloader};
 use crate::queue::QueueStatus;
@@ -216,6 +217,20 @@ impl Coordinator {
                     let _ = storage
                         .update_download_progress(&download_id, bytes, 0)
                         .await;
+
+                    // Run post-processing (auto-extract archives, etc.)
+                    let dest = download_dir.join(
+                        url.rsplit('/')
+                            .next()
+                            .and_then(|s| s.split('?').next())
+                            .filter(|s| !s.is_empty())
+                            .unwrap_or("download"),
+                    );
+                    let pp_config = PostProcessConfig::default();
+                    if let Err(e) = postprocess::run_pipeline(&dest, &pp_config).await {
+                        warn!("Post-processing failed for {download_id}: {e}");
+                    }
+
                     let _ = storage
                         .update_download_status(&download_id, QueueStatus::Completed)
                         .await;

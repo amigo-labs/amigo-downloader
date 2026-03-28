@@ -54,3 +54,25 @@ pub struct PluginHttpResponse {
     pub body: String,
     pub headers: std::collections::HashMap<String, String>,
 }
+
+/// Context passed to a plugin's postProcess() function.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostProcessContext {
+    pub download_id: String,
+    pub filename: String,
+    pub filepath: String,
+    pub filesize: u64,
+    pub mime_type: Option<String>,
+    pub protocol: String,
+    pub package_name: String,
+    pub all_files: Vec<String>,
+}
+
+/// Result returned by a plugin's postProcess() function.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PostProcessResult {
+    pub success: bool,
+    pub files_created: Option<Vec<String>>,
+    pub files_to_delete: Option<Vec<String>>,
+    pub message: Option<String>,
+}

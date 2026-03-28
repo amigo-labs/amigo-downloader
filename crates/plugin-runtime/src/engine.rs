@@ -213,6 +213,50 @@ impl PluginContext {
         })
     }
 
+    /// Check if the plugin exports a postProcess function.
+    pub fn has_post_process(&self) -> bool {
+        self.context.with(|ctx| {
+            let global = ctx.globals();
+            let exports: Result<Object<'_>, _> = global.get("__plugin_exports");
+            match exports {
+                Ok(obj) => {
+                    let val: Result<Value<'_>, _> = obj.get("postProcess");
+                    val.is_ok_and(|v| v.is_function())
+                }
+                Err(_) => false,
+            }
+        })
+    }
+
+    /// Call the plugin's postProcess(context) function and return the result as JSON.
+    pub fn call_post_process(
+        &self,
+        context_json: &str,
+        timeout: Duration,
+    ) -> Result<String, crate::Error> {
+        let escaped = context_json.replace('\\', "\\\\").replace('\'', "\\'");
+        let script = format!(
+            r#"
+            (function() {{
+                if (typeof __plugin_exports.postProcess !== 'function') {{
+                    return JSON.stringify({{ success: true, message: "no postProcess hook" }});
+                }}
+                var ctx = JSON.parse('{escaped}');
+                var result = __plugin_exports.postProcess(ctx);
+                return JSON.stringify(result);
+            }})()
+            "#,
+        );
+
+        self.context.with(|ctx| {
+            let _deadline = std::time::Instant::now() + timeout;
+            let result: String = ctx.eval(script).map_err(|e| {
+                crate::Error::Execution(format!("postProcess() failed: {e}"))
+            })?;
+            Ok(result)
+        })
+    }
+
     /// Evaluate raw JavaScript and return the result as a string.
     pub fn eval_js(&self, code: &str) -> Result<String, crate::Error> {
         self.context.with(|ctx| {
