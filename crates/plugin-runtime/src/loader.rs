@@ -367,7 +367,7 @@ module.exports = {
     name: "Test Hoster",
     version: "1.0.0",
     urlPattern: "https?://test-hoster\\.com/.+",
-    resolve(url) { return { name: "Test", downloads: [{ url: url, filename: null, title: null, filesize: null, duration: null, chunks_supported: true, max_chunks: 8, headers: null, cookies: null, wait_seconds: null, mirrors: [] }] }; },
+    resolve(url) { return { name: "Test", downloads: [{ url: url, filename: null, filesize: null, chunks_supported: true, max_chunks: 8, headers: null, cookies: null, wait_seconds: null, mirrors: [] }] }; },
 };
 "#,
         )
@@ -409,7 +409,7 @@ module.exports = {
     version: "2.0.0",
     urlPattern: "https?://ts-hoster\\.com/.+",
     resolve(url: string): DownloadPackage {
-        return { name: "Test", downloads: [{ url: url, filename: null, title: null, filesize: null, duration: null, chunks_supported: true, max_chunks: null, headers: null, cookies: null, wait_seconds: null, mirrors: [] }] };
+        return { name: "Test", downloads: [{ url: url, filename: null, filesize: null, chunks_supported: true, max_chunks: null, headers: null, cookies: null, wait_seconds: null, mirrors: [] }] };
     },
 };
 "#,

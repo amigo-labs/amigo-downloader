@@ -59,12 +59,8 @@ interface DownloadInfo {
     url: string;
     /** Suggested filename, or null to let the engine detect from URL/headers. */
     filename: string | null;
-    /** Human-readable title (e.g. video title), or null to use filename. */
-    title: string | null;
     /** File size in bytes, or null if unknown. */
     filesize: number | null;
-    /** Duration in seconds (for audio/video), or null. */
-    duration: number | null;
     /** Whether the server supports chunked/parallel downloads. */
     chunks_supported: boolean;
     /** Max number of parallel chunks, or null for default. */
