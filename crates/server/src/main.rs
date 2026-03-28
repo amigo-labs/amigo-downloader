@@ -3,6 +3,7 @@ mod clicknload;
 mod feedback;
 mod static_files;
 mod update_api;
+pub mod webhooks;
 mod ws;
 
 use std::path::PathBuf;
@@ -83,6 +84,17 @@ async fn main() -> anyhow::Result<()> {
         .merge(feedback::feedback_router(state, feedback_limiter))
         .merge(static_files::static_router())
         .layer(CorsLayer::permissive());
+
+    // Start webhook dispatcher in background
+    let webhook_endpoints = config.webhooks.clone();
+    let webhook_dispatcher = Arc::new(webhooks::WebhookDispatcher::new(webhook_endpoints));
+    {
+        let dispatcher = webhook_dispatcher.clone();
+        let event_rx = coordinator.subscribe();
+        tokio::spawn(async move {
+            dispatcher.run(event_rx).await;
+        });
+    }
 
     // Start Click'n'Load listener on port 9666 in background
     let cnl_coordinator = coordinator.clone();

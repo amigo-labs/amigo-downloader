@@ -23,3 +23,7 @@ uuid = { workspace = true }
 reqwest = { workspace = true }
 rust-embed = { version = "8", features = ["mime-guess"] }
 mime_guess = "2"
+chrono = { workspace = true }
+sha2 = { workspace = true }
+hmac = "0.12"
+hex = { workspace = true }

@@ -1,4 +1,5 @@
 pub mod bandwidth;
+pub mod captcha;
 pub mod chunk;
 pub mod config;
 pub mod container;

@@ -11,6 +11,18 @@ use rquickjs::{Ctx, Function, Object, Value as JsValue};
 use tokio::sync::Mutex;
 use tracing::{debug, error, info, warn};
 
+/// Callback for sending notifications from plugins to the UI.
+pub type NotifyCallback = Arc<dyn Fn(&str, &str, &str) + Send + Sync>;
+
+/// Callback for requesting a captcha solution from the user.
+/// Args: (plugin_id, download_id, image_url, captcha_type) → Result<answer, error>
+pub type CaptchaSolveCallback =
+    Arc<dyn Fn(String, String, String, String) -> CaptchaFuture + Send + Sync>;
+
+/// Future returned by the captcha solve callback.
+pub type CaptchaFuture =
+    std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>>;
+
 /// Shared state for the Host API, passed into every plugin call.
 #[derive(Clone)]
 pub struct HostApi {
@@ -19,6 +31,8 @@ pub struct HostApi {
     storage: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
     request_count: Arc<Mutex<u32>>,
     max_requests: u32,
+    notify_callback: Option<NotifyCallback>,
+    captcha_callback: Option<CaptchaSolveCallback>,
 }
 
 impl HostApi {
@@ -32,7 +46,19 @@ impl HostApi {
             storage: Arc::new(Mutex::new(HashMap::new())),
             request_count: Arc::new(Mutex::new(0)),
             max_requests,
+            notify_callback: None,
+            captcha_callback: None,
         }
+    }
+
+    /// Set the callback for plugin notifications.
+    pub fn set_notify_callback(&mut self, callback: NotifyCallback) {
+        self.notify_callback = Some(callback);
+    }
+
+    /// Set the callback for captcha solving.
+    pub fn set_captcha_callback(&mut self, callback: CaptchaSolveCallback) {
+        self.captcha_callback = Some(callback);
     }
 
     /// Reset request counter (called before each plugin invocation).
@@ -199,6 +225,93 @@ impl HostApi {
         base64_encode_bytes(input.as_bytes())
     }
 
+    // --- Crypto functions ---
+
+    pub fn md5(&self, input: &str) -> String {
+        use md5::Digest;
+        let mut hasher = md5::Md5::new();
+        hasher.update(input.as_bytes());
+        hex::encode(hasher.finalize())
+    }
+
+    pub fn sha1(&self, input: &str) -> String {
+        use sha1::Digest;
+        let mut hasher = sha1::Sha1::new();
+        hasher.update(input.as_bytes());
+        hex::encode(hasher.finalize())
+    }
+
+    pub fn sha256(&self, input: &str) -> String {
+        use sha2::Digest;
+        let mut hasher = sha2::Sha256::new();
+        hasher.update(input.as_bytes());
+        hex::encode(hasher.finalize())
+    }
+
+    pub fn hmac_sha256(&self, key: &str, data: &str) -> Result<String, String> {
+        use hmac::{Hmac, Mac};
+        type HmacSha256 = Hmac<sha2::Sha256>;
+        let mut mac =
+            HmacSha256::new_from_slice(key.as_bytes()).map_err(|e| format!("HMAC error: {e}"))?;
+        mac.update(data.as_bytes());
+        Ok(hex::encode(mac.finalize().into_bytes()))
+    }
+
+    pub fn aes_decrypt_cbc(&self, data_b64: &str, key_hex: &str, iv_hex: &str) -> Result<String, String> {
+        use aes::cipher::{BlockDecryptMut, KeyIvInit};
+        type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
+
+        let data = base64_decode_bytes(data_b64)?;
+        let key = hex::decode(key_hex).map_err(|e| format!("Invalid key hex: {e}"))?;
+        let iv = hex::decode(iv_hex).map_err(|e| format!("Invalid IV hex: {e}"))?;
+
+        if key.len() != 16 {
+            return Err(format!("AES key must be 16 bytes, got {}", key.len()));
+        }
+        if iv.len() != 16 {
+            return Err(format!("AES IV must be 16 bytes, got {}", iv.len()));
+        }
+
+        let mut buf = data.clone();
+        let decryptor = Aes128CbcDec::new_from_slices(&key, &iv)
+            .map_err(|e| format!("AES init error: {e}"))?;
+        let decrypted = decryptor
+            .decrypt_padded_mut::<aes::cipher::block_padding::Pkcs7>(&mut buf)
+            .map_err(|e| format!("AES decrypt error: {e}"))?;
+
+        Ok(base64_encode_bytes(decrypted))
+    }
+
+    pub fn aes_encrypt_cbc(&self, data_b64: &str, key_hex: &str, iv_hex: &str) -> Result<String, String> {
+        use aes::cipher::{BlockEncryptMut, KeyIvInit};
+        type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
+
+        let data = base64_decode_bytes(data_b64)?;
+        let key = hex::decode(key_hex).map_err(|e| format!("Invalid key hex: {e}"))?;
+        let iv = hex::decode(iv_hex).map_err(|e| format!("Invalid IV hex: {e}"))?;
+
+        if key.len() != 16 {
+            return Err(format!("AES key must be 16 bytes, got {}", key.len()));
+        }
+        if iv.len() != 16 {
+            return Err(format!("AES IV must be 16 bytes, got {}", iv.len()));
+        }
+
+        // Allocate buffer with padding space
+        let block_size = 16;
+        let padded_len = ((data.len() / block_size) + 1) * block_size;
+        let mut buf = vec![0u8; padded_len];
+        buf[..data.len()].copy_from_slice(&data);
+
+        let encryptor = Aes128CbcEnc::new_from_slices(&key, &iv)
+            .map_err(|e| format!("AES init error: {e}"))?;
+        let encrypted = encryptor
+            .encrypt_padded_mut::<aes::cipher::block_padding::Pkcs7>(&mut buf, data.len())
+            .map_err(|e| format!("AES encrypt error: {e}"))?;
+
+        Ok(base64_encode_bytes(encrypted))
+    }
+
     // --- Plugin storage ---
 
     pub async fn storage_get(&self, plugin_id: &str, key: &str) -> Option<String> {
@@ -237,6 +350,39 @@ impl HostApi {
 
     pub fn log_error(&self, plugin_id: &str, msg: &str) {
         error!("[plugin:{plugin_id}] {msg}");
+    }
+
+    // --- Notifications ---
+
+    pub fn notify(&self, plugin_id: &str, title: &str, message: &str) {
+        info!("[plugin:{plugin_id}] notify: {title} — {message}");
+        if let Some(cb) = &self.notify_callback {
+            cb(plugin_id, title, message);
+        }
+    }
+
+    // --- Captcha ---
+
+    pub async fn solve_captcha(
+        &self,
+        plugin_id: &str,
+        download_id: &str,
+        image_url: &str,
+        captcha_type: &str,
+    ) -> Result<String, String> {
+        let cb = self
+            .captcha_callback
+            .as_ref()
+            .ok_or_else(|| "Captcha solving not available (no UI connected)".to_string())?;
+
+        info!("[plugin:{plugin_id}] captcha requested: {captcha_type}");
+        (cb)(
+            plugin_id.to_string(),
+            download_id.to_string(),
+            image_url.to_string(),
+            captcha_type.to_string(),
+        )
+        .await
     }
 
     // --- URL helpers ---
@@ -557,6 +703,11 @@ const JS_SHIM: &str = r#"
         return JSON.parse(a.__rawRegexSplit(pattern, text));
     };
 
+    // Captcha: wraps raw function
+    a.solveCaptcha = function(imageUrl, captchaType) {
+        return a.__rawSolveCaptcha(imageUrl, captchaType || "image");
+    };
+
     // Safe deep property access: amigo.traverse(obj, ["a", "b", "c"]) or amigo.traverse(obj, "a.b.c")
     a.traverse = function(obj, path) {
         if (typeof path === "string") path = path.split(".");
@@ -777,6 +928,75 @@ pub fn register_host_api(
             Function::new(ctx.clone(), move |input: String| -> String {
                 h.base64_encode(&input)
             }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    // --- Crypto ---
+    let h = host.clone();
+    amigo
+        .set(
+            "md5",
+            Function::new(ctx.clone(), move |input: String| -> String { h.md5(&input) }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let h = host.clone();
+    amigo
+        .set(
+            "sha1",
+            Function::new(ctx.clone(), move |input: String| -> String { h.sha1(&input) }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let h = host.clone();
+    amigo
+        .set(
+            "sha256",
+            Function::new(ctx.clone(), move |input: String| -> String {
+                h.sha256(&input)
+            }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let h = host.clone();
+    amigo
+        .set(
+            "hmacSha256",
+            Function::new(
+                ctx.clone(),
+                move |key: String, data: String| -> rquickjs::Result<String> {
+                    h.hmac_sha256(&key, &data)
+                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
+                },
+            ),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let h = host.clone();
+    amigo
+        .set(
+            "aesDecryptCbc",
+            Function::new(
+                ctx.clone(),
+                move |data: String, key: String, iv: String| -> rquickjs::Result<String> {
+                    h.aes_decrypt_cbc(&data, &key, &iv)
+                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
+                },
+            ),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let h = host.clone();
+    amigo
+        .set(
+            "aesEncryptCbc",
+            Function::new(
+                ctx.clone(),
+                move |data: String, key: String, iv: String| -> rquickjs::Result<String> {
+                    h.aes_encrypt_cbc(&data, &key, &iv)
+                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
+                },
+            ),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
@@ -1071,6 +1291,42 @@ pub fn register_host_api(
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
+    // --- Notifications ---
+    let pid = plugin_id.to_string();
+    let h = host.clone();
+    amigo
+        .set(
+            "notify",
+            Function::new(ctx.clone(), move |title: String, message: String| {
+                h.notify(&pid, &title, &message);
+            }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    // --- Captcha ---
+    let pid = plugin_id.to_string();
+    let h = host.clone();
+    amigo
+        .set(
+            "__rawSolveCaptcha",
+            Function::new(
+                ctx.clone(),
+                move |image_url: String,
+                      captcha_type: Option<String>|
+                      -> rquickjs::Result<String> {
+                    let h = h.clone();
+                    let pid = pid.clone();
+                    let ct = captcha_type.unwrap_or_else(|| "image".to_string());
+                    let rt = tokio::runtime::Handle::current();
+                    let result = rt.block_on(async {
+                        h.solve_captcha(&pid, "", &image_url, &ct).await
+                    });
+                    result.map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
+                },
+            ),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
     // --- Console bridge ---
     let console = Object::new(ctx.clone())
         .map_err(|e| crate::Error::Execution(format!("Failed to create console: {e}")))?;
@@ -1227,5 +1483,102 @@ mod tests {
         );
         api.storage_delete("test-plugin", "key1").await;
         assert_eq!(api.storage_get("test-plugin", "key1").await, None);
+    }
+
+    #[test]
+    fn test_md5() {
+        let api = HostApi::new(20);
+        assert_eq!(api.md5("hello"), "5d41402abc4b2a76b9719d911017c592");
+        assert_eq!(api.md5(""), "d41d8cd98f00b204e9800998ecf8427e");
+    }
+
+    #[test]
+    fn test_sha1() {
+        let api = HostApi::new(20);
+        assert_eq!(api.sha1("hello"), "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d");
+    }
+
+    #[test]
+    fn test_sha256() {
+        let api = HostApi::new(20);
+        assert_eq!(
+            api.sha256("hello"),
+            "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+        );
+    }
+
+    #[test]
+    fn test_hmac_sha256() {
+        let api = HostApi::new(20);
+        let result = api.hmac_sha256("key", "hello").unwrap();
+        assert_eq!(
+            result,
+            "9307b3b915efb5171ff14d8cb55fbcc798c6c0ef1456d66ded1a6aa723a58b7b"
+        );
+    }
+
+    #[test]
+    fn test_aes_cbc_roundtrip() {
+        let api = HostApi::new(20);
+        let key = "00112233445566778899aabbccddeeff";
+        let iv = "00112233445566778899aabbccddeeff";
+        let plaintext_b64 = api.base64_encode("Hello AES-CBC!");
+
+        let encrypted = api.aes_encrypt_cbc(&plaintext_b64, key, iv).unwrap();
+        let decrypted_b64 = api.aes_decrypt_cbc(&encrypted, key, iv).unwrap();
+        let decrypted = api.base64_decode(&decrypted_b64).unwrap();
+
+        assert_eq!(decrypted, "Hello AES-CBC!");
+    }
+
+    #[test]
+    fn test_sanitize_filename() {
+        let api = HostApi::new(20);
+        assert_eq!(
+            api.sanitize_filename("My Video: \"Best\" <2024>"),
+            "My Video_ _Best_ _2024_"
+        );
+        assert_eq!(api.sanitize_filename("..."), "download");
+        assert_eq!(api.sanitize_filename("normal.txt"), "normal.txt");
+    }
+
+    #[test]
+    fn test_parse_duration() {
+        let api = HostApi::new(20);
+        assert_eq!(api.parse_duration("1:23:45"), Some(5025.0));
+        assert_eq!(api.parse_duration("12:34"), Some(754.0));
+        assert_eq!(api.parse_duration("PT1H23M45S"), Some(5025.0));
+        assert_eq!(api.parse_duration("PT2H30M"), Some(9000.0));
+    }
+
+    #[test]
+    fn test_url_helpers() {
+        let api = HostApi::new(20);
+        assert_eq!(
+            api.url_resolve("https://example.com/page/", "../file.zip").unwrap(),
+            "https://example.com/file.zip"
+        );
+        assert_eq!(
+            api.url_filename("https://cdn.example.com/files/doc%20v2.pdf?token=abc"),
+            Some("doc v2.pdf".to_string())
+        );
+    }
+
+    #[test]
+    fn test_html_helpers() {
+        let api = HostApi::new(20);
+        let html = r#"<html><head><title>Test Page</title>
+            <meta property="og:title" content="OG Title">
+            </head><body><a href="/file.zip">Download</a></body></html>"#;
+
+        assert_eq!(api.html_extract_title(html), Some("Test Page".to_string()));
+        assert_eq!(
+            api.html_search_meta(html, &["og:title".to_string()]),
+            Some("OG Title".to_string())
+        );
+        assert_eq!(
+            api.html_query_attr(html, "a", "href").unwrap(),
+            Some("/file.zip".to_string())
+        );
     }
 }

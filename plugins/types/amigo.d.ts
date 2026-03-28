@@ -198,6 +198,32 @@ declare const amigo: {
     base64Decode(input: string): string;
     base64Encode(input: string): string;
 
+    // ── Crypto ──
+
+    /** MD5 hash, returns hex-encoded string. */
+    md5(input: string): string;
+    /** SHA-1 hash, returns hex-encoded string. */
+    sha1(input: string): string;
+    /** SHA-256 hash, returns hex-encoded string. */
+    sha256(input: string): string;
+    /** HMAC-SHA256, returns hex-encoded string. */
+    hmacSha256(key: string, data: string): string;
+    /** AES-128-CBC decrypt. Data and result are base64-encoded, key and IV are hex-encoded. */
+    aesDecryptCbc(data: string, key: string, iv: string): string;
+    /** AES-128-CBC encrypt. Data and result are base64-encoded, key and IV are hex-encoded. */
+    aesEncryptCbc(data: string, key: string, iv: string): string;
+
+    // ── Captcha ──
+
+    /** Request manual captcha solving via the Web UI. Blocks until the user solves it or timeout.
+     *  Returns the captcha solution text. Throws on timeout or cancellation. */
+    solveCaptcha(imageUrl: string, captchaType?: "image" | "recaptcha" | "hcaptcha"): string;
+
+    // ── Notifications ──
+
+    /** Send a notification to the Web UI (shows as a toast). */
+    notify(title: string, message: string): void;
+
     // ── Utility ──
 
     /** Parse a duration string into seconds. Supports "1:23:45", "12:34", and ISO 8601 "PT1H23M45S". */

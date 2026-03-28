@@ -16,8 +16,9 @@ use crate::protocol::http::{DownloadProgress, HttpDownloader};
 use crate::queue::QueueStatus;
 use crate::storage::{DownloadRow, Storage};
 
-/// Events broadcast to subscribers (WebSocket clients, etc.)
-#[derive(Debug, Clone)]
+/// Events broadcast to subscribers (WebSocket clients, webhooks, etc.)
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
 pub enum DownloadEvent {
     Added {
         id: String,
@@ -41,6 +42,30 @@ pub enum DownloadEvent {
     Removed {
         id: String,
     },
+    /// Plugin-triggered notification for the UI.
+    PluginNotification {
+        plugin_id: String,
+        title: String,
+        message: String,
+    },
+    /// Captcha challenge that needs manual solving via the UI.
+    CaptchaChallenge {
+        id: String,
+        plugin_id: String,
+        download_id: String,
+        image_url: String,
+        captcha_type: String,
+    },
+    /// Captcha was solved by the user.
+    CaptchaSolved {
+        id: String,
+    },
+    /// Captcha timed out without being solved.
+    CaptchaTimeout {
+        id: String,
+    },
+    /// All queued downloads are complete (queue empty).
+    QueueEmpty,
 }
 
 /// Tracks an active download task.

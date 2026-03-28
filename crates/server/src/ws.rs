@@ -6,7 +6,6 @@ use axum::{
     response::Response,
     routing::get,
 };
-use serde::Serialize;
 use tracing::{debug, warn};
 
 use amigo_core::coordinator::DownloadEvent;
@@ -30,46 +29,8 @@ async fn handle_socket(mut socket: axum::extract::ws::WebSocket, state: AppState
     loop {
         match rx.recv().await {
             Ok(event) => {
-                let msg = match &event {
-                    DownloadEvent::Added { id, url } => serde_json::to_string(&WsMessage {
-                        event_type: "added",
-                        id,
-                        data: serde_json::json!({ "url": url }),
-                    }),
-                    DownloadEvent::Progress { id, progress } => serde_json::to_string(&WsMessage {
-                        event_type: "progress",
-                        id,
-                        data: serde_json::json!({
-                            "bytes_downloaded": progress.bytes_downloaded,
-                            "total_bytes": progress.total_bytes,
-                            "speed": progress.speed_bytes_per_sec,
-                        }),
-                    }),
-                    DownloadEvent::StatusChanged { id, status } => {
-                        serde_json::to_string(&WsMessage {
-                            event_type: "status",
-                            id,
-                            data: serde_json::json!({ "status": status }),
-                        })
-                    }
-                    DownloadEvent::Completed { id } => serde_json::to_string(&WsMessage {
-                        event_type: "completed",
-                        id,
-                        data: serde_json::json!({}),
-                    }),
-                    DownloadEvent::Failed { id, error } => serde_json::to_string(&WsMessage {
-                        event_type: "failed",
-                        id,
-                        data: serde_json::json!({ "error": error }),
-                    }),
-                    DownloadEvent::Removed { id } => serde_json::to_string(&WsMessage {
-                        event_type: "removed",
-                        id,
-                        data: serde_json::json!({}),
-                    }),
-                };
-
-                if let Ok(json) = msg {
+                // DownloadEvent derives Serialize with tag="type", so we can serialize directly
+                if let Ok(json) = serde_json::to_string(&event) {
                     if socket.send(Message::Text(json.into())).await.is_err() {
                         break;
                     }
@@ -83,12 +44,4 @@ async fn handle_socket(mut socket: axum::extract::ws::WebSocket, state: AppState
     }
 
     debug!("WebSocket client disconnected");
-}
-
-#[derive(Serialize)]
-struct WsMessage<'a> {
-    #[serde(rename = "type")]
-    event_type: &'a str,
-    id: &'a str,
-    data: serde_json::Value,
 }
