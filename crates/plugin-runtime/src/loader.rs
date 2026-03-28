@@ -48,33 +48,35 @@ impl PluginLoader {
         }
     }
 
-    /// Scan plugin directory and load all .js/.ts files.
+    /// Scan plugin directory and load all plugins.
+    /// Each plugin lives in its own folder with a `plugin.ts` or `plugin.js` entry point.
     pub async fn discover(&self) -> Result<Vec<PluginMeta>, crate::Error> {
         let mut metas = Vec::new();
 
-        // Scan hosters/ subdirectory
-        let hosters_dir = self.plugin_dir.join("hosters");
-        if hosters_dir.is_dir() {
-            metas.extend(self.scan_dir(&hosters_dir).await?);
-        }
-
-        // Also scan root plugin dir
-        metas.extend(self.scan_dir(&self.plugin_dir).await?);
-
-        info!("Discovered {} plugins", metas.len());
-        Ok(metas)
-    }
-
-    async fn scan_dir(&self, dir: &Path) -> Result<Vec<PluginMeta>, crate::Error> {
-        let mut metas = Vec::new();
-        let entries = match std::fs::read_dir(dir) {
+        let entries = match std::fs::read_dir(&self.plugin_dir) {
             Ok(e) => e,
             Err(_) => return Ok(metas),
         };
 
         for entry in entries.flatten() {
-            let path = entry.path();
-            if is_plugin_file(&path) {
+            let dir = entry.path();
+            if !dir.is_dir() {
+                continue;
+            }
+
+            // Skip non-plugin directories (types, template, etc.)
+            let dir_name = dir.file_name().and_then(|s| s.to_str()).unwrap_or("");
+            if dir_name == "types" || dir_name == "template" {
+                continue;
+            }
+
+            // Look for plugin.ts or plugin.js
+            let plugin_file = ["plugin.ts", "plugin.js"]
+                .iter()
+                .map(|f| dir.join(f))
+                .find(|p| p.exists());
+
+            if let Some(path) = plugin_file {
                 match self.load_plugin(&path).await {
                     Ok(meta) => {
                         info!("Loaded plugin: {} ({})", meta.name, meta.id);
@@ -87,6 +89,7 @@ impl PluginLoader {
             }
         }
 
+        info!("Discovered {} plugins", metas.len());
         Ok(metas)
     }
 
@@ -302,20 +305,17 @@ var __plugin_exports = module.exports;
             .ok_or_else(|| crate::Error::NotFound(plugin_id.to_string()))?;
 
         let plugin_path = PathBuf::from(&plugin.meta.file_path);
-        let stem = plugin_path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("");
         let dir = plugin_path.parent().unwrap_or(Path::new("."));
 
-        // Look for spec file
-        let spec_path = ["spec.ts", "spec.js"]
+        // Look for plugin.spec.ts or plugin.spec.js in the same directory
+        let spec_path = ["plugin.spec.ts", "plugin.spec.js"]
             .iter()
-            .map(|ext| dir.join(format!("{stem}.{ext}")))
+            .map(|f| dir.join(f))
             .find(|p| p.exists())
             .ok_or_else(|| {
                 crate::Error::NotFound(format!(
-                    "No spec file found for plugin {plugin_id} (expected {stem}.spec.ts or {stem}.spec.js)"
+                    "No spec file found for plugin {plugin_id} (expected plugin.spec.ts or plugin.spec.js in {})",
+                    dir.display()
                 ))
             })?;
 
@@ -341,26 +341,18 @@ var __plugin_exports = module.exports;
     }
 }
 
-/// Check if a file is a JavaScript or TypeScript plugin.
-fn is_plugin_file(path: &Path) -> bool {
-    matches!(
-        path.extension().and_then(|e| e.to_str()),
-        Some("js") | Some("ts") | Some("mjs") | Some("mts")
-    )
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[tokio::test]
     async fn test_load_and_match_js_plugin() {
-        let dir = std::env::temp_dir().join("amigo-test-plugins-js");
-        let hosters = dir.join("hosters");
-        std::fs::create_dir_all(&hosters).unwrap();
+        let dir = std::env::temp_dir().join("amigo-test-plugins-js2");
+        let plugin_dir = dir.join("test-hoster");
+        std::fs::create_dir_all(&plugin_dir).unwrap();
 
         std::fs::write(
-            hosters.join("test_hoster.js"),
+            plugin_dir.join("plugin.js"),
             r#"
 module.exports = {
     id: "test-hoster",
@@ -390,18 +382,17 @@ module.exports = {
         let no_match = loader.match_url("https://other-site.com/file.zip").await;
         assert!(no_match.is_none());
 
-        // Cleanup
         std::fs::remove_dir_all(&dir).ok();
     }
 
     #[tokio::test]
     async fn test_load_typescript_plugin() {
-        let dir = std::env::temp_dir().join("amigo-test-plugins-ts");
-        let hosters = dir.join("hosters");
-        std::fs::create_dir_all(&hosters).unwrap();
+        let dir = std::env::temp_dir().join("amigo-test-plugins-ts2");
+        let plugin_dir = dir.join("ts-hoster");
+        std::fs::create_dir_all(&plugin_dir).unwrap();
 
         std::fs::write(
-            hosters.join("test_hoster.ts"),
+            plugin_dir.join("plugin.ts"),
             r#"
 module.exports = {
     id: "ts-hoster",
