@@ -6,7 +6,12 @@
 use std::sync::Arc;
 use std::time::Instant;
 
-use axum::{Json, Router, extract::State, http::StatusCode, routing::{get, post}};
+use axum::{
+    Json, Router,
+    extract::State,
+    http::StatusCode,
+    routing::{get, post},
+};
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
@@ -131,13 +136,21 @@ type FeedbackState = (AppState, Arc<Mutex<RateLimiter>>);
 
 // --- Handlers ---
 
-async fn system_info(
-    State((state, _)): State<FeedbackState>,
-) -> Json<SystemInfoResponse> {
+async fn system_info(State((state, _)): State<FeedbackState>) -> Json<SystemInfoResponse> {
     let config = state.coordinator.config();
     let active = state.coordinator.active_count().await;
-    let queued = state.coordinator.storage().count_by_status(QueueStatus::Queued).await.unwrap_or(0);
-    let completed = state.coordinator.storage().count_by_status(QueueStatus::Completed).await.unwrap_or(0);
+    let queued = state
+        .coordinator
+        .storage()
+        .count_by_status(QueueStatus::Queued)
+        .await
+        .unwrap_or(0);
+    let completed = state
+        .coordinator
+        .storage()
+        .count_by_status(QueueStatus::Completed)
+        .await
+        .unwrap_or(0);
     let plugins = state.plugins.list_plugins().await;
 
     Json(SystemInfoResponse {
@@ -182,7 +195,10 @@ async fn submit_feedback(
             return Err((
                 StatusCode::TOO_MANY_REQUESTS,
                 Json(ErrorResponse {
-                    error: format!("Rate limit exceeded. Max {} issues per hour.", config.feedback.max_issues_per_hour),
+                    error: format!(
+                        "Rate limit exceeded. Max {} issues per hour.",
+                        config.feedback.max_issues_per_hour
+                    ),
                 }),
             ));
         }
@@ -193,7 +209,9 @@ async fn submit_feedback(
     if title.is_empty() || title.len() > 200 {
         return Err((
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse { error: "Title must be 1-200 characters.".into() }),
+            Json(ErrorResponse {
+                error: "Title must be 1-200 characters.".into(),
+            }),
         ));
     }
 
@@ -221,8 +239,16 @@ async fn submit_feedback(
             std::env::consts::ARCH,
             active,
             config.max_concurrent_downloads,
-            if config.bandwidth.global_limit == 0 { "unlimited".into() } else { format!("{} B/s", config.bandwidth.global_limit) },
-            if plugin_names.is_empty() { "none".into() } else { plugin_names.join(", ") },
+            if config.bandwidth.global_limit == 0 {
+                "unlimited".into()
+            } else {
+                format!("{} B/s", config.bandwidth.global_limit)
+            },
+            if plugin_names.is_empty() {
+                "none".into()
+            } else {
+                plugin_names.join(", ")
+            },
         ));
     }
 
@@ -263,7 +289,11 @@ async fn submit_feedback(
             ctx.error_message.as_deref().unwrap_or("").hash(&mut hasher);
             // Only hash the host part of the URL, not the full path
             if let Some(ref url) = ctx.url {
-                let host = url.split("//").nth(1).and_then(|s| s.split('/').next()).unwrap_or("");
+                let host = url
+                    .split("//")
+                    .nth(1)
+                    .and_then(|s| s.split('/').next())
+                    .unwrap_or("");
                 host.hash(&mut hasher);
             }
         }
@@ -321,7 +351,9 @@ async fn submit_feedback(
             error!("GitHub API request failed: {e}");
             (
                 StatusCode::BAD_GATEWAY,
-                Json(ErrorResponse { error: format!("GitHub API error: {e}") }),
+                Json(ErrorResponse {
+                    error: format!("GitHub API error: {e}"),
+                }),
             )
         })?;
 
@@ -341,11 +373,16 @@ async fn submit_feedback(
         error!("Failed to parse GitHub response: {e}");
         (
             StatusCode::BAD_GATEWAY,
-            Json(ErrorResponse { error: "Failed to parse GitHub response".into() }),
+            Json(ErrorResponse {
+                error: "Failed to parse GitHub response".into(),
+            }),
         )
     })?;
 
-    info!("Created GitHub issue #{}: {}", gh_issue.number, gh_issue.html_url);
+    info!(
+        "Created GitHub issue #{}: {}",
+        gh_issue.number, gh_issue.html_url
+    );
 
     Ok((
         StatusCode::CREATED,
@@ -450,7 +487,11 @@ mod tests {
         fn make_hash(error: &str, url: &str, title: &str) -> String {
             let mut hasher = DefaultHasher::new();
             error.hash(&mut hasher);
-            let host = url.split("//").nth(1).and_then(|s| s.split('/').next()).unwrap_or("");
+            let host = url
+                .split("//")
+                .nth(1)
+                .and_then(|s| s.split('/').next())
+                .unwrap_or("");
             host.hash(&mut hasher);
             title.hash(&mut hasher);
             "0.1.0".hash(&mut hasher);
@@ -464,10 +505,20 @@ mod tests {
 
         // Same error + different host = different hash
         let h3 = make_hash("timeout", "https://other.com/file1.zip", "timeout");
-        assert_ne!(h1, h3, "Same error on different host should produce different hash");
+        assert_ne!(
+            h1, h3,
+            "Same error on different host should produce different hash"
+        );
 
         // Different error + same host = different hash
-        let h4 = make_hash("connection reset", "https://example.com/file1.zip", "connection reset");
-        assert_ne!(h1, h4, "Different error on same host should produce different hash");
+        let h4 = make_hash(
+            "connection reset",
+            "https://example.com/file1.zip",
+            "connection reset",
+        );
+        assert_ne!(
+            h1, h4,
+            "Different error on same host should produce different hash"
+        );
     }
 }

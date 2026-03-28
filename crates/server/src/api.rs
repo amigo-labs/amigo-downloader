@@ -44,6 +44,7 @@ pub fn router(state: AppState) -> Router {
         // Plugin endpoints
         .route("/api/v1/plugins", get(list_plugins))
         .route("/api/v1/plugins/{id}", patch(update_plugin))
+        .route("/api/v1/plugins/suggest", post(suggest_plugin))
         .with_state(state)
 }
 
@@ -135,8 +136,18 @@ async fn status() -> Json<StatusResponse> {
 async fn stats(State(state): State<AppState>) -> Json<StatsResponse> {
     let active = state.coordinator.active_count().await;
     let speed = state.coordinator.total_speed().await;
-    let queued = state.coordinator.storage().count_by_status(QueueStatus::Queued).await.unwrap_or(0);
-    let completed = state.coordinator.storage().count_by_status(QueueStatus::Completed).await.unwrap_or(0);
+    let queued = state
+        .coordinator
+        .storage()
+        .count_by_status(QueueStatus::Queued)
+        .await
+        .unwrap_or(0);
+    let completed = state
+        .coordinator
+        .storage()
+        .count_by_status(QueueStatus::Completed)
+        .await
+        .unwrap_or(0);
 
     Json(StatsResponse {
         active_downloads: active,
@@ -154,7 +165,9 @@ async fn add_download(
         Ok(id) => Ok((StatusCode::CREATED, Json(AddResponse { id }))),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
         )),
     }
 }
@@ -170,8 +183,10 @@ async fn add_batch(
             Err(e) => {
                 return Err((
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse { error: e.to_string() }),
-                ))
+                    Json(ErrorResponse {
+                        error: e.to_string(),
+                    }),
+                ));
             }
         }
     }
@@ -179,7 +194,12 @@ async fn add_batch(
 }
 
 async fn list_downloads(State(state): State<AppState>) -> Json<Vec<DownloadResponse>> {
-    let rows = state.coordinator.storage().list_downloads().await.unwrap_or_default();
+    let rows = state
+        .coordinator
+        .storage()
+        .list_downloads()
+        .await
+        .unwrap_or_default();
     Json(rows.into_iter().map(row_to_response).collect())
 }
 
@@ -201,17 +221,23 @@ async fn update_download(
     let result = match req.action.as_str() {
         "pause" => state.coordinator.pause(&id).await,
         "resume" => state.coordinator.resume(&id).await,
-        _ => return Err((
-            StatusCode::BAD_REQUEST,
-            Json(ErrorResponse { error: "Invalid action. Use 'pause' or 'resume'.".into() }),
-        )),
+        _ => {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: "Invalid action. Use 'pause' or 'resume'.".into(),
+                }),
+            ));
+        }
     };
 
     match result {
         Ok(()) => Ok(StatusCode::OK),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
         )),
     }
 }
@@ -224,7 +250,9 @@ async fn delete_download(
         Ok(()) => Ok(StatusCode::NO_CONTENT),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
         )),
     }
 }
@@ -240,7 +268,12 @@ async fn get_queue(State(state): State<AppState>) -> Json<Vec<DownloadResponse>>
 }
 
 async fn get_history(State(state): State<AppState>) -> Json<Vec<DownloadResponse>> {
-    let rows = state.coordinator.storage().get_history().await.unwrap_or_default();
+    let rows = state
+        .coordinator
+        .storage()
+        .get_history()
+        .await
+        .unwrap_or_default();
     Json(rows.into_iter().map(row_to_response).collect())
 }
 
@@ -268,18 +301,59 @@ async fn update_plugin(
     Json(req): Json<UpdatePluginRequest>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
     if let Some(enabled) = req.enabled {
-        state
-            .plugins
-            .set_enabled(&id, enabled)
-            .await
-            .map_err(|e| {
-                (
-                    StatusCode::NOT_FOUND,
-                    Json(ErrorResponse { error: e.to_string() }),
-                )
-            })?;
+        state.plugins.set_enabled(&id, enabled).await.map_err(|e| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
     }
     Ok(StatusCode::OK)
+}
+
+// --- Plugin suggestion ---
+
+#[derive(Deserialize)]
+struct SuggestPluginRequest {
+    url: String,
+}
+
+#[derive(Serialize)]
+struct SuggestPluginResponse {
+    found: bool,
+    plugin_id: Option<String>,
+    plugin_name: Option<String>,
+    install_command: Option<String>,
+}
+
+async fn suggest_plugin(
+    State(state): State<AppState>,
+    Json(req): Json<SuggestPluginRequest>,
+) -> Json<SuggestPluginResponse> {
+    let config = amigo_plugin_runtime::registry::RegistryConfig::default();
+    let index = amigo_plugin_runtime::registry::load_index(&state.http_client, &config).await;
+
+    if let Ok(index) = index {
+        if let Some(plugin) =
+            amigo_plugin_runtime::registry::suggest_plugin_for_url(&index, &req.url)
+        {
+            return Json(SuggestPluginResponse {
+                found: true,
+                plugin_id: Some(plugin.id.clone()),
+                plugin_name: Some(plugin.name.clone()),
+                install_command: Some(format!("amigo-dl plugins install {}", plugin.id)),
+            });
+        }
+    }
+
+    Json(SuggestPluginResponse {
+        found: false,
+        plugin_id: None,
+        plugin_name: None,
+        install_command: None,
+    })
 }
 
 // --- Usenet handlers ---
@@ -320,16 +394,24 @@ async fn upload_nzb(
     amigo_core::protocol::usenet::nzb::parse_nzb(&req.nzb_data).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
-            Json(ErrorResponse { error: format!("Invalid NZB: {e}") }),
+            Json(ErrorResponse {
+                error: format!("Invalid NZB: {e}"),
+            }),
         )
     })?;
 
     // Add as a download with usenet protocol
-    match state.coordinator.add_download("nzb://upload", Some("nzb-import".into())).await {
+    match state
+        .coordinator
+        .add_download("nzb://upload", Some("nzb-import".into()))
+        .await
+    {
         Ok(id) => Ok((StatusCode::CREATED, Json(AddResponse { id }))),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
         )),
     }
 }
@@ -345,7 +427,9 @@ async fn add_usenet_server(
     // TODO: Persist to config/database
     Err((
         StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse { error: "Not yet implemented".into() }),
+        Json(ErrorResponse {
+            error: "Not yet implemented".into(),
+        }),
     ))
 }
 
@@ -355,7 +439,9 @@ async fn delete_usenet_server(
     // TODO: Remove from config/database
     Err((
         StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse { error: "Not yet implemented".into() }),
+        Json(ErrorResponse {
+            error: "Not yet implemented".into(),
+        }),
     ))
 }
 

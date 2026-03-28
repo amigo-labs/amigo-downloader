@@ -43,7 +43,11 @@ async fn flash_add(
     State(coord): State<Arc<Coordinator>>,
     body: String,
 ) -> Result<StatusCode, StatusCode> {
-    let urls: Vec<&str> = body.lines().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+    let urls: Vec<&str> = body
+        .lines()
+        .map(|l| l.trim())
+        .filter(|l| !l.is_empty())
+        .collect();
     info!("Click'n'Load: received {} links", urls.len());
 
     for url in urls {

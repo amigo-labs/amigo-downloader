@@ -362,22 +362,28 @@ WS     /api/v1/ws
 ## CLI
 
 ```bash
-amigo add <URL>
-amigo add --nzb <file.nzb>
-amigo add --torrent <file.torrent>
-amigo add --magnet "<magnet:?...>"
-amigo add --dlc <file.dlc>              # DLC Import
-amigo export-dlc [--ids <id1,id2,...>]   # DLC Export
-amigo list / pause / resume / cancel / queue / status / speed
-amigo config get/set <key> <value>
-amigo plugins list / enable / login
-amigo serve [--port 8080 --bind 0.0.0.0]
+# Direct download — just pass URLs (like yt-dlp)
+amigo-dl <URL> [URL...]
+amigo-dl <URL> -o ./downloads --chunks 8
+
+# Queue-based (adds to DB, used with server)
+amigo-dl add <URL>
+amigo-dl add --nzb <file.nzb>
+amigo-dl add --torrent <file.torrent>
+amigo-dl add --magnet "<magnet:?...>"
+amigo-dl add --dlc <file.dlc>              # DLC Import
+amigo-dl export-dlc [--ids <id1,id2,...>]   # DLC Export
+amigo-dl list / pause / resume / cancel / queue / status / speed
+amigo-dl config get/set <key> <value>
+amigo-dl plugins list / enable / login
+amigo-dl serve [--port 8080 --bind 0.0.0.0]
 ```
 
 ---
 
 ## Coding-Konventionen
 
+- **Language**: All code, comments, commit messages, variable names, docs — **English only**
 - **Rust**: `cargo fmt` + `cargo clippy` (deny warnings), Rust 2024 Edition
 - **Error Handling**: `thiserror` für Library-Errors, `anyhow` nur in Binaries
 - **Async**: Alles async wo I/O involviert. Keine `block_on` im Core.

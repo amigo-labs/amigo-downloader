@@ -38,7 +38,11 @@ fn b64_decode(input: &str) -> Result<Vec<u8>, crate::Error> {
     let input = input.as_bytes();
     let mut buf = Vec::new();
 
-    let filtered: Vec<u8> = input.iter().copied().filter(|&c| c != b'=' && c != b'\n' && c != b'\r' && c != b' ').collect();
+    let filtered: Vec<u8> = input
+        .iter()
+        .copied()
+        .filter(|&c| c != b'=' && c != b'\n' && c != b'\r' && c != b' ')
+        .collect();
 
     for chunk in filtered.chunks(4) {
         let vals: Vec<u8> = chunk
@@ -105,8 +109,7 @@ fn parse_dlc_xml(xml: &str) -> Result<Vec<ContainerPackage>, crate::Error> {
         let abs_start = pos + pkg_start;
 
         // Extract package name
-        let name = extract_attr(&xml[abs_start..], "name")
-            .unwrap_or_else(|| "Default".to_string());
+        let name = extract_attr(&xml[abs_start..], "name").unwrap_or_else(|| "Default".to_string());
 
         let pkg_end = xml[abs_start..]
             .find("</package>")
@@ -133,8 +136,8 @@ fn parse_dlc_xml(xml: &str) -> Result<Vec<ContainerPackage>, crate::Error> {
                 let filename = extract_tag(file_content, "filename")
                     .and_then(|f| String::from_utf8(b64_decode(&f).ok()?).ok());
 
-                let filesize = extract_tag(file_content, "size")
-                    .and_then(|s| s.parse::<u64>().ok());
+                let filesize =
+                    extract_tag(file_content, "size").and_then(|s| s.parse::<u64>().ok());
 
                 links.push(ContainerLink {
                     url,
@@ -171,9 +174,13 @@ fn parse_dlc_xml(xml: &str) -> Result<Vec<ContainerPackage>, crate::Error> {
                     if let Ok(url) = String::from_utf8(url_bytes) {
                         let filename = extract_tag(file_content, "filename")
                             .and_then(|f| String::from_utf8(b64_decode(&f).ok()?).ok());
-                        let filesize = extract_tag(file_content, "size")
-                            .and_then(|s| s.parse::<u64>().ok());
-                        links.push(ContainerLink { url, filename, filesize });
+                        let filesize =
+                            extract_tag(file_content, "size").and_then(|s| s.parse::<u64>().ok());
+                        links.push(ContainerLink {
+                            url,
+                            filename,
+                            filesize,
+                        });
                     }
                 }
             }
@@ -197,10 +204,7 @@ fn generate_dlc_xml(packages: &[ContainerPackage]) -> String {
     let mut xml = String::from("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<dlc>\n<content>\n");
 
     for pkg in packages {
-        xml.push_str(&format!(
-            "<package name=\"{}\">\n",
-            escape_xml(&pkg.name)
-        ));
+        xml.push_str(&format!("<package name=\"{}\">\n", escape_xml(&pkg.name)));
         for link in &pkg.links {
             xml.push_str("<file>\n");
             xml.push_str(&format!("<url>{}</url>\n", b64_encode(link.url.as_bytes())));
@@ -266,7 +270,9 @@ pub fn import_ccf(_data: &[u8]) -> Result<Vec<ContainerPackage>, crate::Error> {
 
 /// Import an RSDF container (legacy format, stub).
 pub fn import_rsdf(_data: &[u8]) -> Result<Vec<ContainerPackage>, crate::Error> {
-    Err(crate::Error::Other("RSDF import not yet implemented".into()))
+    Err(crate::Error::Other(
+        "RSDF import not yet implemented".into(),
+    ))
 }
 
 // --- Helpers ---

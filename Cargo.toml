@@ -2,6 +2,7 @@
 resolver = "3"
 members = [
     "crates/core",
+    "crates/extractors",
     "crates/plugin-runtime",
     "crates/server",
     "crates/cli",
@@ -45,6 +46,7 @@ tower-http = { version = "0.6", features = ["cors", "fs"] }
 
 # CLI
 clap = { version = "4", features = ["derive"] }
+indicatif = "0.17"
 
 # UUID
 uuid = { version = "1", features = ["v4", "serde"] }
@@ -62,6 +64,17 @@ hex = "0.4"
 self-replace = "1"
 tempfile = "3"
 
+# Async trait
+async-trait = "0.1"
+
+# JS runtime for YouTube N-parameter challenge
+rquickjs = { version = "0.9", features = ["bindgen", "parallel"] }
+
+# HLS/DASH manifest parsing
+m3u8-rs = "6"
+dash-mpd = "0.17"
+
 # Internal crates
 amigo-core = { path = "crates/core" }
+amigo-extractors = { path = "crates/extractors" }
 amigo-plugin-runtime = { path = "crates/plugin-runtime" }

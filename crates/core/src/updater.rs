@@ -95,7 +95,8 @@ pub async fn check_for_update(
 
     let latest_tag = release.tag_name.trim_start_matches('v');
 
-    let current = semver::Version::parse(CURRENT_VERSION).unwrap_or_else(|_| semver::Version::new(0, 0, 0));
+    let current =
+        semver::Version::parse(CURRENT_VERSION).unwrap_or_else(|_| semver::Version::new(0, 0, 0));
     let latest = match semver::Version::parse(latest_tag) {
         Ok(v) => v,
         Err(_) => {
@@ -109,10 +110,16 @@ pub async fn check_for_update(
         let can_self_update = dist == Distribution::Cli || dist == Distribution::Server;
 
         let asset = select_asset(&release);
-        let download_url = asset.map(|a| a.browser_download_url.clone()).unwrap_or_default();
+        let download_url = asset
+            .map(|a| a.browser_download_url.clone())
+            .unwrap_or_default();
         let sha256_url = asset.and_then(|a| {
             let sha_name = format!("{}.sha256", a.name);
-            release.assets.iter().find(|x| x.name == sha_name).map(|x| x.browser_download_url.clone())
+            release
+                .assets
+                .iter()
+                .find(|x| x.name == sha_name)
+                .map(|x| x.browser_download_url.clone())
         });
 
         info!("Update available: {CURRENT_VERSION} → {latest_tag}");
@@ -138,7 +145,10 @@ pub fn select_asset(release: &ReleaseInfo) -> Option<&ReleaseAsset> {
     let target = format!("amigo-server-{os}-{arch}");
     debug!("Looking for asset matching: {target}");
 
-    release.assets.iter().find(|a| a.name.starts_with(&target) && !a.name.ends_with(".sha256"))
+    release
+        .assets
+        .iter()
+        .find(|a| a.name.starts_with(&target) && !a.name.ends_with(".sha256"))
 }
 
 /// Download a release asset and verify its SHA256 checksum.
@@ -173,7 +183,12 @@ pub async fn download_and_verify(
             .await
             .map_err(|e| crate::Error::Update(format!("Checksum read failed: {e}")))?;
 
-        let expected = expected.trim().split_whitespace().next().unwrap_or("").to_lowercase();
+        let expected = expected
+            .trim()
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_lowercase();
 
         let mut hasher = Sha256::new();
         hasher.update(&bytes);
@@ -190,7 +205,9 @@ pub async fn download_and_verify(
         .map_err(|e| crate::Error::Update(format!("Temp file error: {e}")))?;
     std::fs::write(tmp.path(), &bytes)?;
 
-    let path = tmp.into_temp_path().keep()
+    let path = tmp
+        .into_temp_path()
+        .keep()
         .map_err(|e| crate::Error::Update(format!("Temp file persist error: {e}")))?;
 
     Ok(path)
@@ -206,7 +223,7 @@ pub fn apply_update(new_binary: &std::path::Path) -> Result<(), crate::Error> {
         Distribution::Tauri => {
             return Err(crate::Error::Update(
                 "Tauri updates are handled by the Tauri updater plugin".into(),
-            ))
+            ));
         }
         _ => {}
     }
@@ -261,12 +278,20 @@ mod tests {
             body: None,
             assets: vec![
                 ReleaseAsset {
-                    name: format!("amigo-server-{}-{}", std::env::consts::OS, std::env::consts::ARCH),
+                    name: format!(
+                        "amigo-server-{}-{}",
+                        std::env::consts::OS,
+                        std::env::consts::ARCH
+                    ),
                     browser_download_url: "https://example.com/binary".into(),
                     size: 1024,
                 },
                 ReleaseAsset {
-                    name: format!("amigo-server-{}-{}.sha256", std::env::consts::OS, std::env::consts::ARCH),
+                    name: format!(
+                        "amigo-server-{}-{}.sha256",
+                        std::env::consts::OS,
+                        std::env::consts::ARCH
+                    ),
                     browser_download_url: "https://example.com/binary.sha256".into(),
                     size: 64,
                 },

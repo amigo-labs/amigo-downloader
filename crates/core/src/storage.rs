@@ -120,7 +120,11 @@ pub struct Storage {
 }
 
 impl Storage {
-    pub fn open(db_path: PathBuf, download_dir: PathBuf, temp_dir: PathBuf) -> Result<Self, crate::Error> {
+    pub fn open(
+        db_path: PathBuf,
+        download_dir: PathBuf,
+        temp_dir: PathBuf,
+    ) -> Result<Self, crate::Error> {
         std::fs::create_dir_all(&download_dir)?;
         std::fs::create_dir_all(&temp_dir)?;
         let conn = Connection::open(&db_path)?;
@@ -165,7 +169,7 @@ impl Storage {
             "SELECT id, url, protocol, filename, filesize, status, priority, package_id, plugin_id,
                     download_dir, bytes_downloaded, speed_current, error_message, retry_count,
                     created_at, started_at, completed_at
-             FROM downloads WHERE id = ?1"
+             FROM downloads WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(rusqlite::params![id], row_to_download)?;
         Ok(rows.next().transpose()?)
@@ -177,26 +181,33 @@ impl Storage {
             "SELECT id, url, protocol, filename, filesize, status, priority, package_id, plugin_id,
                     download_dir, bytes_downloaded, speed_current, error_message, retry_count,
                     created_at, started_at, completed_at
-             FROM downloads ORDER BY priority DESC, created_at ASC"
+             FROM downloads ORDER BY priority DESC, created_at ASC",
         )?;
         let rows = stmt.query_map([], row_to_download)?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    pub async fn list_downloads_by_status(&self, status: QueueStatus) -> Result<Vec<DownloadRow>, crate::Error> {
+    pub async fn list_downloads_by_status(
+        &self,
+        status: QueueStatus,
+    ) -> Result<Vec<DownloadRow>, crate::Error> {
         let db = self.db.lock().await;
         let status_str = status.as_str();
         let mut stmt = db.prepare(
             "SELECT id, url, protocol, filename, filesize, status, priority, package_id, plugin_id,
                     download_dir, bytes_downloaded, speed_current, error_message, retry_count,
                     created_at, started_at, completed_at
-             FROM downloads WHERE status = ?1 ORDER BY priority DESC, created_at ASC"
+             FROM downloads WHERE status = ?1 ORDER BY priority DESC, created_at ASC",
         )?;
         let rows = stmt.query_map(rusqlite::params![status_str], row_to_download)?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
-    pub async fn update_download_status(&self, id: &str, status: QueueStatus) -> Result<(), crate::Error> {
+    pub async fn update_download_status(
+        &self,
+        id: &str,
+        status: QueueStatus,
+    ) -> Result<(), crate::Error> {
         let db = self.db.lock().await;
         let status_str = status.as_str();
         let extra = match status {
@@ -211,7 +222,12 @@ impl Storage {
         Ok(())
     }
 
-    pub async fn update_download_progress(&self, id: &str, bytes_downloaded: u64, speed: u64) -> Result<(), crate::Error> {
+    pub async fn update_download_progress(
+        &self,
+        id: &str,
+        bytes_downloaded: u64,
+        speed: u64,
+    ) -> Result<(), crate::Error> {
         let db = self.db.lock().await;
         db.execute(
             "UPDATE downloads SET bytes_downloaded = ?1, speed_current = ?2 WHERE id = ?3",
@@ -220,7 +236,12 @@ impl Storage {
         Ok(())
     }
 
-    pub async fn update_download_error(&self, id: &str, error: &str, retry_count: u32) -> Result<(), crate::Error> {
+    pub async fn update_download_error(
+        &self,
+        id: &str,
+        error: &str,
+        retry_count: u32,
+    ) -> Result<(), crate::Error> {
         let db = self.db.lock().await;
         db.execute(
             "UPDATE downloads SET error_message = ?1, retry_count = ?2 WHERE id = ?3",
@@ -253,7 +274,7 @@ impl Storage {
             "SELECT id, url, protocol, filename, filesize, 'completed', 0, NULL, NULL,
                     download_dir, COALESCE(filesize, 0), 0, NULL, 0,
                     completed_at, NULL, completed_at
-             FROM history ORDER BY completed_at DESC"
+             FROM history ORDER BY completed_at DESC",
         )?;
         let rows = stmt.query_map([], row_to_download)?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
@@ -365,7 +386,10 @@ mod tests {
             completed_at: None,
         };
         storage.insert_download(&row).await.unwrap();
-        storage.update_download_status("test-2", QueueStatus::Downloading).await.unwrap();
+        storage
+            .update_download_status("test-2", QueueStatus::Downloading)
+            .await
+            .unwrap();
         let fetched = storage.get_download("test-2").await.unwrap().unwrap();
         assert_eq!(fetched.status, "downloading");
     }

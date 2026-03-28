@@ -2,11 +2,21 @@
 
 use serde::{Deserialize, Serialize};
 
-/// Information returned by a plugin's resolve() function.
+/// A download package — groups related downloads together.
+/// Returned by a plugin's resolve() function.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadPackage {
+    /// Package name shown in the UI.
+    pub name: String,
+    /// The downloads in this package.
+    pub downloads: Vec<DownloadInfo>,
+}
+
+/// A single downloadable file within a package.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownloadInfo {
     pub url: String,
-    pub filename: String,
+    pub filename: Option<String>,
     pub filesize: Option<u64>,
     pub chunks_supported: bool,
     pub max_chunks: Option<u32>,

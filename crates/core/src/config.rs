@@ -128,7 +128,10 @@ impl Config {
     /// Load config from a TOML file. Falls back to defaults if file doesn't exist.
     pub fn load(path: &Path) -> Result<Self, crate::Error> {
         if !path.exists() {
-            info!("Config file not found at {}, using defaults", path.display());
+            info!(
+                "Config file not found at {}, using defaults",
+                path.display()
+            );
             let config = Self::default();
             config.save(path)?;
             return Ok(config);
@@ -186,9 +189,15 @@ mod tests {
         let config = Config::default();
         let toml_str = toml::to_string_pretty(&config).unwrap();
         let parsed: Config = toml::from_str(&toml_str).unwrap();
-        assert_eq!(parsed.max_concurrent_downloads, config.max_concurrent_downloads);
+        assert_eq!(
+            parsed.max_concurrent_downloads,
+            config.max_concurrent_downloads
+        );
         assert_eq!(parsed.download_dir, config.download_dir);
-        assert_eq!(parsed.http.max_chunks_per_download, config.http.max_chunks_per_download);
+        assert_eq!(
+            parsed.http.max_chunks_per_download,
+            config.http.max_chunks_per_download
+        );
         assert_eq!(parsed.update.auto_check, config.update.auto_check);
     }
 
@@ -210,7 +219,9 @@ mod tests {
 
     #[test]
     fn test_config_load_missing_file_creates_default() {
-        let path = std::env::temp_dir().join("amigo-config-test-missing").join("config.toml");
+        let path = std::env::temp_dir()
+            .join("amigo-config-test-missing")
+            .join("config.toml");
         let _ = std::fs::remove_file(&path);
 
         let config = Config::load(&path).unwrap();

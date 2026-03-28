@@ -190,7 +190,9 @@ impl HttpDownloader {
 
         // Wait for all chunks
         for handle in handles {
-            handle.await.map_err(|e| crate::Error::Other(e.to_string()))??;
+            handle
+                .await
+                .map_err(|e| crate::Error::Other(e.to_string()))??;
         }
         progress_reporter.abort();
 
@@ -211,7 +213,10 @@ impl HttpDownloader {
             speed_bytes_per_sec: 0,
         });
 
-        info!("Chunked download complete: {} bytes in {} chunks", total_size, num_chunks);
+        info!(
+            "Chunked download complete: {} bytes in {} chunks",
+            total_size, num_chunks
+        );
         Ok(total_size)
     }
 
@@ -314,7 +319,8 @@ async fn download_chunk(
         let data = data.map_err(crate::Error::Http)?;
         file.write_all(&data).await?;
         chunk_downloaded += data.len() as u64;
-        progress[chunk_index as usize].store(chunk_downloaded, std::sync::atomic::Ordering::Relaxed);
+        progress[chunk_index as usize]
+            .store(chunk_downloaded, std::sync::atomic::Ordering::Relaxed);
     }
 
     file.flush().await?;
@@ -329,7 +335,12 @@ fn parse_content_disposition_filename(header: &str) -> Option<String> {
         let rest = &header[pos + 10..];
         if let Some(quote_start) = rest.find("''") {
             let name = &rest[quote_start + 2..];
-            let name = name.split(';').next().unwrap_or(name).trim().trim_matches('"');
+            let name = name
+                .split(';')
+                .next()
+                .unwrap_or(name)
+                .trim()
+                .trim_matches('"');
             if !name.is_empty() {
                 return Some(name.to_string());
             }
@@ -338,7 +349,12 @@ fn parse_content_disposition_filename(header: &str) -> Option<String> {
     // Try filename=
     if let Some(pos) = header.find("filename=") {
         let rest = &header[pos + 9..];
-        let name = rest.split(';').next().unwrap_or(rest).trim().trim_matches('"');
+        let name = rest
+            .split(';')
+            .next()
+            .unwrap_or(rest)
+            .trim()
+            .trim_matches('"');
         if !name.is_empty() {
             return Some(name.to_string());
         }
@@ -360,9 +376,6 @@ mod tests {
             parse_content_disposition_filename("attachment; filename=test.zip"),
             Some("test.zip".to_string())
         );
-        assert_eq!(
-            parse_content_disposition_filename("inline"),
-            None
-        );
+        assert_eq!(parse_content_disposition_filename("inline"), None);
     }
 }

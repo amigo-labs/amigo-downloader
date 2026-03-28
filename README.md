@@ -4,7 +4,7 @@
   <h1>amigo-downloader</h1>
 
   <p><strong>Fast, modular download manager</strong> built in Rust with a responsive Web UI, plugin system, and native apps.</p>
-  <p>Faster than JDownloader, lighter than pyLoad, extensible for HTTP, Usenet, and more.</p>
+  <p>Extensible for HTTP, Usenet, and more.</p>
 
   <p>
     <a href="https://github.com/amigo-labs/amigo-downloader/actions"><img src="https://img.shields.io/github/actions/workflow/status/amigo-labs/amigo-downloader/ci.yml?branch=main&style=flat-square&logo=github&label=CI" alt="CI" /></a>
@@ -57,11 +57,80 @@ cargo run --release --bin amigo-server
 ### CLI
 
 ```bash
-cargo run --release --bin amigo -- add https://example.com/file.zip
-cargo run --release --bin amigo -- list
-cargo run --release --bin amigo -- add --nzb file.nzb
-cargo run --release --bin amigo -- add --dlc links.dlc
+amigo-dl https://example.com/file.zip
 ```
+
+<details>
+<summary><strong>CLI reference</strong></summary>
+
+#### Direct download
+
+Just pass URLs — downloads directly with a progress bar, like yt-dlp.
+
+```bash
+amigo-dl <URL> [URL...]
+amigo-dl <URL> -o ./downloads          # custom output directory
+amigo-dl <URL> --chunks 8              # force 8 parallel chunks
+```
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--output` | `-o` | `.` | Output directory |
+| `--chunks` | `-c` | `0` (auto) | Chunks per download, 0 = auto based on file size |
+
+#### Queue management
+
+For use with the server/web UI — adds downloads to the database.
+
+```bash
+amigo-dl add <URL>                     # queue a URL
+amigo-dl add --nzb file.nzb            # import NZB
+amigo-dl add --dlc links.dlc           # import DLC container
+amigo-dl list                          # list active downloads
+amigo-dl pause <ID>                    # pause a download
+amigo-dl resume <ID>                   # resume a download
+amigo-dl cancel <ID>                   # cancel and remove
+amigo-dl queue                         # show queue
+amigo-dl status                        # overview (active, queued, speed)
+amigo-dl speed                         # current download speed
+```
+
+#### DLC containers
+
+```bash
+amigo-dl add --dlc links.dlc           # import
+amigo-dl export-dlc                    # export all
+amigo-dl export-dlc --ids id1,id2      # export specific
+```
+
+#### Configuration
+
+```bash
+amigo-dl config get <key>              # read a config value
+amigo-dl config set <key> <value>      # write a config value
+```
+
+#### Plugins
+
+```bash
+amigo-dl plugins list                  # list installed plugins
+amigo-dl plugins install <id>          # install from registry
+amigo-dl plugins update [id]           # update plugins
+amigo-dl plugins search <query>        # search registry
+amigo-dl plugins enable <id>           # enable a plugin
+amigo-dl plugins login <id>            # login to a hoster account
+```
+
+#### Server & updates
+
+```bash
+amigo-dl serve                         # start REST API (port 8080)
+amigo-dl serve --port 9090 --bind 127.0.0.1
+amigo-dl update check                  # check for new version
+amigo-dl update apply --yes            # apply update
+```
+
+</details>
 
 ## Architecture
 

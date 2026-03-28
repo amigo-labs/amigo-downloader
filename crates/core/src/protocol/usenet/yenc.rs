@@ -50,7 +50,8 @@ pub fn decode_yenc(article_body: &[u8]) -> Result<YencDecoded, crate::Error> {
             if let Some(next_line) = lines.peek() {
                 if next_line.starts_with("=ypart ") {
                     let part_line = lines.next().unwrap();
-                    result.begin = extract_yenc_param(part_line, "begin").and_then(|s| s.parse().ok());
+                    result.begin =
+                        extract_yenc_param(part_line, "begin").and_then(|s| s.parse().ok());
                     result.end = extract_yenc_param(part_line, "end").and_then(|s| s.parse().ok());
                 }
             }
@@ -115,7 +116,10 @@ fn extract_yenc_param(line: &str, param: &str) -> Option<String> {
     }
 
     // Other params end at the next space
-    let end = line[start..].find(' ').map(|p| start + p).unwrap_or(line.len());
+    let end = line[start..]
+        .find(' ')
+        .map(|p| start + p)
+        .unwrap_or(line.len());
     Some(line[start..end].trim().to_string())
 }
 

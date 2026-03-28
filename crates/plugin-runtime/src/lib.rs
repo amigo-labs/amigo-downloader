@@ -1,7 +1,9 @@
+pub mod engine;
 pub mod host_api;
 pub mod loader;
 pub mod registry;
 pub mod sandbox;
+pub mod transpiler;
 pub mod types;
 pub mod updater;
 

@@ -2,15 +2,12 @@
 //!
 //! Coordinates registry checks, downloads, and hot-reload of plugins.
 
-use std::path::PathBuf;
 use std::sync::Arc;
 
 use tracing::{info, warn};
 
 use crate::loader::PluginLoader;
-use crate::registry::{
-    self, PluginUpdateInfo, RegistryConfig, RegistryIndex, RegistryPlugin,
-};
+use crate::registry::{self, PluginUpdateInfo, RegistryConfig, RegistryPlugin};
 use crate::types::PluginMeta;
 
 /// Orchestrates plugin updates.
@@ -45,18 +42,15 @@ impl PluginUpdater {
             .find(|p| p.id == plugin_id)
             .ok_or_else(|| crate::Error::NotFound(format!("Plugin {plugin_id} not in registry")))?;
 
-        let hosters_dir = self.loader.plugin_dir().join("hosters");
+        let hosters_dir = self.loader.plugin_dir().to_path_buf();
         registry::download_plugin(&self.client, registry_plugin, &hosters_dir).await?;
 
         // Re-discover to pick up the new plugin
         self.loader.discover().await?;
 
-        self.loader
-            .get_plugin_meta(plugin_id)
-            .await
-            .ok_or_else(|| {
-                crate::Error::Other(format!("Plugin {plugin_id} installed but failed to load"))
-            })
+        self.loader.get_plugin_meta(plugin_id).await.ok_or_else(|| {
+            crate::Error::Other(format!("Plugin {plugin_id} installed but failed to load"))
+        })
     }
 
     /// Update an existing plugin to the latest version.
@@ -69,7 +63,7 @@ impl PluginUpdater {
             .ok_or_else(|| crate::Error::NotFound(format!("Plugin {plugin_id} not in registry")))?;
 
         // Download to hosters dir (overwrites existing via atomic rename)
-        let hosters_dir = self.loader.plugin_dir().join("hosters");
+        let hosters_dir = self.loader.plugin_dir().to_path_buf();
         registry::download_plugin(&self.client, registry_plugin, &hosters_dir).await?;
 
         // Hot-reload the plugin
@@ -92,10 +86,7 @@ impl PluginUpdater {
             match self.update_plugin(&update_info.plugin_id).await {
                 Ok(meta) => updated.push(meta),
                 Err(e) => {
-                    warn!(
-                        "Failed to update plugin {}: {e}",
-                        update_info.plugin_id
-                    );
+                    warn!("Failed to update plugin {}: {e}", update_info.plugin_id);
                 }
             }
         }

@@ -1,0 +1,54 @@
+{
+    "app.name": "amigo-dl",
+    "app.description": "Schneller, modularer Download-Manager",
+
+    "status.active": "Aktiv",
+    "status.queued": "Warteschlange",
+    "status.completed": "Fertig",
+    "status.failed": "Fehlgeschlagen",
+    "status.paused": "Pausiert",
+    "status.downloading": "Lädt herunter",
+
+    "download.added": "Download hinzugefügt: {id}",
+    "download.paused": "Pausiert: {id}",
+    "download.resumed": "Fortgesetzt: {id}",
+    "download.cancelled": "Abgebrochen: {id}",
+    "download.done": "{filename} — {size} fertig",
+    "download.no_urls": "Keine URLs angegeben. Nutzung: amigo-dl <URL> [URL...]",
+    "download.not_found": "Download nicht gefunden",
+    "download.no_active": "Keine aktiven Downloads.",
+
+    "queue.empty": "Warteschlange ist leer.",
+
+    "speed.label": "{speed} KB/s",
+
+    "plugin.loaded": "Plugin geladen: {name} ({id})",
+    "plugin.not_found": "Plugin nicht gefunden: {id}",
+    "plugin.install_hint": "Hinweis: Plugin \"{name}\" kann diese URL verarbeiten. Installieren mit:\n  amigo-dl plugins install {id}",
+    "plugin.requires_server": "Plugin-Verwaltung benötigt den Server. Nutze: amigo-dl serve",
+    "plugin.test.pass": "OK    {name}",
+    "plugin.test.fail": "FEHL  {name} — {error}",
+    "plugin.test.summary": "{passed} bestanden, {failed} fehlgeschlagen",
+    "plugin.test.no_spec": "Keine Spec-Datei gefunden für Plugin {id}",
+
+    "update.checking": "Suche nach Updates...",
+    "update.available": "Update verfügbar: {current} → {latest}",
+    "update.up_to_date": "Aktuell (v{version})",
+    "update.applied": "Update angewendet! Starte amigo-dl neu für v{version}.",
+    "update.run_with_yes": "Mit --yes ausführen um anzuwenden.",
+
+    "server.starting": "Starte amigo-server auf {addr}...",
+    "server.listening": "Lausche auf {addr}",
+    "server.lite_mode": "Dieser Lite-Modus stellt nur die REST API bereit.",
+
+    "nzb.contains": "NZB enthält {count} Dateien",
+    "nzb.import_complete": "NZB-Import abgeschlossen ({count} Dateien eingereiht).",
+
+    "dlc.exported": "Exportiert nach {path}",
+
+    "error.generic": "Fehler: {message}",
+    "error.file_not_found": "Datei nicht gefunden: {path}",
+
+    "confirm.yes": "Ja",
+    "confirm.no": "Nein"
+}

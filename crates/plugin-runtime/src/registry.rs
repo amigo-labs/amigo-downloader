@@ -46,18 +46,93 @@ pub struct PluginUpdateInfo {
 #[derive(Debug, Clone)]
 pub struct RegistryConfig {
     pub index_url: String,
+    /// Local cache path for index.json.
+    pub cache_path: Option<PathBuf>,
+    /// Max age of the cache before auto-refresh (in seconds).
+    pub cache_max_age_secs: u64,
 }
 
 impl Default for RegistryConfig {
     fn default() -> Self {
         Self {
             index_url: "https://raw.githubusercontent.com/amigo-labs/amigo-downloader-plugins/main/index.json".into(),
+            cache_path: Some(PathBuf::from("plugins/index.json")),
+            cache_max_age_secs: 24 * 60 * 60, // 24 hours
         }
     }
 }
 
-/// Fetch the plugin registry index.
-pub async fn fetch_index(
+/// Load the registry index — from local cache if fresh, otherwise fetch remote and cache.
+pub async fn load_index(
+    client: &reqwest::Client,
+    config: &RegistryConfig,
+) -> Result<RegistryIndex, crate::Error> {
+    // Try local cache first
+    if let Some(cache_path) = &config.cache_path {
+        if let Some(index) = load_cached_index(cache_path, config.cache_max_age_secs) {
+            debug!("Using cached registry index from {:?}", cache_path);
+            return Ok(index);
+        }
+    }
+
+    // Fetch from remote
+    let index = fetch_index_remote(client, config).await?;
+
+    // Save to cache
+    if let Some(cache_path) = &config.cache_path {
+        save_cached_index(cache_path, &index);
+    }
+
+    Ok(index)
+}
+
+/// Force-refresh the registry index from remote, updating the local cache.
+pub async fn refresh_index(
+    client: &reqwest::Client,
+    config: &RegistryConfig,
+) -> Result<RegistryIndex, crate::Error> {
+    let index = fetch_index_remote(client, config).await?;
+
+    if let Some(cache_path) = &config.cache_path {
+        save_cached_index(cache_path, &index);
+    }
+
+    Ok(index)
+}
+
+/// Load the cached index if it exists and is not expired.
+fn load_cached_index(cache_path: &Path, max_age_secs: u64) -> Option<RegistryIndex> {
+    let metadata = std::fs::metadata(cache_path).ok()?;
+    let modified = metadata.modified().ok()?;
+    let age = modified.elapsed().ok()?;
+
+    if age.as_secs() > max_age_secs {
+        debug!("Cache expired ({:.0}h old)", age.as_secs() as f64 / 3600.0);
+        return None;
+    }
+
+    let data = std::fs::read_to_string(cache_path).ok()?;
+    let index: RegistryIndex = serde_json::from_str(&data).ok()?;
+    Some(index)
+}
+
+/// Save the index to the local cache file.
+fn save_cached_index(cache_path: &Path, index: &RegistryIndex) {
+    if let Some(parent) = cache_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    match serde_json::to_string_pretty(index) {
+        Ok(json) => {
+            if let Err(e) = std::fs::write(cache_path, json) {
+                debug!("Failed to write index cache: {e}");
+            }
+        }
+        Err(e) => debug!("Failed to serialize index: {e}"),
+    }
+}
+
+/// Fetch the plugin registry index from the remote URL.
+async fn fetch_index_remote(
     client: &reqwest::Client,
     config: &RegistryConfig,
 ) -> Result<RegistryIndex, crate::Error> {
@@ -86,6 +161,14 @@ pub async fn fetch_index(
     Ok(index)
 }
 
+/// Legacy alias — use `load_index` instead.
+pub async fn fetch_index(
+    client: &reqwest::Client,
+    config: &RegistryConfig,
+) -> Result<RegistryIndex, crate::Error> {
+    load_index(client, config).await
+}
+
 /// Compare installed plugins against registry to find available updates.
 pub fn check_plugin_updates(
     index: &RegistryIndex,
@@ -102,15 +185,15 @@ pub fn check_plugin_updates(
                 let local_ver = semver::Version::parse(&local_plugin.version).ok();
                 let remote_ver = semver::Version::parse(&registry_plugin.version).ok();
 
-                if let (Some(local_v), Some(remote_v)) = (local_ver, remote_ver) {
-                    if remote_v > local_v {
-                        updates.push(PluginUpdateInfo {
-                            plugin_id: registry_plugin.id.clone(),
-                            current_version: Some(local_plugin.version.clone()),
-                            available_version: registry_plugin.version.clone(),
-                            is_new: false,
-                        });
-                    }
+                if let (Some(local_v), Some(remote_v)) = (local_ver, remote_ver)
+                    && remote_v > local_v
+                {
+                    updates.push(PluginUpdateInfo {
+                        plugin_id: registry_plugin.id.clone(),
+                        current_version: Some(local_plugin.version.clone()),
+                        available_version: registry_plugin.version.clone(),
+                        is_new: false,
+                    });
                 }
             }
             None => {
@@ -128,8 +211,23 @@ pub fn check_plugin_updates(
     updates
 }
 
-/// Download a plugin file, verify SHA256, and write to destination.
-/// Returns the path of the installed .rn file.
+/// Find a registry plugin whose url_pattern matches the given URL.
+pub fn suggest_plugin_for_url<'a>(
+    index: &'a RegistryIndex,
+    url: &str,
+) -> Option<&'a RegistryPlugin> {
+    for plugin in &index.plugins {
+        if let Ok(re) = regex::Regex::new(&plugin.url_pattern) {
+            if re.is_match(url) {
+                return Some(plugin);
+            }
+        }
+    }
+    None
+}
+
+/// Download a plugin file, verify SHA256, and install into a plugin folder.
+/// Creates `<dest_dir>/<plugin-id>/plugin.ts` (or .js based on download URL).
 pub async fn download_plugin(
     client: &reqwest::Client,
     registry_plugin: &RegistryPlugin,
@@ -163,12 +261,20 @@ pub async fn download_plugin(
     }
     debug!("SHA256 verified for plugin {}", registry_plugin.id);
 
-    // Write to temp file first, then atomic rename
-    let final_path = dest_dir.join(format!("{}.rn", registry_plugin.id.replace('-', "_")));
-    let tmp_path = dest_dir.join(format!("{}.rn.new", registry_plugin.id.replace('-', "_")));
+    // Determine extension from download URL
+    let ext = if registry_plugin.download_url.ends_with(".ts") {
+        "ts"
+    } else {
+        "js"
+    };
 
-    std::fs::create_dir_all(dest_dir)
+    // Install into <dest_dir>/<plugin-id>/plugin.ts
+    let plugin_dir = dest_dir.join(&registry_plugin.id);
+    std::fs::create_dir_all(&plugin_dir)
         .map_err(|e| crate::Error::Other(format!("Failed to create dir: {e}")))?;
+
+    let final_path = plugin_dir.join(format!("plugin.{ext}"));
+    let tmp_path = plugin_dir.join(format!("plugin.{ext}.new"));
 
     std::fs::write(&tmp_path, &bytes)
         .map_err(|e| crate::Error::Other(format!("Failed to write plugin: {e}")))?;
@@ -176,7 +282,10 @@ pub async fn download_plugin(
     std::fs::rename(&tmp_path, &final_path)
         .map_err(|e| crate::Error::Other(format!("Failed to rename plugin: {e}")))?;
 
-    info!("Plugin {} installed at {:?}", registry_plugin.id, final_path);
+    info!(
+        "Plugin {} installed at {:?}",
+        registry_plugin.id, final_path
+    );
     Ok(final_path)
 }
 

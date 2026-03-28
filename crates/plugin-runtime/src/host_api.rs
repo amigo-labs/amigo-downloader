@@ -1,20 +1,22 @@
-//! Host API functions exposed to Rune plugins.
+//! Host API functions exposed to JavaScript plugins.
 //!
 //! All network/filesystem access is proxied through these functions.
 //! Plugins have NO direct access to the network or filesystem.
+//! Functions are registered under `globalThis.amigo.*` in each plugin context.
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use rquickjs::{Ctx, Function, Object};
 use tokio::sync::Mutex;
-use tracing::{debug, info, warn};
+use tracing::{debug, error, info, warn};
 
 /// Shared state for the Host API, passed into every plugin call.
 #[derive(Clone)]
 pub struct HostApi {
     http_client: reqwest::Client,
-    cookies: Arc<Mutex<HashMap<String, HashMap<String, String>>>>, // domain -> name -> value
-    storage: Arc<Mutex<HashMap<String, HashMap<String, String>>>>, // plugin_id -> key -> value
+    cookies: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
+    storage: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
     request_count: Arc<Mutex<u32>>,
     max_requests: u32,
 }
@@ -50,7 +52,7 @@ impl HostApi {
         Ok(())
     }
 
-    // --- Network functions ---
+    // --- Network functions (sync wrappers for use from JS) ---
 
     pub async fn http_get(
         &self,
@@ -108,10 +110,7 @@ impl HostApi {
         Ok((status, body, resp_headers))
     }
 
-    pub async fn http_head(
-        &self,
-        url: &str,
-    ) -> Result<(u16, HashMap<String, String>), String> {
+    pub async fn http_head(&self, url: &str) -> Result<(u16, HashMap<String, String>), String> {
         self.check_request_limit().await?;
         debug!("Plugin http_head: {url}");
 
@@ -181,7 +180,6 @@ impl HostApi {
     }
 
     pub fn base64_decode(&self, input: &str) -> Result<String, String> {
-        // Simple Base64 decode
         let bytes = base64_decode_bytes(input)?;
         String::from_utf8(bytes).map_err(|e| e.to_string())
     }
@@ -225,6 +223,341 @@ impl HostApi {
     pub fn log_debug(&self, plugin_id: &str, msg: &str) {
         debug!("[plugin:{plugin_id}] {msg}");
     }
+
+    pub fn log_error(&self, plugin_id: &str, msg: &str) {
+        error!("[plugin:{plugin_id}] {msg}");
+    }
+}
+
+/// Register host API functions into a QuickJS context under `globalThis.amigo`.
+///
+/// Since QuickJS is synchronous, async host functions (HTTP) are exposed as
+/// synchronous blocking calls. The plugin JS code can call them directly
+/// without await — they block until the result is ready.
+///
+/// This is acceptable because each plugin runs in its own context and the
+/// blocking is done within a `spawn_blocking` task.
+pub fn register_host_api(
+    ctx: &Ctx<'_>,
+    host: Arc<HostApi>,
+    plugin_id: &str,
+) -> Result<(), crate::Error> {
+    let global = ctx.globals();
+    let amigo = Object::new(ctx.clone())
+        .map_err(|e| crate::Error::Execution(format!("Failed to create amigo object: {e}")))?;
+
+    // --- Synchronous network wrappers ---
+    // We use tokio::runtime::Handle to block on async functions from sync QuickJS callbacks.
+    // This works because plugins execute within spawn_blocking.
+
+    let h = host.clone();
+    amigo
+        .set(
+            "httpGet",
+            Function::new(
+                ctx.clone(),
+                move |url: String| -> rquickjs::Result<String> {
+                    let h = h.clone();
+                    let rt = tokio::runtime::Handle::current();
+                    let result = rt.block_on(async { h.http_get(&url, None).await });
+                    match result {
+                        Ok((status, body, headers)) => {
+                            let resp = serde_json::json!({
+                                "status": status,
+                                "body": body,
+                                "headers": headers,
+                            });
+                            Ok(resp.to_string())
+                        }
+                        Err(e) => Err(rquickjs::Error::new_from_js_message("string", "Error", &e)),
+                    }
+                },
+            ),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let h = host.clone();
+    amigo
+        .set(
+            "httpPost",
+            Function::new(
+                ctx.clone(),
+                move |url: String,
+                      body: String,
+                      content_type: String|
+                      -> rquickjs::Result<String> {
+                    let h = h.clone();
+                    let rt = tokio::runtime::Handle::current();
+                    let result =
+                        rt.block_on(async { h.http_post(&url, &body, &content_type).await });
+                    match result {
+                        Ok((status, body, headers)) => {
+                            let resp = serde_json::json!({
+                                "status": status,
+                                "body": body,
+                                "headers": headers,
+                            });
+                            Ok(resp.to_string())
+                        }
+                        Err(e) => Err(rquickjs::Error::new_from_js_message("string", "Error", &e)),
+                    }
+                },
+            ),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let h = host.clone();
+    amigo
+        .set(
+            "httpHead",
+            Function::new(
+                ctx.clone(),
+                move |url: String| -> rquickjs::Result<String> {
+                    let h = h.clone();
+                    let rt = tokio::runtime::Handle::current();
+                    let result = rt.block_on(async { h.http_head(&url).await });
+                    match result {
+                        Ok((status, headers)) => {
+                            let resp = serde_json::json!({
+                                "status": status,
+                                "headers": headers,
+                            });
+                            Ok(resp.to_string())
+                        }
+                        Err(e) => Err(rquickjs::Error::new_from_js_message("string", "Error", &e)),
+                    }
+                },
+            ),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    // --- Cookies ---
+    let h = host.clone();
+    amigo
+        .set(
+            "setCookie",
+            Function::new(
+                ctx.clone(),
+                move |domain: String, name: String, value: String| {
+                    let h = h.clone();
+                    let rt = tokio::runtime::Handle::current();
+                    rt.block_on(async { h.set_cookie(&domain, &name, &value).await });
+                },
+            ),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let h = host.clone();
+    amigo
+        .set(
+            "getCookie",
+            Function::new(
+                ctx.clone(),
+                move |domain: String, name: String| -> rquickjs::Result<Option<String>> {
+                    let h = h.clone();
+                    let rt = tokio::runtime::Handle::current();
+                    Ok(rt.block_on(async { h.get_cookie(&domain, &name).await }))
+                },
+            ),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let h = host.clone();
+    amigo
+        .set(
+            "clearCookies",
+            Function::new(ctx.clone(), move |domain: String| {
+                let h = h.clone();
+                let rt = tokio::runtime::Handle::current();
+                rt.block_on(async { h.clear_cookies(&domain).await });
+            }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    // --- Parsing helpers ---
+    let h = host.clone();
+    amigo
+        .set(
+            "regexMatch",
+            Function::new(
+                ctx.clone(),
+                move |pattern: String, text: String| -> Option<String> {
+                    h.regex_match(&pattern, &text)
+                },
+            ),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let h = host.clone();
+    amigo
+        .set(
+            "regexMatchAll",
+            Function::new(
+                ctx.clone(),
+                move |pattern: String, text: String| -> Vec<String> {
+                    h.regex_match_all(&pattern, &text)
+                },
+            ),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let h = host.clone();
+    amigo
+        .set(
+            "base64Decode",
+            Function::new(
+                ctx.clone(),
+                move |input: String| -> rquickjs::Result<String> {
+                    h.base64_decode(&input)
+                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
+                },
+            ),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let h = host.clone();
+    amigo
+        .set(
+            "base64Encode",
+            Function::new(ctx.clone(), move |input: String| -> String {
+                h.base64_encode(&input)
+            }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    // --- Logging ---
+    let pid = plugin_id.to_string();
+    let h = host.clone();
+    amigo
+        .set(
+            "logInfo",
+            Function::new(ctx.clone(), move |msg: String| {
+                h.log_info(&pid, &msg);
+            }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let pid = plugin_id.to_string();
+    let h = host.clone();
+    amigo
+        .set(
+            "logWarn",
+            Function::new(ctx.clone(), move |msg: String| {
+                h.log_warn(&pid, &msg);
+            }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let pid = plugin_id.to_string();
+    let h = host.clone();
+    amigo
+        .set(
+            "logError",
+            Function::new(ctx.clone(), move |msg: String| {
+                h.log_error(&pid, &msg);
+            }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let pid = plugin_id.to_string();
+    let h = host.clone();
+    amigo
+        .set(
+            "logDebug",
+            Function::new(ctx.clone(), move |msg: String| {
+                h.log_debug(&pid, &msg);
+            }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    // --- Storage ---
+    let pid = plugin_id.to_string();
+    let h = host.clone();
+    amigo
+        .set(
+            "storageGet",
+            Function::new(
+                ctx.clone(),
+                move |key: String| -> rquickjs::Result<Option<String>> {
+                    let h = h.clone();
+                    let pid = pid.clone();
+                    let rt = tokio::runtime::Handle::current();
+                    Ok(rt.block_on(async { h.storage_get(&pid, &key).await }))
+                },
+            ),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let pid = plugin_id.to_string();
+    let h = host.clone();
+    amigo
+        .set(
+            "storageSet",
+            Function::new(ctx.clone(), move |key: String, value: String| {
+                let h = h.clone();
+                let pid = pid.clone();
+                let rt = tokio::runtime::Handle::current();
+                rt.block_on(async { h.storage_set(&pid, &key, &value).await });
+            }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let pid = plugin_id.to_string();
+    let h = host.clone();
+    amigo
+        .set(
+            "storageDelete",
+            Function::new(ctx.clone(), move |key: String| {
+                let h = h.clone();
+                let pid = pid.clone();
+                let rt = tokio::runtime::Handle::current();
+                rt.block_on(async { h.storage_delete(&pid, &key).await });
+            }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    // --- Console bridge ---
+    let console = Object::new(ctx.clone())
+        .map_err(|e| crate::Error::Execution(format!("Failed to create console: {e}")))?;
+
+    let pid = plugin_id.to_string();
+    console
+        .set(
+            "log",
+            Function::new(ctx.clone(), move |msg: String| {
+                info!("[plugin:{pid}] {msg}");
+            }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let pid = plugin_id.to_string();
+    console
+        .set(
+            "warn",
+            Function::new(ctx.clone(), move |msg: String| {
+                warn!("[plugin:{pid}] {msg}");
+            }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let pid = plugin_id.to_string();
+    console
+        .set(
+            "error",
+            Function::new(ctx.clone(), move |msg: String| {
+                error!("[plugin:{pid}] {msg}");
+            }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    global
+        .set("amigo", amigo)
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+    global
+        .set("console", console)
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    Ok(())
 }
 
 // --- Base64 helpers ---

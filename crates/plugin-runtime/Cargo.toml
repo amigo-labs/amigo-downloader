@@ -11,9 +11,19 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 reqwest = { workspace = true }
-rune = "0.14"
 regex = "1"
 semver = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
 tempfile = { workspace = true }
+
+# QuickJS-NG runtime (replaces rune)
+rquickjs = { workspace = true }
+
+# TypeScript → JavaScript transpilation via SWC
+swc_common = "19"
+swc_ecma_parser = "36"
+swc_ecma_ast = "21"
+swc_ecma_codegen = "24"
+swc_ecma_transforms_typescript = "43"
+swc_ecma_visit = "21"
