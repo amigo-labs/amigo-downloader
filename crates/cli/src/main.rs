@@ -125,12 +125,12 @@ enum PluginAction {
     Install { id: String },
     /// Search the plugin registry
     Search { query: String },
-    /// Test a plugin file against a URL
+    /// Test a plugin: run spec file, or resolve a URL
     Test {
         /// Path to plugin file (.js or .ts)
         plugin: String,
-        /// URL to resolve
-        url: String,
+        /// URL to resolve (if omitted, runs the .spec.ts/.spec.js file)
+        url: Option<String>,
     },
 }
 
@@ -686,7 +686,6 @@ async fn main() -> anyhow::Result<()> {
                     anyhow::bail!("Plugin file not found: {plugin}");
                 }
 
-                // Use the plugin's parent dir so the loader can find it
                 let plugin_dir = path.parent().unwrap_or(std::path::Path::new("."));
                 let loader = PluginLoader::new(plugin_dir.to_path_buf(), SandboxLimits::default());
                 loader
@@ -703,19 +702,48 @@ async fn main() -> anyhow::Result<()> {
                 println!("Plugin: {} v{} ({})", meta.name, meta.version, meta.id);
                 println!("Pattern: {}", meta.url_pattern);
 
-                let re = regex::Regex::new(&meta.url_pattern)?;
-                if !re.is_match(&url) {
-                    println!("\nURL does not match plugin's urlPattern.");
-                    return Ok(());
-                }
-
-                println!("\nResolving: {url}");
-                match loader.resolve(&meta.id, &url).await {
-                    Ok(info) => {
-                        println!("\n{}", serde_json::to_string_pretty(&info)?);
+                if let Some(url) = url {
+                    // Mode 1: Resolve a URL
+                    let re = regex::Regex::new(&meta.url_pattern)?;
+                    if !re.is_match(&url) {
+                        println!("\nURL does not match plugin's urlPattern.");
+                        return Ok(());
                     }
-                    Err(e) => {
-                        println!("\nError: {e}");
+
+                    println!("\nResolving: {url}");
+                    match loader.resolve(&meta.id, &url).await {
+                        Ok(pkg) => {
+                            println!("\n{}", serde_json::to_string_pretty(&pkg)?);
+                        }
+                        Err(e) => {
+                            println!("\nError: {e}");
+                        }
+                    }
+                } else {
+                    // Mode 2: Run spec file
+                    println!();
+                    match loader.run_spec(&meta.id).await {
+                        Ok(results) => {
+                            for r in &results.results {
+                                if r.passed {
+                                    println!("  PASS  {}", r.name);
+                                } else {
+                                    println!(
+                                        "  FAIL  {} — {}",
+                                        r.name,
+                                        r.error.as_deref().unwrap_or("?")
+                                    );
+                                }
+                            }
+                            println!();
+                            println!("{} passed, {} failed", results.passed, results.failed);
+                            if results.failed > 0 {
+                                std::process::exit(1);
+                            }
+                        }
+                        Err(e) => {
+                            anyhow::bail!("{e}");
+                        }
                     }
                 }
             }

@@ -288,6 +288,57 @@ var __plugin_exports = module.exports;
     pub fn host_api(&self) -> &HostApi {
         &self.host_api
     }
+
+    /// Run a spec file against a loaded plugin.
+    /// Looks for `<plugin>.spec.ts` or `<plugin>.spec.js` next to the plugin file.
+    pub async fn run_spec(
+        &self,
+        plugin_id: &str,
+    ) -> Result<crate::engine::TestResults, crate::Error> {
+        let plugins = self.plugins.lock().await;
+        let plugin = plugins
+            .iter()
+            .find(|p| p.meta.id == plugin_id)
+            .ok_or_else(|| crate::Error::NotFound(plugin_id.to_string()))?;
+
+        let plugin_path = PathBuf::from(&plugin.meta.file_path);
+        let stem = plugin_path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("");
+        let dir = plugin_path.parent().unwrap_or(Path::new("."));
+
+        // Look for spec file
+        let spec_path = ["spec.ts", "spec.js"]
+            .iter()
+            .map(|ext| dir.join(format!("{stem}.{ext}")))
+            .find(|p| p.exists())
+            .ok_or_else(|| {
+                crate::Error::NotFound(format!(
+                    "No spec file found for plugin {plugin_id} (expected {stem}.spec.ts or {stem}.spec.js)"
+                ))
+            })?;
+
+        let spec_source = std::fs::read_to_string(&spec_path).map_err(|e| {
+            crate::Error::Other(format!("Failed to read {}: {e}", spec_path.display()))
+        })?;
+
+        let spec_source = if crate::transpiler::is_typescript(&spec_path) {
+            let filename = spec_path
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("spec.ts");
+            crate::transpiler::transpile(&spec_source, filename)?
+        } else {
+            spec_source
+        };
+
+        let filename = spec_path
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("spec.js");
+        Ok(plugin.context.run_tests(&spec_source, filename))
+    }
 }
 
 /// Check if a file is a JavaScript or TypeScript plugin.

@@ -222,6 +222,138 @@ impl PluginContext {
             Ok(result)
         })
     }
+
+    /// Run a spec file against an already-loaded plugin.
+    /// Returns (passed, failed, results) where results contains per-test details.
+    pub fn run_tests(&self, spec_source: &str, spec_filename: &str) -> TestResults {
+        // Inject test harness, then run the spec
+        let harness = r#"
+var __tests = [];
+var __test_results = [];
+
+function test(name, fn) {
+    __tests.push({ name: name, fn: fn });
+}
+
+function assert(condition, message) {
+    if (!condition) {
+        throw new Error(message || "Assertion failed");
+    }
+}
+
+function assertEqual(actual, expected, message) {
+    if (actual !== expected) {
+        throw new Error(
+            (message ? message + ": " : "") +
+            "expected " + JSON.stringify(expected) +
+            ", got " + JSON.stringify(actual)
+        );
+    }
+}
+
+function assertNotNull(value, message) {
+    if (value === null || value === undefined) {
+        throw new Error(message || "Expected non-null value");
+    }
+}
+"#;
+
+        let runner = r#"
+for (var i = 0; i < __tests.length; i++) {
+    var t = __tests[i];
+    try {
+        t.fn();
+        __test_results.push({ name: t.name, passed: true, error: null });
+    } catch (e) {
+        __test_results.push({ name: t.name, passed: false, error: String(e) });
+    }
+}
+JSON.stringify(__test_results);
+"#;
+
+        // Inject harness
+        if let Err(e) = self.eval_source(harness, "<test-harness>") {
+            return TestResults {
+                passed: 0,
+                failed: 1,
+                results: vec![SingleTestResult {
+                    name: "<harness>".into(),
+                    passed: false,
+                    error: Some(format!("Failed to inject test harness: {e}")),
+                }],
+            };
+        }
+
+        // Run spec file
+        if let Err(e) = self.eval_source(spec_source, spec_filename) {
+            return TestResults {
+                passed: 0,
+                failed: 1,
+                results: vec![SingleTestResult {
+                    name: "<spec>".into(),
+                    passed: false,
+                    error: Some(format!("Spec file error: {e}")),
+                }],
+            };
+        }
+
+        // Execute tests and collect results
+        match self.eval_js(runner) {
+            Ok(json) => {
+                let raw: Vec<serde_json::Value> = serde_json::from_str(&json).unwrap_or_default();
+                let mut passed = 0;
+                let mut failed = 0;
+                let mut results = Vec::new();
+
+                for entry in &raw {
+                    let name = entry["name"].as_str().unwrap_or("?").to_string();
+                    let ok = entry["passed"].as_bool().unwrap_or(false);
+                    let error = entry["error"].as_str().map(|s| s.to_string());
+
+                    if ok {
+                        passed += 1;
+                    } else {
+                        failed += 1;
+                    }
+                    results.push(SingleTestResult {
+                        name,
+                        passed: ok,
+                        error,
+                    });
+                }
+
+                TestResults {
+                    passed,
+                    failed,
+                    results,
+                }
+            }
+            Err(e) => TestResults {
+                passed: 0,
+                failed: 1,
+                results: vec![SingleTestResult {
+                    name: "<runner>".into(),
+                    passed: false,
+                    error: Some(format!("Test runner failed: {e}")),
+                }],
+            },
+        }
+    }
+}
+
+/// Results from running a plugin spec file.
+#[derive(Debug, Clone)]
+pub struct TestResults {
+    pub passed: u32,
+    pub failed: u32,
+    pub results: Vec<SingleTestResult>,
+}
+
+#[derive(Debug, Clone)]
+pub struct SingleTestResult {
+    pub name: String,
+    pub passed: bool,
+    pub error: Option<String>,
 }
 
 fn parse_resolve_result(result: &str) -> Result<String, crate::Error> {
