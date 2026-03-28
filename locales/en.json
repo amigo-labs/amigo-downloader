@@ -1,0 +1,54 @@
+{
+    "app.name": "amigo-dl",
+    "app.description": "Fast, modular download manager",
+
+    "status.active": "Active",
+    "status.queued": "Queued",
+    "status.completed": "Completed",
+    "status.failed": "Failed",
+    "status.paused": "Paused",
+    "status.downloading": "Downloading",
+
+    "download.added": "Added download: {id}",
+    "download.paused": "Paused: {id}",
+    "download.resumed": "Resumed: {id}",
+    "download.cancelled": "Cancelled: {id}",
+    "download.done": "{filename} — {size} done",
+    "download.no_urls": "No URLs provided. Usage: amigo-dl <URL> [URL...]",
+    "download.not_found": "Download not found",
+    "download.no_active": "No active downloads.",
+
+    "queue.empty": "Queue is empty.",
+
+    "speed.label": "{speed} KB/s",
+
+    "plugin.loaded": "Loaded plugin: {name} ({id})",
+    "plugin.not_found": "Plugin not found: {id}",
+    "plugin.install_hint": "hint: Plugin \"{name}\" can handle this URL. Install with:\n  amigo-dl plugins install {id}",
+    "plugin.requires_server": "Plugin management requires the server. Use: amigo-dl serve",
+    "plugin.test.pass": "PASS  {name}",
+    "plugin.test.fail": "FAIL  {name} — {error}",
+    "plugin.test.summary": "{passed} passed, {failed} failed",
+    "plugin.test.no_spec": "No spec file found for plugin {id}",
+
+    "update.checking": "Checking for updates...",
+    "update.available": "Update available: {current} → {latest}",
+    "update.up_to_date": "Up to date (v{version})",
+    "update.applied": "Update applied! Restart amigo-dl to use v{version}.",
+    "update.run_with_yes": "Run with --yes to apply.",
+
+    "server.starting": "Starting amigo-server on {addr}...",
+    "server.listening": "Listening on {addr}",
+    "server.lite_mode": "This lite-mode serves only the REST API.",
+
+    "nzb.contains": "NZB contains {count} files",
+    "nzb.import_complete": "NZB import complete ({count} files queued).",
+
+    "dlc.exported": "Exported to {path}",
+
+    "error.generic": "Error: {message}",
+    "error.file_not_found": "File not found: {path}",
+
+    "confirm.yes": "Yes",
+    "confirm.no": "No"
+}

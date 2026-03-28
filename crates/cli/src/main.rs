@@ -457,9 +457,13 @@ async fn check_plugin_suggestion(url: &str) {
 
     if let Some(plugin) = amigo_plugin_runtime::registry::suggest_plugin_for_url(&index, url) {
         eprintln!(
-            "hint: Plugin \"{}\" can handle this URL. Install with:\n  amigo-dl plugins install {}\n",
-            plugin.name, plugin.id
+            "{}",
+            amigo_core::i18n::t_fmt(
+                "plugin.install_hint",
+                &[("name", &plugin.name), ("id", &plugin.id)]
+            )
         );
+        eprintln!();
     }
 }
 
@@ -491,6 +495,10 @@ async fn main() -> anyhow::Result<()> {
             })
         );
     init_tracing(verbose);
+
+    // Initialize i18n — detect system language, load locale
+    let lang = amigo_core::i18n::detect_system_lang();
+    amigo_core::i18n::init(&lang, std::path::Path::new("locales"));
 
     // Bare URLs without subcommand → direct download
     if cli.command.is_none() {

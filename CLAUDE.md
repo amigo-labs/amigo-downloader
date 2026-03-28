@@ -391,7 +391,6 @@ amigo-dl serve [--port 8080 --bind 0.0.0.0]
 - **Svelte**: TypeScript strict, Prettier, ESLint
 - **Git**: Conventional Commits (`feat:`, `fix:`, `refactor:`, `docs:`)
 - **CI**: `cargo test`, `cargo clippy`, `npm run check`, Docker Build
-- **i18n**: UI strings are multilingual (user selects language during install or in settings). Use a string table / i18n system — never hardcode UI text in English. Installer sets the initial language.
 
 ---
 
