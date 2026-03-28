@@ -128,8 +128,8 @@ pub fn check_plugin_updates(
     updates
 }
 
-/// Download a plugin file, verify SHA256, and write to destination.
-/// Returns the path of the installed plugin file.
+/// Download a plugin file, verify SHA256, and install into a plugin folder.
+/// Creates `<dest_dir>/<plugin-id>/plugin.ts` (or .js based on download URL).
 pub async fn download_plugin(
     client: &reqwest::Client,
     registry_plugin: &RegistryPlugin,
@@ -163,12 +163,20 @@ pub async fn download_plugin(
     }
     debug!("SHA256 verified for plugin {}", registry_plugin.id);
 
-    // Write to temp file first, then atomic rename
-    let final_path = dest_dir.join(format!("{}.js", registry_plugin.id.replace('-', "_")));
-    let tmp_path = dest_dir.join(format!("{}.js.new", registry_plugin.id.replace('-', "_")));
+    // Determine extension from download URL
+    let ext = if registry_plugin.download_url.ends_with(".ts") {
+        "ts"
+    } else {
+        "js"
+    };
 
-    std::fs::create_dir_all(dest_dir)
+    // Install into <dest_dir>/<plugin-id>/plugin.ts
+    let plugin_dir = dest_dir.join(&registry_plugin.id);
+    std::fs::create_dir_all(&plugin_dir)
         .map_err(|e| crate::Error::Other(format!("Failed to create dir: {e}")))?;
+
+    let final_path = plugin_dir.join(format!("plugin.{ext}"));
+    let tmp_path = plugin_dir.join(format!("plugin.{ext}.new"));
 
     std::fs::write(&tmp_path, &bytes)
         .map_err(|e| crate::Error::Other(format!("Failed to write plugin: {e}")))?;

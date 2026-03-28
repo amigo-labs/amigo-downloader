@@ -42,7 +42,7 @@ impl PluginUpdater {
             .find(|p| p.id == plugin_id)
             .ok_or_else(|| crate::Error::NotFound(format!("Plugin {plugin_id} not in registry")))?;
 
-        let hosters_dir = self.loader.plugin_dir().join("hosters");
+        let hosters_dir = self.loader.plugin_dir().to_path_buf();
         registry::download_plugin(&self.client, registry_plugin, &hosters_dir).await?;
 
         // Re-discover to pick up the new plugin
@@ -63,7 +63,7 @@ impl PluginUpdater {
             .ok_or_else(|| crate::Error::NotFound(format!("Plugin {plugin_id} not in registry")))?;
 
         // Download to hosters dir (overwrites existing via atomic rename)
-        let hosters_dir = self.loader.plugin_dir().join("hosters");
+        let hosters_dir = self.loader.plugin_dir().to_path_buf();
         registry::download_plugin(&self.client, registry_plugin, &hosters_dir).await?;
 
         // Hot-reload the plugin
