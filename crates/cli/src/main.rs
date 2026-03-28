@@ -448,7 +448,15 @@ fn init_tracing(verbose: bool) {
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
-    init_tracing(cli.verbose);
+    // plugins test always runs with verbose logging
+    let verbose = cli.verbose
+        || matches!(
+            &cli.command,
+            Some(Commands::Plugins {
+                action: PluginAction::Test { .. }
+            })
+        );
+    init_tracing(verbose);
 
     // Bare URLs without subcommand → direct download
     if cli.command.is_none() {
