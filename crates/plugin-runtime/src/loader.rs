@@ -334,4 +334,46 @@ module.exports = {
         // Cleanup
         std::fs::remove_dir_all(&dir).ok();
     }
+
+    #[tokio::test]
+    async fn test_load_typescript_plugin() {
+        let dir = std::env::temp_dir().join("amigo-test-plugins-ts");
+        let hosters = dir.join("hosters");
+        std::fs::create_dir_all(&hosters).unwrap();
+
+        std::fs::write(
+            hosters.join("test_hoster.ts"),
+            r#"
+module.exports = {
+    id: "ts-hoster",
+    name: "TS Hoster",
+    version: "2.0.0",
+    urlPattern: "https?://ts-hoster\\.com/.+",
+    resolve(url: string): DownloadInfo {
+        return { url: url, filename: null, filesize: null, chunks_supported: true, max_chunks: null, headers: null, cookies: null, wait_seconds: null, mirrors: [] };
+    },
+};
+"#,
+        )
+        .unwrap();
+
+        let loader = PluginLoader::new(dir.clone(), SandboxLimits::default());
+        let plugins = loader.discover().await.unwrap();
+
+        assert!(plugins.iter().any(|p| p.id == "ts-hoster"));
+        assert_eq!(
+            plugins
+                .iter()
+                .find(|p| p.id == "ts-hoster")
+                .unwrap()
+                .version,
+            "2.0.0"
+        );
+
+        let matched = loader.match_url("https://ts-hoster.com/file.zip").await;
+        assert!(matched.is_some());
+        assert_eq!(matched.unwrap().id, "ts-hoster");
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
 }

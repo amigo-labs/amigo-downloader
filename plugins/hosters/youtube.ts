@@ -1,11 +1,7 @@
-// YouTube plugin for amigo-downloader
-//
-// Note: The native Rust implementation in crates/extractors/ handles YouTube
-// downloads with the android_vr client + N-parameter challenge. This plugin
-// serves as a JS-based fallback and reference implementation.
+/// <reference path="../types/amigo.d.ts" />
 
-function extractVideoId(url) {
-    var m = amigo.regexMatch("[?&]v=([a-zA-Z0-9_-]{11})", url);
+function extractVideoId(url: string): string | null {
+    let m = amigo.regexMatch("[?&]v=([a-zA-Z0-9_-]{11})", url);
     if (m) return m;
     m = amigo.regexMatch("youtu\\.be/([a-zA-Z0-9_-]{11})", url);
     if (m) return m;
@@ -21,13 +17,13 @@ module.exports = {
     author: "amigo-labs",
     urlPattern: "https?://(www\\.)?(youtube\\.com/(watch|shorts|embed)|youtu\\.be/)",
 
-    resolve(url) {
-        var videoId = extractVideoId(url);
+    resolve(url: string): DownloadInfo {
+        const videoId = extractVideoId(url);
         if (!videoId) throw new Error("Could not extract video ID from URL");
 
         amigo.logInfo("Resolving YouTube video: " + videoId);
 
-        var body = JSON.stringify({
+        const body = JSON.stringify({
             videoId: videoId,
             context: {
                 client: {
@@ -44,7 +40,7 @@ module.exports = {
             },
         });
 
-        var resp = JSON.parse(amigo.httpPost(
+        const resp: HttpResponse = JSON.parse(amigo.httpPost(
             "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
             body,
             "application/json"
@@ -54,20 +50,19 @@ module.exports = {
             throw new Error("YouTube API returned status " + resp.status);
         }
 
-        var data = JSON.parse(resp.body);
-        var title = data.videoDetails && data.videoDetails.title;
+        const data = JSON.parse(resp.body);
+        const title: string | undefined = data.videoDetails && data.videoDetails.title;
         if (!title) throw new Error("Could not get video title");
 
-        var bestUrl = null;
-        var bestQuality = "";
-        var bestHeight = 0;
-        var bestSize = null;
-        var bestMime = "video/mp4";
+        let bestUrl: string | null = null;
+        let bestQuality = "";
+        let bestHeight = 0;
+        let bestSize: number | null = null;
+        let bestMime = "video/mp4";
 
-        var formats = data.streamingData && data.streamingData.formats;
+        const formats = data.streamingData && data.streamingData.formats;
         if (formats) {
-            for (var i = 0; i < formats.length; i++) {
-                var fmt = formats[i];
+            for (const fmt of formats) {
                 if (fmt.url && fmt.height && fmt.height > bestHeight) {
                     bestUrl = fmt.url;
                     bestHeight = fmt.height;
@@ -79,10 +74,9 @@ module.exports = {
         }
 
         if (!bestUrl) {
-            var adaptive = data.streamingData && data.streamingData.adaptiveFormats;
+            const adaptive = data.streamingData && data.streamingData.adaptiveFormats;
             if (adaptive) {
-                for (var j = 0; j < adaptive.length; j++) {
-                    var afmt = adaptive[j];
+                for (const afmt of adaptive) {
                     if (afmt.url && afmt.mimeType && afmt.mimeType.indexOf("video/") === 0) {
                         if (afmt.height && afmt.height > bestHeight) {
                             bestUrl = afmt.url;
@@ -97,12 +91,12 @@ module.exports = {
         }
 
         if (!bestUrl) {
-            var reason = data.playabilityStatus && data.playabilityStatus.reason;
+            const reason = data.playabilityStatus && data.playabilityStatus.reason;
             throw new Error(reason || "No downloadable streams found");
         }
 
-        var ext = bestMime.indexOf("webm") >= 0 ? "webm" : "mp4";
-        var filename = title.replace(/[\/\\:*?"<>|]/g, "_") + "." + ext;
+        const ext = bestMime.indexOf("webm") >= 0 ? "webm" : "mp4";
+        const filename = title.replace(/[\/\\:*?"<>|]/g, "_") + "." + ext;
 
         amigo.logInfo("Selected: " + bestQuality + " (" + bestMime + ")");
 
@@ -119,11 +113,11 @@ module.exports = {
         };
     },
 
-    checkOnline(url) {
-        var videoId = extractVideoId(url);
+    checkOnline(url: string): "online" | "offline" | "unknown" {
+        const videoId = extractVideoId(url);
         if (!videoId) return "unknown";
 
-        var resp = JSON.parse(amigo.httpGet(
+        const resp: HttpResponse = JSON.parse(amigo.httpGet(
             "https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=" + videoId + "&format=json"
         ));
 
@@ -131,4 +125,4 @@ module.exports = {
         if (resp.status === 404 || resp.status === 401) return "offline";
         return "unknown";
     },
-};
+} satisfies AmigoPlugin;
