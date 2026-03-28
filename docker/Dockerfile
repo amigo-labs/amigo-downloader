@@ -6,7 +6,6 @@ RUN npm ci && npm run build
 
 # Stage 2: Build Rust
 FROM rust:latest AS rust-builder
-RUN apt-get update && apt-get install -y protobuf-compiler && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/

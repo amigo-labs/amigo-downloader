@@ -2,7 +2,7 @@
 
 ## Projekt-Vision
 
-**amigo-downloader** ist ein performanter, modularer Download-Manager in Rust mit Rune-Plugin-System, responsiver Web-UI und nativen Apps via Tauri. Ziel: das beste Download-Tool das es gibt — schneller als JDownloader, leichter als pyLoad, erweiterbar für HTTP, Usenet und Torrent.
+**amigo-downloader** ist ein performanter, modularer Download-Manager in Rust mit TypeScript-Plugin-System (QuickJS + SWC), responsiver Web-UI und nativen Apps via Tauri. Ziel: das beste Download-Tool das es gibt — schneller als JDownloader, leichter als pyLoad, erweiterbar für HTTP, Usenet und Torrent.
 
 Organisation: `amigo-labs` auf GitHub.
 
@@ -38,10 +38,10 @@ Organisation: `amigo-labs` auf GitHub.
 │  │         │               │                │           │ │
 │  │  ┌──────▼───────────────▼────────────────▼────────┐  │ │
 │  │  │              Protocol Backends                  │  │ │
-│  │  │  ┌────────┐  ┌─────────┐  ┌──────────────────┐ │  │ │
-│  │  │  │  HTTP/S │  │  Usenet │  │  BitTorrent      │ │  │ │
-│  │  │  │(reqwest)│  │ (NNTP)  │  │(libtorrent/own)  │ │  │ │
-│  │  │  └────────┘  └─────────┘  └──────────────────┘ │  │ │
+│  │  │  ┌────────┐  ┌─────────┐  ┌──────┐  ┌───────┐ │  │ │
+│  │  │  │  HTTP/S │  │  Usenet │  │  HLS │  │ DASH  │ │  │ │
+│  │  │  │(reqwest)│  │ (NNTP)  │  │      │  │       │ │  │ │
+│  │  │  └────────┘  └─────────┘  └──────┘  └───────┘ │  │ │
 │  │  └────────────────────────────────────────────────┘  │ │
 │  │                                                     │ │
 │  │  ┌──────────────┐ ┌─────────────┐ ┌──────────────┐  │ │
@@ -55,11 +55,24 @@ Organisation: `amigo-labs` auf GitHub.
 │  └─────────────────────────────────────────────────────┘ │
 │                              │                           │
 │  ┌───────────────────────────▼─────────────────────────┐ │
+│  │              extractors crate                        │ │
+│  │                                                     │ │
+│  │  ┌──────────────────┐ ┌──────────────┐              │ │
+│  │  │  YouTube          │ │  HLS / DASH  │              │ │
+│  │  │ (InnerTube, N-Ch) │ │  (Built-in)  │              │ │
+│  │  └──────────────────┘ └──────────────┘              │ │
+│  └─────────────────────────────────────────────────────┘ │
+│                              │                           │
+│  ┌───────────────────────────▼─────────────────────────┐ │
 │  │              plugin-runtime crate                    │ │
 │  │                                                     │ │
 │  │  ┌─────────────┐ ┌──────────────┐ ┌──────────────┐  │ │
-│  │  │ Rune VM     │ │ Host API     │ │ Plugin       │  │ │
+│  │  │ QuickJS VM  │ │ Host API     │ │ Plugin       │  │ │
 │  │  │ (Sandbox)   │ │ (Functions)  │ │ Loader       │  │ │
+│  │  └─────────────┘ └──────────────┘ └──────────────┘  │ │
+│  │  ┌─────────────┐ ┌──────────────┐ ┌──────────────┐  │ │
+│  │  │ TS→JS       │ │ Registry     │ │ Updater      │  │ │
+│  │  │ Transpiler  │ │ (Marketplace)│ │              │  │ │
 │  │  └─────────────┘ └──────────────┘ └──────────────┘  │ │
 │  └─────────────────────────────────────────────────────┘ │
 │                              │                           │
@@ -90,28 +103,51 @@ amigo-downloader/
 │   │       ├── queue.rs
 │   │       ├── retry.rs
 │   │       ├── postprocess.rs
-│   │       ├── container.rs     # DLC Import/Export, CCF, RSDF
+│   │       ├── container.rs     # DLC Import/Export
+│   │       ├── i18n.rs          # Internationalization
+│   │       ├── updater.rs       # Self-update logic
+│   │       ├── update_events.rs # Update event broadcasting
 │   │       ├── protocol/
 │   │       │   ├── mod.rs
 │   │       │   ├── http.rs
-│   │       │   ├── usenet.rs
-│   │       │   └── torrent.rs
+│   │       │   ├── hls.rs       # HLS manifest + segments
+│   │       │   ├── dash.rs      # DASH/MPD manifest + segments
+│   │       │   └── usenet/      # NNTP client, NZB, yEnc
 │   │       ├── storage.rs
 │   │       └── config.rs
+│   ├── extractors/
+│   │   ├── Cargo.toml
+│   │   └── src/
+│   │       ├── lib.rs
+│   │       ├── error.rs
+│   │       ├── traits.rs        # Extractor trait, MediaStream types
+│   │       └── youtube/
+│   │           ├── mod.rs
+│   │           ├── formats.rs       # Format/quality selection
+│   │           ├── innertube.rs     # InnerTube API client
+│   │           ├── n_challenge.rs   # N-parameter via QuickJS
+│   │           └── url_parser.rs    # YouTube URL parsing
 │   ├── plugin-runtime/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
+│   │       ├── engine.rs        # QuickJS VM execution
 │   │       ├── host_api.rs
 │   │       ├── loader.rs
+│   │       ├── registry.rs      # Plugin marketplace
 │   │       ├── sandbox.rs
-│   │       └── types.rs
+│   │       ├── transpiler.rs    # TypeScript → JS via SWC
+│   │       ├── types.rs
+│   │       └── updater.rs       # Plugin auto-updates
 │   ├── server/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── main.rs
 │   │       ├── api.rs
 │   │       ├── ws.rs
+│   │       ├── clicknload.rs    # Click'n'Load on port 9666
+│   │       ├── feedback.rs      # Bug/crash reporting
+│   │       ├── update_api.rs    # Self-update endpoints
 │   │       └── static_files.rs
 │   └── cli/
 │       ├── Cargo.toml
@@ -119,35 +155,51 @@ amigo-downloader/
 │           └── main.rs
 ├── web-ui/
 │   ├── package.json
-│   ├── svelte.config.js
 │   ├── vite.config.ts
 │   └── src/
 │       ├── App.svelte
+│       ├── app.css
+│       ├── main.ts
 │       ├── lib/
 │       │   ├── api.ts
-│       │   └── stores.ts
-│       └── routes/
-│           ├── downloads/
-│           ├── queue/
-│           ├── plugins/
-│           ├── usenet/
-│           ├── torrent/
-│           ├── history/
-│           └── settings/
+│       │   ├── stores.ts
+│       │   └── toast.ts
+│       ├── components/
+│       │   ├── AddDialog.svelte
+│       │   ├── ChunkViz.svelte
+│       │   ├── DownloadCard.svelte
+│       │   ├── DownloadRow.svelte
+│       │   ├── DropZone.svelte
+│       │   ├── FeedbackDialog.svelte
+│       │   ├── Mascot.svelte
+│       │   ├── Sparkline.svelte
+│       │   └── Toasts.svelte
+│       └── pages/
+│           ├── Downloads.svelte
+│           ├── History.svelte
+│           ├── Plugins.svelte
+│           ├── Queue.svelte
+│           └── Settings.svelte
 ├── tauri/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
-│   ├── src/
-│   │   └── main.rs
-│   ├── icons/
-│   └── capabilities/
+│   └── src/
+│       └── main.rs
 ├── plugins/
 │   ├── README.md
-│   ├── plugin-template/
-│   │   └── plugin.rn
-│   └── hosters/
-│       ├── generic_http.rn
-│       └── ...
+│   ├── template/
+│   │   └── plugin.ts
+│   ├── types/
+│   │   └── amigo.d.ts           # TypeScript type definitions
+│   ├── hosters/
+│   │   └── generic-http/
+│   └── extractors/
+│       └── youtube/
+├── locales/
+│   ├── en.json
+│   └── de.json
+├── scripts/
+│   └── install.sh
 ├── docker/
 │   ├── Dockerfile
 │   └── docker-compose.yml
@@ -157,6 +209,7 @@ amigo-downloader/
 └── docs/
     ├── plugin-api.md
     ├── architecture.md
+    ├── plan-youtube-hls-dash.md
     └── protocol-backends.md
 ```
 
@@ -166,21 +219,24 @@ amigo-downloader/
 
 | Komponente | Technologie | Begründung |
 |---|---|---|
-| Sprache Core | **Rust (latest stable)** | Performance, Safety, async I/O |
+| Sprache Core | **Rust (2024 edition)** | Performance, Safety, async I/O |
 | Async Runtime | **Tokio** | De-facto Standard |
 | HTTP Client | **reqwest** | Connection Pooling, Cookie-Handling |
-| BitTorrent | **librqbit** oder eigene Impl | Pure-Rust, async-native |
+| HLS/DASH | **m3u8-rs, dash-mpd** | Streaming-Manifest-Parsing |
 | Usenet/NNTP | **Eigene Impl auf Tokio** | Kein brauchbares Rust-Crate |
-| Plugin Runtime | **Rune** | Rust-native, async, sandboxed |
+| Extractors | **Eigenes Crate + rquickjs** | YouTube N-Parameter, Format-Auswahl |
+| Plugin Runtime | **QuickJS (rquickjs)** | Sandboxed JS VM, schnell |
+| Plugin Sprache | **TypeScript via SWC** | DX, Typsicherheit, Transpilation zur Ladezeit |
 | Datenbank | **SQLite via rusqlite** | Embedded, kein externer Service |
 | Web Framework | **Axum** | Tokio-nativ, performant |
-| Web-UI | **Svelte 5 + Vite** | Kleine Bundles, reaktiv |
+| Web-UI | **Svelte 5 + Tailwind v4 + Vite** | Kleine Bundles, reaktiv |
 | Desktop/Mobile | **Tauri v2** | Rust-Backend, natives Window |
 | CLI | **clap** | Standard für Rust CLIs |
 | Serialisierung | **serde + serde_json** | Standard |
 | Logging | **tracing** | Structured, async-aware |
 | Archiv-Handling | **sevenz-rust, unrar, flate2** | Entpacken nach Download |
 | DLC Container | **AES-128-CBC + Base64** | DLC Import/Export |
+| i18n | **Eigene Impl, JSON Locales** | en, de out of the box |
 
 ---
 
@@ -252,61 +308,70 @@ amigo-downloader/
 
 ## Plugin-System (`plugin-runtime`)
 
+Plugins sind TypeScript-Dateien (`.ts`), die zur Ladezeit via SWC nach JavaScript transpiliert und in einer sandboxed QuickJS VM ausgeführt werden.
+
 ### Host-API
 
-```rust
+```typescript
 // Netzwerk
-async fn http_get(url: String, headers: Option<Object>) -> Result<Response>;
-async fn http_post(url: String, body: String, content_type: String) -> Result<Response>;
-async fn http_head(url: String) -> Result<Response>;
+async function http_get(url: string, headers?: Record<string, string>): Promise<Response>;
+async function http_post(url: string, body: string, content_type: string): Promise<Response>;
+async function http_head(url: string): Promise<Response>;
 
 // Cookie Management
-fn set_cookie(domain: String, name: String, value: String);
-fn get_cookie(domain: String, name: String) -> Option<String>;
-fn clear_cookies(domain: String);
+function set_cookie(domain: string, name: string, value: string): void;
+function get_cookie(domain: string, name: string): string | null;
+function clear_cookies(domain: string): void;
 
 // Parsing Helpers
-fn regex_match(pattern: String, text: String) -> Option<String>;
-fn regex_match_all(pattern: String, text: String) -> Vec<String>;
-fn html_select(html: String, css_selector: String) -> Vec<String>;
-fn html_attr(element: String, attr: String) -> Option<String>;
-fn json_parse(text: String) -> Value;
-fn base64_decode(input: String) -> String;
-fn base64_encode(input: String) -> String;
+function regex_match(pattern: string, text: string): string | null;
+function regex_match_all(pattern: string, text: string): string[];
+function html_select(html: string, css_selector: string): string[];
+function html_attr(element: string, attr: string): string | null;
+function json_parse(text: string): any;
+function base64_decode(input: string): string;
+function base64_encode(input: string): string;
 
 // Crypto
-fn aes_decrypt(data: String, key: String, iv: String) -> Result<String>;
-fn md5(input: String) -> String;
-fn sha256(input: String) -> String;
+function aes_decrypt(data: string, key: string, iv: string): string;
+function md5(input: string): string;
+function sha256(input: string): string;
 
 // Logging, Storage, Captcha, Notifications
-fn log_info(msg: String);
-fn storage_get(key: String) -> Option<String>;
-fn storage_set(key: String, value: String);
-async fn captcha_solve_image(image_url: String) -> Result<String>;
-fn notify(title: String, message: String);
-fn set_filename(name: String);
-fn set_filesize(bytes: u64);
-fn set_wait(seconds: u64);
+function log_info(msg: string): void;
+function storage_get(key: string): string | null;
+function storage_set(key: string, value: string): void;
+async function captcha_solve_image(image_url: string): Promise<string>;
+function notify(title: string, message: string): void;
+function set_filename(name: string): void;
+function set_filesize(bytes: number): void;
+function set_wait(seconds: number): void;
 ```
 
 ### Plugin-Interface
 
-```rust
+```typescript
 // REQUIRED
-pub fn plugin_id() -> String;
-pub fn plugin_name() -> String;
-pub fn plugin_version() -> String;
-pub fn url_pattern() -> String;
-pub async fn resolve(url: String) -> Result<DownloadInfo>;
+export function plugin_id(): string;
+export function plugin_name(): string;
+export function plugin_version(): string;
+export function url_pattern(): string;
+export async function resolve(url: string): Promise<DownloadInfo>;
 
 // OPTIONAL
-pub fn supports_premium() -> bool;
-pub async fn login(username: String, password: String) -> Result<bool>;
-pub async fn decrypt_container(data: String) -> Result<Vec<String>>;
-pub async fn resolve_folder(url: String) -> Result<Vec<String>>;
-pub async fn check_online(url: String) -> Result<OnlineStatus>;
+export function supports_premium(): boolean;
+export async function login(username: string, password: string): Promise<boolean>;
+export async function decrypt_container(data: string): Promise<string[]>;
+export async function resolve_folder(url: string): Promise<string[]>;
+export async function check_online(url: string): Promise<OnlineStatus>;
 ```
+
+Type definitions for IDE support: `plugins/types/amigo.d.ts`
+
+### Plugin Registry & Updates
+- Marketplace: Plugins aus der Registry installieren/suchen
+- Auto-Updates: Checksum-Verifikation, automatische Plugin-Updates
+- Transpiler: TypeScript → JavaScript via SWC zur Ladezeit
 
 ### Sandboxing
 - Kein direkter Netzwerk/Filesystem/Prozess-Zugang
@@ -388,7 +453,7 @@ amigo-dl serve [--port 8080 --bind 0.0.0.0]
 - **Error Handling**: `thiserror` für Library-Errors, `anyhow` nur in Binaries
 - **Async**: Alles async wo I/O involviert. Keine `block_on` im Core.
 - **Tests**: Unit-Tests inline, Integration-Tests in `tests/`
-- **Svelte**: TypeScript strict, Prettier, ESLint
+- **Svelte**: TypeScript strict, Tailwind CSS v4
 - **Git**: Conventional Commits (`feat:`, `fix:`, `refactor:`, `docs:`)
 - **CI**: `cargo test`, `cargo clippy`, `npm run check`, Docker Build
 
@@ -398,7 +463,7 @@ amigo-dl serve [--port 8080 --bind 0.0.0.0]
 
 1. **Monorepo** bis Plugin-API stabil (1.0), dann Plugins auslagern
 2. **Svelte** statt React — kleinere Bundles für Tauri
-3. **Rune** statt WASM/Lua — native async + Rust-Integration
+3. **QuickJS + TypeScript** statt Rune/WASM/Lua — bessere DX, SWC-Transpilation, sandboxed
 4. **SQLite** — embedded, kein externer Service
 5. **Axum** — leichtgewichtig, Tokio-nativ
 6. **reqwest** — Ergonomie, Cookie-Handling
@@ -406,3 +471,5 @@ amigo-dl serve [--port 8080 --bind 0.0.0.0]
 8. **Plugin-Sandbox** — kein direkter Netzwerk/FS-Zugriff
 9. **DLC Import/Export** — Kompatibilität mit bestehendem Ökosystem
 10. **Click'n'Load** auf Port 9666 — Browser-Extension Ökosystem nutzen
+11. **Eigenes Extractor-Crate** — YouTube, HLS, DASH als Built-in Extractors
+12. **i18n** — JSON-basierte Locale-Dateien (en, de)
