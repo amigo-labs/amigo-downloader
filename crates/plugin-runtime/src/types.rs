@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownloadInfo {
     pub url: String,
-    pub filename: String,
+    pub filename: Option<String>,
     pub filesize: Option<u64>,
     pub chunks_supported: bool,
     pub max_chunks: Option<u32>,

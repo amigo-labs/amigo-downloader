@@ -48,8 +48,8 @@ interface AmigoPlugin {
 interface DownloadInfo {
     /** Direct download URL. */
     url: string;
-    /** Suggested filename. */
-    filename: string;
+    /** Suggested filename, or null to let the engine detect from URL/headers. */
+    filename: string | null;
     /** File size in bytes, or null if unknown. */
     filesize: number | null;
     /** Whether the server supports chunked/parallel downloads. */
