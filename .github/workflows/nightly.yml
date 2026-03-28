@@ -7,6 +7,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  NIGHTLY_DATE: "" # set dynamically in jobs
 
 permissions:
   contents: write
@@ -49,6 +50,17 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+
+      - name: Set nightly version
+        shell: bash
+        run: |
+          DATE=$(date -u +%Y%m%d)
+          BASE_VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          NIGHTLY_VERSION="${BASE_VERSION}-nightly.${DATE}"
+          echo "NIGHTLY_DATE=${DATE}" >> $GITHUB_ENV
+          echo "NIGHTLY_VERSION=${NIGHTLY_VERSION}" >> $GITHUB_ENV
+          # Stamp version into workspace Cargo.toml
+          sed -i "s/^version = \"${BASE_VERSION}\"/version = \"${NIGHTLY_VERSION}\"/" Cargo.toml
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -116,6 +128,9 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Set nightly date
+        run: echo "NIGHTLY_DATE=$(date -u +%Y%m%d)" >> $GITHUB_ENV
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -125,7 +140,7 @@ jobs:
           push: true
           tags: |
             ghcr.io/amigo-labs/amigo-downloader:nightly
-            ghcr.io/amigo-labs/amigo-downloader:nightly-${{ github.sha }}
+            ghcr.io/amigo-labs/amigo-downloader:nightly-${{ env.NIGHTLY_DATE }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -219,18 +234,24 @@ jobs:
           path: artifacts
           merge-multiple: true
 
+      - name: Set nightly date
+        run: |
+          DATE=$(date -u +%Y%m%d)
+          BASE_VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)"/\1/')
+          echo "NIGHTLY_DATE=${DATE}" >> $GITHUB_ENV
+          echo "NIGHTLY_VERSION=${BASE_VERSION}-nightly.${DATE}" >> $GITHUB_ENV
+
       - name: List artifacts
         run: find artifacts -type f | sort
 
-      - name: Create/update nightly release
+      - name: Create/update nightly release (latest)
         uses: ncipollo/release-action@v1
         with:
           tag: nightly
-          name: Nightly Build
+          name: "Nightly (${{ env.NIGHTLY_VERSION }})"
           body: |
-            Automated nightly build from `main` branch.
-            **Commit:** ${{ github.sha }}
-            **Date:** ${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
+            **Version:** `${{ env.NIGHTLY_VERSION }}`
+            **Commit:** `${{ github.sha }}`
 
             ### Install CLI
             ```bash
@@ -240,8 +261,21 @@ jobs:
             ### Docker
             ```bash
             docker pull ghcr.io/amigo-labs/amigo-downloader:nightly
+            docker pull ghcr.io/amigo-labs/amigo-downloader:nightly-${{ env.NIGHTLY_DATE }}
             ```
           artifacts: "artifacts/*"
           allowUpdates: true
+          prerelease: true
+          makeLatest: false
+
+      - name: Create dated nightly release
+        uses: ncipollo/release-action@v1
+        with:
+          tag: "nightly-${{ env.NIGHTLY_DATE }}"
+          name: "Nightly ${{ env.NIGHTLY_DATE }} (${{ env.NIGHTLY_VERSION }})"
+          body: |
+            **Version:** `${{ env.NIGHTLY_VERSION }}`
+            **Commit:** `${{ github.sha }}`
+          artifacts: "artifacts/*"
           prerelease: true
           makeLatest: false

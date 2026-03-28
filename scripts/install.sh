@@ -6,7 +6,7 @@ set -euo pipefail
 
 REPO="amigo-labs/amigo-downloader"
 INSTALL_DIR="${AMIGO_INSTALL_DIR:-/usr/local/bin}"
-TAG="nightly"
+TAG="${AMIGO_TAG:-nightly}"  # override with AMIGO_TAG=nightly-20260328
 
 # Detect OS and architecture
 OS="$(uname -s)"
