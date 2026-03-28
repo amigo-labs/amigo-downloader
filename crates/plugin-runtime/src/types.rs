@@ -17,7 +17,9 @@ pub struct DownloadPackage {
 pub struct DownloadInfo {
     pub url: String,
     pub filename: Option<String>,
+    pub title: Option<String>,
     pub filesize: Option<u64>,
+    pub duration: Option<u64>,
     pub chunks_supported: bool,
     pub max_chunks: Option<u32>,
     pub headers: Option<std::collections::HashMap<String, String>>,
