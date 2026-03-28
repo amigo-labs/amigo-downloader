@@ -7,7 +7,27 @@ module.exports = {
     urlPattern: "https?://(www\\.)?my-hoster\\.com/.+",
 
     resolve(url: string): DownloadInfo {
-        // TODO: implement
-        throw new Error("Not implemented");
+        const resp: HttpResponse = JSON.parse(amigo.httpGet(url));
+
+        // TODO: extract download URL from page
+        const downloadUrl = url;
+
+        // TODO: extract filename, or null to let the engine detect it
+        const filename = "download.bin";
+
+        // TODO: extract filesize, or null if unknown
+        const filesize = null;
+
+        return {
+            url: downloadUrl,
+            filename: filename,
+            filesize: filesize,
+            chunks_supported: true,
+            max_chunks: null,
+            headers: null,
+            cookies: null,
+            wait_seconds: null,
+            mirrors: [],
+        };
     },
 } satisfies AmigoPlugin;
