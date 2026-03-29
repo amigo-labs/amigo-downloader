@@ -13,6 +13,8 @@ use crate::config::Config;
 use crate::postprocess;
 use crate::protocol::Protocol;
 use crate::protocol::http::{DownloadProgress, HttpDownloader};
+use crate::protocol::hls::HlsDownloader;
+use crate::protocol::dash::DashDownloader;
 use crate::protocol::usenet::nntp::NntpServerConfig;
 use crate::protocol::usenet::UsenetConfig;
 use crate::protocol::usenet::UsenetDownloader;
@@ -316,28 +318,53 @@ impl Coordinator {
                             .await;
                     }
 
-                    let result = if protocol == "usenet" {
-                        run_usenet_download(
-                            storage,
-                            download_id,
-                            download_dir,
-                            row_filename.as_deref(),
-                            ptx,
-                        )
-                        .await
-                    } else {
-                        let http = HttpDownloader::new(user_agent, bandwidth.clone());
-                        run_http_download(
-                            &http,
-                            url,
-                            download_dir,
-                            temp_dir,
-                            row_filename.as_deref(),
-                            max_chunks,
-                            ptx,
-                            crx,
-                        )
-                        .await
+                    let result = match protocol.as_str() {
+                        "usenet" => {
+                            run_usenet_download(
+                                storage,
+                                download_id,
+                                download_dir,
+                                row_filename.as_deref(),
+                                ptx,
+                            )
+                            .await
+                        }
+                        "hls" => {
+                            run_hls_download(
+                                user_agent,
+                                url,
+                                download_dir,
+                                row_filename.as_deref(),
+                                ptx,
+                                crx,
+                            )
+                            .await
+                        }
+                        "dash" => {
+                            run_dash_download(
+                                user_agent,
+                                url,
+                                download_dir,
+                                row_filename.as_deref(),
+                                ptx,
+                                crx,
+                            )
+                            .await
+                        }
+                        _ => {
+                            let http = HttpDownloader::new(user_agent, bandwidth.clone());
+                            run_http_download(
+                                &http,
+                                url,
+                                download_dir,
+                                temp_dir,
+                                row_filename.as_deref(),
+                                max_chunks,
+                                ptx,
+                                crx,
+                            )
+                            .await
+                        }
                     };
 
                     match result {
@@ -542,6 +569,56 @@ async fn run_http_download(
                 info!("Download cancelled: {url}");
                 Err(crate::Error::Other("Download cancelled".into()))
             }
+        }
+    }
+}
+
+/// Run an HLS download to completion.
+async fn run_hls_download(
+    user_agent: &str,
+    url: &str,
+    download_dir: &PathBuf,
+    filename: Option<&str>,
+    progress_tx: watch::Sender<DownloadProgress>,
+    cancel_rx: tokio::sync::oneshot::Receiver<()>,
+) -> Result<(u64, PathBuf), crate::Error> {
+    let fname = filename
+        .map(String::from)
+        .unwrap_or_else(|| filename_from_url(url).replace(".m3u8", ".ts").replace(".m3u", ".ts"));
+    let dest = download_dir.join(&fname);
+    tokio::fs::create_dir_all(download_dir).await?;
+
+    let hls = HlsDownloader::new(user_agent, 8);
+    tokio::select! {
+        result = hls.download(url, &dest, progress_tx) => result.map(|bytes| (bytes, dest)),
+        _ = cancel_rx => {
+            info!("HLS download cancelled: {url}");
+            Err(crate::Error::Other("Download cancelled".into()))
+        }
+    }
+}
+
+/// Run a DASH download to completion.
+async fn run_dash_download(
+    user_agent: &str,
+    url: &str,
+    download_dir: &PathBuf,
+    filename: Option<&str>,
+    progress_tx: watch::Sender<DownloadProgress>,
+    cancel_rx: tokio::sync::oneshot::Receiver<()>,
+) -> Result<(u64, PathBuf), crate::Error> {
+    let fname = filename
+        .map(String::from)
+        .unwrap_or_else(|| filename_from_url(url).replace(".mpd", ".mp4"));
+    let dest = download_dir.join(&fname);
+    tokio::fs::create_dir_all(download_dir).await?;
+
+    let dash = DashDownloader::new(user_agent, 8);
+    tokio::select! {
+        result = dash.download(url, &dest, progress_tx) => result.map(|bytes| (bytes, dest)),
+        _ = cancel_rx => {
+            info!("DASH download cancelled: {url}");
+            Err(crate::Error::Other("Download cancelled".into()))
         }
     }
 }
