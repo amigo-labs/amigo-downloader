@@ -1,5 +1,5 @@
 ---
-name: verify
+name: spec-verify
 description: Run a comprehensive consistency check across the entire project. Verifies type sync between frontend and backend, test coverage, i18n completeness, documentation accuracy, and spec compliance. Use after implementing a feature or before a release.
 argument-hint: "[scope: all|types|tests|i18n|api|docs|specs]"
 ---

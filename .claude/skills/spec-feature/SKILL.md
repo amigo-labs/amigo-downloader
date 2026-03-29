@@ -1,5 +1,5 @@
 ---
-name: feature
+name: spec-feature
 description: Orchestrate the complete spec-driven development workflow for a new feature. Walks through spec, types, tests, implementation, verification, and commit — step by step with user approval at each gate.
 argument-hint: "<feature-name>"
 ---
@@ -13,7 +13,7 @@ Implement **$ARGUMENTS** using the complete spec-driven development process. Eac
 ### Step 1: SPEC
 Write the feature specification first.
 
-- Invoke the `/spec $ARGUMENTS` skill logic (follow the same process as the spec skill)
+- Invoke the `/spec` skill logic (follow the same process as the spec skill for `$ARGUMENTS`)
 - Create `docs/specs/$0.md` with full spec including acceptance criteria, API contract, test plan
 - **GATE**: Present spec summary to user, ask for approval before proceeding
 
@@ -58,7 +58,7 @@ Implement UI changes.
 ### Step 6: VERIFY
 Run the consistency check.
 
-- Invoke the `/verify` skill logic (follow the same process as the verify skill)
+- Invoke the `/spec-verify` skill logic (follow the same process as the spec-verify skill)
 - Address any FAIL items before proceeding
 - WARN items: present to user for decision
 - **GATE**: Show verification report, ask if issues should be fixed

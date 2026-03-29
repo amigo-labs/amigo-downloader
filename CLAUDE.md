@@ -465,14 +465,14 @@ Use the project skills to enforce consistency:
 | Skill | Usage | Purpose |
 |-------|-------|---------|
 | `/spec <feature>` | Before coding | Write structured spec with testable acceptance criteria |
-| `/verify` | After coding | Run 7-point consistency check (types, API, tests, i18n, docs) |
-| `/feature <name>` | Full workflow | Orchestrate: Spec → Types → Tests → Backend → Frontend → Verify → Commit |
+| `/spec-verify` | After coding | Run 7-point consistency check (types, API, tests, i18n, docs) |
+| `/spec-feature <name>` | Full workflow | Orchestrate: Spec → Types → Tests → Backend → Frontend → Verify → Commit |
 
 **Rules:**
 1. No feature without a spec in `docs/specs/<feature>.md`
 2. Every acceptance criterion must be testable
 3. API contract (Rust types) defined before implementation
-4. `/verify` must pass before merging
+4. `/spec-verify` must pass before merging
 
 ---
 
