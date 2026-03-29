@@ -55,11 +55,11 @@ pub fn detect_jwplayer(html: &str, base_url: &str) -> Vec<MediaStream> {
         let sources_re = Regex::new(
             r#"["']?sources["']?\s*:\s*\[([^\]]+)\]"#
         ).unwrap();
+        let src_file_re = Regex::new(
+            r#"["']?file["']?\s*:\s*["'](https?://[^"']+)["']"#
+        ).unwrap();
         for cap in sources_re.captures_iter(html) {
             if let Some(inner) = cap.get(1) {
-                let src_file_re = Regex::new(
-                    r#"["']?file["']?\s*:\s*["'](https?://[^"']+)["']"#
-                ).unwrap();
                 for src_cap in src_file_re.captures_iter(inner.as_str()) {
                     if let Some(url) = src_cap.get(1) {
                         add_media_stream(&mut streams, url.as_str(), base_url, "JW Player sources");
@@ -85,14 +85,12 @@ pub fn detect_videojs(html: &str, base_url: &str) -> Vec<MediaStream> {
         r#"data-setup\s*=\s*'([^']+)'"#
     ).unwrap();
     for cap in data_setup_re.captures_iter(html) {
-        if let Some(json_str) = cap.get(1) {
-            if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str.as_str()) {
-                if let Some(sources) = json.get("sources").and_then(|s| s.as_array()) {
-                    for source in sources {
-                        if let Some(src) = source.get("src").and_then(|s| s.as_str()) {
-                            add_media_stream(&mut streams, src, base_url, "Video.js data-setup");
-                        }
-                    }
+        if let Some(json) = cap.get(1).and_then(|json_str| serde_json::from_str::<serde_json::Value>(json_str.as_str()).ok())
+            && let Some(sources) = json.get("sources").and_then(|s| s.as_array())
+        {
+            for source in sources {
+                if let Some(src) = source.get("src").and_then(|s| s.as_str()) {
+                    add_media_stream(&mut streams, src, base_url, "Video.js data-setup");
                 }
             }
         }

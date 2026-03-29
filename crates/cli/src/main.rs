@@ -216,11 +216,11 @@ fn print_banner(mode: OutputMode) {
 }
 
 /// TUI output helper — respects output mode.
-#[allow(dead_code)]
 struct Tui {
     mode: OutputMode,
 }
 
+#[allow(dead_code)]
 impl Tui {
     fn new(mode: OutputMode) -> Self {
         Self { mode }
@@ -767,9 +767,7 @@ async fn main() -> anyhow::Result<()> {
     amigo_core::i18n::init(&lang, std::path::Path::new("locales"));
 
     // Resolve output mode (--no-color overrides to plain)
-    let mode = if cli.no_color {
-        OutputMode::Plain
-    } else if std::env::var("NO_COLOR").is_ok() {
+    let mode = if cli.no_color || std::env::var("NO_COLOR").is_ok() {
         OutputMode::Plain
     } else {
         cli.mode

@@ -39,6 +39,7 @@ const MEDIA_CONTENT_TYPES: &[&str] = &[
 /// Maximum iframe recursion depth.
 const MAX_IFRAME_DEPTH: u32 = 3;
 
+#[derive(Default)]
 pub struct GenericExtractor;
 
 impl GenericExtractor {
@@ -160,10 +161,11 @@ impl GenericExtractor {
         streams.extend(Self::extract_feed_enclosures(html));
 
         // Phase 7: iframe recursion
-        if depth < MAX_IFRAME_DEPTH && streams.is_empty() {
-            if let Ok(iframe_streams) = self.extract_from_iframes(client, html, page_url, depth).await {
-                streams.extend(iframe_streams);
-            }
+        if depth < MAX_IFRAME_DEPTH
+            && streams.is_empty()
+            && let Ok(iframe_streams) = self.extract_from_iframes(client, html, page_url, depth).await
+        {
+            streams.extend(iframe_streams);
         }
 
         // Deduplicate by URL
@@ -219,27 +221,23 @@ impl GenericExtractor {
         // <video src="..."> and <audio src="...">
         let media_sel = Selector::parse("video[src], audio[src]").unwrap();
         for elem in document.select(&media_sel) {
-            if let Some(src) = elem.value().attr("src") {
-                if let Some(url) = resolve_url(base_url, src) {
-                    let proto = Self::protocol_from_url(&url).unwrap_or(StreamProtocol::Http);
-                    streams.push(Self::stream_from_url(&url, proto));
-                }
+            if let Some(url) = elem.value().attr("src").and_then(|src| resolve_url(base_url, src)) {
+                let proto = Self::protocol_from_url(&url).unwrap_or(StreamProtocol::Http);
+                streams.push(Self::stream_from_url(&url, proto));
             }
         }
 
         // <source> tags inside <video> or <audio>
         let source_sel = Selector::parse("video source, audio source").unwrap();
         for elem in document.select(&source_sel) {
-            if let Some(src) = elem.value().attr("src") {
-                if let Some(url) = resolve_url(base_url, src) {
-                    let proto = Self::protocol_from_url(&url).unwrap_or(StreamProtocol::Http);
-                    let mime = elem.value().attr("type").unwrap_or("").to_string();
-                    let mut stream = Self::stream_from_url(&url, proto);
-                    if !mime.is_empty() {
-                        stream.mime_type = mime;
-                    }
-                    streams.push(stream);
+            if let Some(url) = elem.value().attr("src").and_then(|src| resolve_url(base_url, src)) {
+                let proto = Self::protocol_from_url(&url).unwrap_or(StreamProtocol::Http);
+                let mime = elem.value().attr("type").unwrap_or("").to_string();
+                let mut stream = Self::stream_from_url(&url, proto);
+                if !mime.is_empty() {
+                    stream.mime_type = mime;
                 }
+                streams.push(stream);
             }
         }
 
@@ -352,20 +350,19 @@ impl Extractor for GenericExtractor {
         }
 
         // Phase 1b: HEAD request to check Content-Type
-        if let Ok(resp) = client.head(url).send().await {
-            if let Some(ct) = resp.headers().get("content-type") {
-                let ct_str = ct.to_str().unwrap_or("");
-                if let Some(proto) = Self::protocol_from_content_type(ct_str) {
-                    return Ok(ExtractedMedia {
-                        title: url
-                            .rsplit('/')
-                            .next()
-                            .unwrap_or("Download")
-                            .to_string(),
-                        streams: vec![Self::stream_from_url(url, proto)],
-                    });
-                }
-            }
+        if let Ok(resp) = client.head(url).send().await
+            && let Some(proto) = resp.headers().get("content-type")
+                .and_then(|ct| ct.to_str().ok())
+                .and_then(Self::protocol_from_content_type)
+        {
+            return Ok(ExtractedMedia {
+                title: url
+                    .rsplit('/')
+                    .next()
+                    .unwrap_or("Download")
+                    .to_string(),
+                streams: vec![Self::stream_from_url(url, proto)],
+            });
         }
 
         // Fetch the page

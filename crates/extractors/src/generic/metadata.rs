@@ -1,6 +1,5 @@
 //! HTML metadata extraction: OpenGraph, Twitter Cards, JSON-LD, OEmbed.
 
-use regex::Regex;
 use scraper::{Html, Selector};
 use tracing::debug;
 
@@ -43,16 +42,13 @@ pub fn extract_og_video(html: &str, base_url: &str) -> Vec<MediaStream> {
     }
 
     // Also check og:video:type for protocol hints
-    if let Ok(sel) = Selector::parse(r#"meta[property="og:video:type"]"#) {
-        if let Some(elem) = document.select(&sel).next() {
-            if let Some(content) = elem.value().attr("content") {
-                if let Some(proto) = GenericExtractor::protocol_from_content_type(content) {
-                    for stream in &mut streams {
-                        if stream.protocol == StreamProtocol::Http {
-                            stream.protocol = proto.clone();
-                        }
-                    }
-                }
+    if let Ok(sel) = Selector::parse(r#"meta[property="og:video:type"]"#)
+        && let Some(content) = document.select(&sel).next().and_then(|elem| elem.value().attr("content"))
+        && let Some(proto) = GenericExtractor::protocol_from_content_type(content)
+    {
+        for stream in &mut streams {
+            if stream.protocol == StreamProtocol::Http {
+                stream.protocol = proto.clone();
             }
         }
     }
@@ -77,13 +73,11 @@ pub fn extract_twitter_player(html: &str, base_url: &str) -> Vec<MediaStream> {
                     if content.is_empty() {
                         continue;
                     }
-                    if let Some(url) = resolve_url(base_url, content) {
-                        if GenericExtractor::is_media_url(&url) {
-                            let proto = GenericExtractor::protocol_from_url(&url)
-                                .unwrap_or(StreamProtocol::Http);
-                            debug!("Found Twitter player stream: {}", url);
-                            streams.push(GenericExtractor::stream_from_url(&url, proto));
-                        }
+                    if let Some(url) = resolve_url(base_url, content).filter(|u| GenericExtractor::is_media_url(u)) {
+                        let proto = GenericExtractor::protocol_from_url(&url)
+                            .unwrap_or(StreamProtocol::Http);
+                        debug!("Found Twitter player stream: {}", url);
+                        streams.push(GenericExtractor::stream_from_url(&url, proto));
                     }
                 }
             }
@@ -134,15 +128,13 @@ fn extract_video_object_urls(
     }
 
     for key in &["contentUrl", "embedUrl"] {
-        if let Some(url_str) = json.get(key).and_then(|v| v.as_str()) {
-            if let Some(url) = resolve_url(base_url, url_str) {
-                if GenericExtractor::is_media_url(&url) || url.contains(".m3u8") || url.contains(".mpd") {
-                    let proto = GenericExtractor::protocol_from_url(&url)
-                        .unwrap_or(StreamProtocol::Http);
-                    debug!("Found JSON-LD {}: {}", key, url);
-                    streams.push(GenericExtractor::stream_from_url(&url, proto));
-                }
-            }
+        if let Some(url) = json.get(key).and_then(|v| v.as_str()).and_then(|url_str| resolve_url(base_url, url_str))
+            && (GenericExtractor::is_media_url(&url) || url.contains(".m3u8") || url.contains(".mpd"))
+        {
+            let proto = GenericExtractor::protocol_from_url(&url)
+                .unwrap_or(StreamProtocol::Http);
+            debug!("Found JSON-LD {}: {}", key, url);
+            streams.push(GenericExtractor::stream_from_url(&url, proto));
         }
     }
 }
