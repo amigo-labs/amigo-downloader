@@ -1,6 +1,7 @@
 mod api;
 mod clicknload;
 mod feedback;
+mod nzbget_api;
 mod static_files;
 mod update_api;
 pub mod webhooks;
@@ -133,6 +134,7 @@ async fn main() -> anyhow::Result<()> {
     let app = api::router(state.clone())
         .merge(ws::ws_router(state.clone()))
         .merge(update_api::update_router(state.clone()))
+        .merge(nzbget_api::nzbget_router(state.clone()))
         .merge(feedback::feedback_router(state, feedback_limiter))
         .merge(static_files::static_router())
         .layer(CorsLayer::permissive());
