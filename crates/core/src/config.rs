@@ -6,7 +6,39 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 use crate::bandwidth::BandwidthConfig;
+use crate::captcha::CaptchaConfig;
 use crate::postprocess::PostProcessConfig;
+
+/// Webhook endpoint configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhookEndpoint {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    #[serde(default)]
+    pub secret: Option<String>,
+    #[serde(default = "default_webhook_events")]
+    pub events: Vec<String>,
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default = "default_retry_count")]
+    pub retry_count: u32,
+    #[serde(default = "default_retry_delay")]
+    pub retry_delay_secs: u32,
+}
+
+fn default_webhook_events() -> Vec<String> {
+    vec!["*".to_string()]
+}
+fn default_true() -> bool {
+    true
+}
+fn default_retry_count() -> u32 {
+    3
+}
+fn default_retry_delay() -> u32 {
+    10
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -19,6 +51,9 @@ pub struct Config {
     pub postprocessing: PostProcessConfig,
     pub update: UpdateConfig,
     pub feedback: FeedbackConfig,
+    pub captcha: CaptchaConfig,
+    #[serde(default)]
+    pub webhooks: Vec<WebhookEndpoint>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -75,6 +110,8 @@ impl Default for Config {
             postprocessing: PostProcessConfig::default(),
             update: UpdateConfig::default(),
             feedback: FeedbackConfig::default(),
+            captcha: CaptchaConfig::default(),
+            webhooks: Vec::new(),
         }
     }
 }

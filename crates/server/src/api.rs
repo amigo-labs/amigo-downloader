@@ -10,10 +10,13 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
+use amigo_core::captcha::CaptchaManager;
 use amigo_core::coordinator::Coordinator;
 use amigo_core::queue::QueueStatus;
 use amigo_plugin_runtime::loader::PluginLoader;
 use amigo_plugin_runtime::updater::PluginUpdater;
+
+use crate::webhooks::WebhookDispatcher;
 
 /// Shared application state.
 #[derive(Clone)]
@@ -22,6 +25,8 @@ pub struct AppState {
     pub plugins: Arc<PluginLoader>,
     pub plugin_updater: Arc<PluginUpdater>,
     pub http_client: reqwest::Client,
+    pub captcha_manager: Arc<CaptchaManager>,
+    pub webhook_dispatcher: Arc<WebhookDispatcher>,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -45,6 +50,15 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/plugins", get(list_plugins))
         .route("/api/v1/plugins/{id}", patch(update_plugin))
         .route("/api/v1/plugins/suggest", post(suggest_plugin))
+        // Captcha endpoints
+        .route("/api/v1/captcha/pending", get(list_pending_captchas))
+        .route("/api/v1/captcha/{id}/solve", post(solve_captcha))
+        .route("/api/v1/captcha/{id}/cancel", post(cancel_captcha))
+        // Webhook endpoints
+        .route("/api/v1/webhooks", get(list_webhooks))
+        .route("/api/v1/webhooks", post(create_webhook))
+        .route("/api/v1/webhooks/{id}", delete(delete_webhook))
+        .route("/api/v1/webhooks/{id}/test", post(test_webhook))
         .with_state(state)
 }
 
@@ -443,6 +457,116 @@ async fn delete_usenet_server(
             error: "Not yet implemented".into(),
         }),
     ))
+}
+
+// --- Captcha handlers ---
+
+async fn list_pending_captchas(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let pending = state.captcha_manager.list_pending().await;
+    Json(serde_json::to_value(pending).unwrap_or_default())
+}
+
+#[derive(Deserialize)]
+struct SolveCaptchaRequest {
+    answer: String,
+}
+
+async fn solve_captcha(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(req): Json<SolveCaptchaRequest>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    state
+        .captcha_manager
+        .submit_solution(&id, &req.answer)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::NOT_FOUND,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+    Ok(StatusCode::OK)
+}
+
+async fn cancel_captcha(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    state.captcha_manager.cancel(&id).await.map_err(|e| {
+        (
+            StatusCode::NOT_FOUND,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
+    Ok(StatusCode::OK)
+}
+
+// --- Webhook handlers ---
+
+async fn list_webhooks(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let endpoints = state.webhook_dispatcher.list_endpoints().await;
+    Json(serde_json::to_value(endpoints).unwrap_or_default())
+}
+
+#[derive(Deserialize)]
+struct CreateWebhookRequest {
+    name: String,
+    url: String,
+    secret: Option<String>,
+    events: Option<Vec<String>>,
+}
+
+async fn create_webhook(
+    State(state): State<AppState>,
+    Json(req): Json<CreateWebhookRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
+    let endpoint = amigo_core::config::WebhookEndpoint {
+        id: uuid::Uuid::new_v4().to_string(),
+        name: req.name,
+        url: req.url,
+        secret: req.secret,
+        events: req.events.unwrap_or_else(|| vec!["*".into()]),
+        enabled: true,
+        retry_count: 3,
+        retry_delay_secs: 10,
+    };
+    let resp = serde_json::to_value(&endpoint).unwrap_or_default();
+    state.webhook_dispatcher.add_endpoint(endpoint).await;
+    Ok((StatusCode::CREATED, Json(resp)))
+}
+
+async fn delete_webhook(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, StatusCode> {
+    if state.webhook_dispatcher.remove_endpoint(&id).await {
+        Ok(StatusCode::NO_CONTENT)
+    } else {
+        Err(StatusCode::NOT_FOUND)
+    }
+}
+
+#[derive(Serialize)]
+struct TestWebhookResponse {
+    status: u16,
+}
+
+async fn test_webhook(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<Json<TestWebhookResponse>, (StatusCode, Json<ErrorResponse>)> {
+    match state.webhook_dispatcher.send_test(&id).await {
+        Ok(status) => Ok(Json(TestWebhookResponse { status })),
+        Err(e) => Err((
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e }),
+        )),
+    }
 }
 
 fn row_to_response(row: amigo_core::storage::DownloadRow) -> DownloadResponse {

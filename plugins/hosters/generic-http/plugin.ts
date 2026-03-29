@@ -1,4 +1,4 @@
-/// <reference path="../types/amigo.d.ts" />
+/// <reference path="../../types/amigo.d.ts" />
 
 const FILE_EXTENSIONS = [
     ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz", ".zst",
@@ -27,13 +27,6 @@ function filenameFromContentDisposition(header: string): string | null {
     return amigo.regexMatch('filename\\*?=["\']?(?:UTF-8\'\')?([^"\'\\s;]+)', header);
 }
 
-function filenameFromUrl(url: string): string | null {
-    const path = url.split("?")[0];
-    const segment = amigo.regexMatch('/([^/]+)$', path);
-    if (segment && segment.includes(".")) return decodeURIComponent(segment);
-    return null;
-}
-
 function scoreLink(href: string, text: string): number {
     let score = 0;
     const hrefLower = href.toLowerCase();
@@ -52,31 +45,17 @@ function scoreLink(href: string, text: string): number {
     if (hrefLower.includes("facebook") || hrefLower.includes("twitter")) score -= 50;
     if (hrefLower.includes("mailto:")) score -= 100;
 
-    if (/download\s*(now|here|file)?/i.test(textLower)) score += 30;
-    if (/click\s*here\s*to\s*download/i.test(textLower)) score += 25;
-    if (/get\s*(file|download)/i.test(textLower)) score += 20;
-    if (/\.\w{2,4}\s*\([\d.]+ ?(KB|MB|GB)\)/i.test(textLower)) score += 25;
+    if (amigo.regexTest("download\\s*(now|here|file)?", textLower)) score += 30;
+    if (amigo.regexTest("click\\s*here\\s*to\\s*download", textLower)) score += 25;
+    if (amigo.regexTest("get\\s*(file|download)", textLower)) score += 20;
+    if (amigo.regexTest("\\.\\w{2,4}\\s*\\([\\d.]+ ?(KB|MB|GB)\\)", textLower)) score += 25;
 
     return score;
 }
 
-function resolveRelativeUrl(href: string, pageUrl: string): string {
-    if (href.startsWith("http")) return href;
-    if (href.startsWith("/")) {
-        const origin = amigo.regexMatch("(https?://[^/]+)", pageUrl);
-        return origin ? origin + href : href;
-    }
-    return pageUrl.replace(/[^/]*$/, "") + href;
-}
-
-/** Extract page title from HTML. */
-function extractTitle(html: string): string {
-    return amigo.regexMatch("<title[^>]*>([^<]+)</title>", html) || "Download";
-}
-
 /** Probe a URL via HEAD and build a DownloadInfo. */
 function probeUrl(url: string): DownloadInfo {
-    const head: HeadResponse = JSON.parse(amigo.httpHead(url));
+    const head = amigo.httpHead(url);
     let filename: string | null = null;
     let filesize: number | null = null;
     let acceptsRanges = false;
@@ -84,7 +63,7 @@ function probeUrl(url: string): DownloadInfo {
     if (head.headers["content-disposition"]) {
         filename = filenameFromContentDisposition(head.headers["content-disposition"]);
     }
-    if (!filename) filename = filenameFromUrl(url);
+    if (!filename) filename = amigo.urlFilename(url);
     if (head.headers["content-length"]) {
         filesize = parseInt(head.headers["content-length"], 10) || null;
     }
@@ -109,7 +88,11 @@ function findDownloadLinks(html: string, pageUrl: string): ScoredLink[] {
     const seen = new Set<string>();
 
     for (let i = 0; i < allHrefs.length; i++) {
-        const href = resolveRelativeUrl(allHrefs[i], pageUrl);
+        let href = allHrefs[i];
+        // Resolve relative URLs
+        if (!href.startsWith("http")) {
+            try { href = amigo.urlResolve(pageUrl, href); } catch { continue; }
+        }
         const text = (i < allTexts.length ? allTexts[i] : "") || "";
         const score = scoreLink(href, text);
 
@@ -126,12 +109,12 @@ function findDownloadLinks(html: string, pageUrl: string): ScoredLink[] {
 module.exports = {
     id: "generic-http",
     name: "Generic HTTP",
-    version: "3.0.0",
+    version: "4.0.0",
     urlPattern: "https?://.+",
 
     resolve(url: string): DownloadPackage {
         // Step 1: HEAD to check if URL is a direct file download
-        const head: HeadResponse = JSON.parse(amigo.httpHead(url));
+        const head = amigo.httpHead(url);
         const contentType = head.headers["content-type"] || "";
         const isHtml = contentType.includes("text/html");
         const hasContentDisposition = !!head.headers["content-disposition"];
@@ -139,15 +122,15 @@ module.exports = {
         if (!isHtml || hasContentDisposition || isDirectFileUrl(url)) {
             const dl = probeUrl(url);
             return {
-                name: dl.filename || filenameFromUrl(url) || "Download",
+                name: dl.filename || amigo.urlFilename(url) || "Download",
                 downloads: [dl],
             };
         }
 
         // Step 2: HTML page — find all download links
         amigo.logInfo("Page is HTML, scanning for download links...");
-        const page: HttpResponse = JSON.parse(amigo.httpGet(url));
-        const title = extractTitle(page.body);
+        const page = amigo.httpGet(url);
+        const title = amigo.htmlExtractTitle(page.body) || "Download";
         const links = findDownloadLinks(page.body, url);
 
         if (links.length === 0) {
@@ -166,7 +149,7 @@ module.exports = {
     },
 
     checkOnline(url: string): "online" | "offline" | "unknown" {
-        const resp: HeadResponse = JSON.parse(amigo.httpHead(url));
+        const resp = amigo.httpHead(url);
         if (resp.status === 200) return "online";
         if (resp.status === 404) return "offline";
         return "unknown";

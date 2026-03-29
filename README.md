@@ -18,14 +18,16 @@
 ## Features
 
 - **Multi-chunk parallel downloads** with automatic resume and retry
-- **Rune plugin system** — scriptable hoster support, hot-reloadable `.rn` files
+- **Built-in extractors** — YouTube (with N-parameter challenge), HLS, DASH
+- **TypeScript plugin system** — scriptable hoster support, hot-reloadable `.ts` files
+- **Plugin marketplace** — install and update plugins from the registry
 - **Responsive Web UI** — Svelte 5 + Tailwind, dark/light themes, 6 accent colors
 - **PWA with Share Target** — install on your phone, share links directly to add downloads
 - **DLC container** import and export (JDownloader compatible)
 - **Usenet support** — NZB parsing, NNTP/SSL multi-connection, yEnc decoding
 - **Click'n'Load** on port 9666 — works with browser extensions
 - **REST API** + **WebSocket** for real-time progress
-- **Plugin marketplace** — install and update plugins from the registry
+- **Internationalization** — English and German out of the box
 - **Self-update** — core binary auto-updates from GitHub Releases
 - **In-app feedback** — crash auto-reporting to GitHub Issues (with dedup)
 - **Post-processing** — auto-extract RAR, ZIP, 7z, tar.gz after download
@@ -137,12 +139,20 @@ amigo-dl update apply --yes            # apply update
 ```
 amigo-downloader/
 ├── crates/
-│   ├── core/              # Download engine, protocols, storage
-│   ├── plugin-runtime/    # Rune VM, sandbox, plugin registry
-│   ├── server/            # Axum REST API, WebSocket, embedded UI
+│   ├── core/              # Download engine, protocols, storage, i18n
+│   ├── extractors/        # Built-in site extractors (YouTube, HLS, DASH)
+│   ├── plugin-runtime/    # QuickJS VM, TypeScript transpiler, plugin registry
+│   ├── server/            # Axum REST API, WebSocket, Click'n'Load, embedded UI
 │   └── cli/               # Command-line interface
 ├── web-ui/                # Svelte 5 + Tailwind PWA
-├── plugins/               # Rune plugin files (.rn)
+├── plugins/               # TypeScript plugin files (.ts)
+│   ├── extractors/        # Site-specific extractors (YouTube)
+│   ├── hosters/           # Hoster plugins (generic-http)
+│   ├── template/          # Plugin template
+│   └── types/             # TypeScript type definitions (amigo.d.ts)
+├── tauri/                 # Tauri v2 desktop app
+├── locales/               # i18n translation files (en, de)
+├── scripts/               # Install script
 ├── docker/                # Dockerfile + compose
 └── docs/                  # Architecture docs
 ```
@@ -152,7 +162,9 @@ amigo-downloader/
 | Module | Purpose |
 |--------|---------|
 | `coordinator` | Orchestrates downloads, pause/resume/cancel, auto-start |
-| `protocol/http` | Multi-chunk parallel downloads, resume, progress |
+| `protocol/http` | Multi-chunk parallel HTTP/HTTPS downloads, resume, progress |
+| `protocol/hls` | HLS manifest parsing and segment downloading |
+| `protocol/dash` | DASH/MPD manifest parsing and segment downloading |
 | `protocol/usenet` | NNTP client, NZB parser, yEnc decoder |
 | `chunk` | Chunk splitting, reassembly, verification |
 | `bandwidth` | Token bucket limiter with time-based schedules |
@@ -163,25 +175,56 @@ amigo-downloader/
 | `retry` | Exponential backoff with jitter |
 | `config` | TOML file loading/saving, env var support |
 | `updater` | Self-update from GitHub Releases |
+| `update_events` | Update event broadcasting |
+| `i18n` | Internationalization support |
+
+### Extractors Crate
+
+Built-in extractors for sites that need special handling beyond simple HTTP:
+
+| Module | Purpose |
+|--------|---------|
+| `youtube` | YouTube video extraction with format selection |
+| `youtube/n_challenge` | N-parameter deobfuscation via QuickJS |
+| `youtube/innertube` | YouTube InnerTube API client |
+| `youtube/formats` | Format/quality selection logic |
+| `youtube/url_parser` | YouTube URL parsing (video, playlist, shorts) |
 
 ### Plugin System
 
-Plugins are `.rn` scripts (Rune language) that run in a sandboxed VM:
+Plugins are TypeScript files (`.ts`) that run in a sandboxed QuickJS VM. TypeScript is transpiled to JavaScript at load time via SWC.
 
-```rust
-pub fn plugin_id() { "my-hoster" }
-pub fn plugin_name() { "My Hoster" }
-pub fn plugin_version() { "1.0.0" }
-pub fn url_pattern() { r"https?://my-hoster\.com/.+" }
+```typescript
+export function plugin_id() { return "my-hoster"; }
+export function plugin_name() { return "My Hoster"; }
+export function plugin_version() { return "1.0.0"; }
+export function url_pattern() { return "https?://my-hoster\\.com/.+"; }
 
-pub async fn resolve(url) {
-    let html = http_get(url, None).await?;
-    let link = regex_match(r#"href="(https://dl\..+?)""#, html.body)?;
-    Ok(#{ url: link, filename: "file.bin", chunks_supported: true })
+export async function resolve(url: string): Promise<DownloadInfo> {
+    const html = await http_get(url);
+    const link = regex_match(/href="(https:\/\/dl\..+?)"/, html.body);
+    return { url: link, filename: "file.bin", chunks_supported: true };
 }
 ```
 
 **Sandbox limits:** 30s timeout, 64MB RAM, 20 HTTP requests, 1MB storage per plugin. No direct network/filesystem access — everything proxied through the Host API.
+
+The plugin runtime includes:
+- **Registry** — discover and install plugins from the marketplace
+- **Updater** — automatic plugin updates with checksum verification
+- **Transpiler** — TypeScript → JavaScript via SWC at load time
+- **Engine** — QuickJS VM execution with Host API bindings
+
+### Server
+
+| Module | Purpose |
+|--------|---------|
+| `api` | REST API routes for downloads, queue, plugins, config |
+| `ws` | WebSocket endpoint for real-time progress events |
+| `clicknload` | Click'n'Load listener on port 9666 |
+| `feedback` | In-app bug/crash reporting to GitHub Issues |
+| `update_api` | Self-update API endpoints |
+| `static_files` | Embedded Web UI via rust-embed |
 
 ### REST API
 
@@ -216,6 +259,17 @@ The web interface is a Svelte 5 PWA with:
 - **Drag & drop**: Drop URLs, NZB, DLC files anywhere on the page
 - **Keyboard shortcuts**: `Ctrl+N` add download, `1-5` navigate, `Esc` close
 - **PWA Share Target**: Install on phone, share links from any app
+- **In-app feedback**: Report bugs directly from the settings page
+
+### Pages
+
+| Page | Description |
+|------|-------------|
+| Downloads | Active/completed downloads with progress |
+| Queue | Priority queue management |
+| Plugins | Plugin list, install, update, configure |
+| History | Past downloads with search/filter |
+| Settings | Config, theming, bandwidth schedules |
 
 ## Mobile / PWA
 
@@ -271,16 +325,19 @@ services:
     volumes:
       - ./config:/config
       - ./downloads:/downloads
+      - ./plugins:/etc/amigo/plugins     # Custom plugins
     environment:
       - AMIGO_GITHUB_TOKEN=ghp_...  # Optional: auto crash reporting
 ```
 
 ## Plugin Development
 
-1. Copy `plugins/plugin-template/plugin.rn`
+1. Copy `plugins/template/plugin.ts`
 2. Implement `plugin_id`, `plugin_name`, `plugin_version`, `url_pattern`, `resolve`
-3. Drop the `.rn` file into `plugins/hosters/`
+3. Drop the `.ts` file into `plugins/hosters/` or `plugins/extractors/`
 4. It's auto-detected and loaded (hot-reload supported)
+
+Type definitions are available in `plugins/types/amigo.d.ts` for IDE support.
 
 See [Plugin API docs](docs/plugin-api.md) for the full Host API reference.
 
@@ -290,13 +347,16 @@ See [Plugin API docs](docs/plugin-api.md) for the full Host API reference.
 |-----------|-----------|
 | Core | Rust (2024 edition), Tokio async runtime |
 | HTTP | reqwest with connection pooling |
+| HLS/DASH | m3u8-rs, dash-mpd |
 | Usenet | Custom NNTP/TLS client on Tokio |
-| Plugins | Rune VM (sandboxed, async) |
+| Extractors | Built-in (YouTube via rquickjs for N-parameter) |
+| Plugins | QuickJS VM (sandboxed), TypeScript via SWC transpiler |
 | Database | SQLite (rusqlite, WAL mode) |
 | Web API | Axum + WebSocket |
 | Web UI | Svelte 5, Tailwind CSS v4, Vite |
-| Desktop | Tauri v2 (planned) |
+| Desktop | Tauri v2 |
 | CLI | clap |
+| i18n | Custom, JSON locale files |
 
 ## Contributing
 
@@ -310,6 +370,9 @@ cargo clippy --workspace
 
 # Build web UI
 cd web-ui && npm ci && npx vite build
+
+# Type-check web UI
+cd web-ui && npm run check
 ```
 
 ## License

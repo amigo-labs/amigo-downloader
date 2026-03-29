@@ -1,4 +1,4 @@
-/// <reference path="../types/amigo.d.ts" />
+/// <reference path="../../types/amigo.d.ts" />
 
 function extractVideoId(url: string): string | null {
     let m = amigo.regexMatch("[?&]v=([a-zA-Z0-9_-]{11})", url);
@@ -12,7 +12,7 @@ function extractVideoId(url: string): string | null {
 module.exports = {
     id: "youtube",
     name: "YouTube",
-    version: "1.0.0",
+    version: "1.1.0",
     description: "Download videos from YouTube",
     author: "amigo-labs",
     urlPattern: "https?://(www\\.)?(youtube\\.com/(watch|shorts|embed)|youtu\\.be/)",
@@ -40,18 +40,18 @@ module.exports = {
             },
         });
 
-        const resp: HttpResponse = JSON.parse(amigo.httpPost(
+        const resp = amigo.httpPost(
             "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
             body,
             "application/json"
-        ));
+        );
 
         if (resp.status !== 200) {
             throw new Error("YouTube API returned status " + resp.status);
         }
 
         const data = JSON.parse(resp.body);
-        const title: string | undefined = data.videoDetails && data.videoDetails.title;
+        const title = amigo.traverse(data, "videoDetails.title") as string | null;
         if (!title) throw new Error("Could not get video title");
 
         let bestUrl: string | null = null;
@@ -60,7 +60,7 @@ module.exports = {
         let bestSize: number | null = null;
         let bestMime = "video/mp4";
 
-        const formats = data.streamingData && data.streamingData.formats;
+        const formats = amigo.traverse(data, "streamingData.formats") as any[] | null;
         if (formats) {
             for (const fmt of formats) {
                 if (fmt.url && fmt.height && fmt.height > bestHeight) {
@@ -74,7 +74,7 @@ module.exports = {
         }
 
         if (!bestUrl) {
-            const adaptive = data.streamingData && data.streamingData.adaptiveFormats;
+            const adaptive = amigo.traverse(data, "streamingData.adaptiveFormats") as any[] | null;
             if (adaptive) {
                 for (const afmt of adaptive) {
                     if (afmt.url && afmt.mimeType && afmt.mimeType.indexOf("video/") === 0) {
@@ -91,12 +91,12 @@ module.exports = {
         }
 
         if (!bestUrl) {
-            const reason = data.playabilityStatus && data.playabilityStatus.reason;
+            const reason = amigo.traverse(data, "playabilityStatus.reason") as string | null;
             throw new Error(reason || "No downloadable streams found");
         }
 
         const ext = bestMime.indexOf("webm") >= 0 ? "webm" : "mp4";
-        const filename = title.replace(/[\/\\:*?"<>|]/g, "_") + "." + ext;
+        const filename = amigo.sanitizeFilename(title) + "." + ext;
 
         amigo.logInfo("Selected: " + bestQuality + " (" + bestMime + ")");
 
@@ -120,9 +120,9 @@ module.exports = {
         const videoId = extractVideoId(url);
         if (!videoId) return "unknown";
 
-        const resp: HttpResponse = JSON.parse(amigo.httpGet(
+        const resp = amigo.httpGet(
             "https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=" + videoId + "&format=json"
-        ));
+        );
 
         if (resp.status === 200) return "online";
         if (resp.status === 404 || resp.status === 401) return "offline";

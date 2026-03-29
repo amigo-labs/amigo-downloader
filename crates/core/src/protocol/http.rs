@@ -11,7 +11,7 @@ use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
 /// Progress update for a download.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct DownloadProgress {
     pub bytes_downloaded: u64,
     pub total_bytes: Option<u64>,

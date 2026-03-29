@@ -11,6 +11,8 @@ pub struct PostProcessConfig {
     pub auto_extract: bool,
     pub delete_archives: bool,
     pub verify_checksums: bool,
+    pub par2_repair: bool,
+    pub par2_delete_after: bool,
 }
 
 impl Default for PostProcessConfig {
@@ -19,6 +21,8 @@ impl Default for PostProcessConfig {
             auto_extract: true,
             delete_archives: true,
             verify_checksums: true,
+            par2_repair: true,
+            par2_delete_after: true,
         }
     }
 }
@@ -142,6 +146,138 @@ fn extract_tar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
             &output_dir.to_string_lossy(),
         ],
     )
+}
+
+/// Run the full Usenet post-processing pipeline for a directory of downloaded files:
+/// 1. PAR2 verify/repair (if .par2 files present)
+/// 2. Extract archives (RAR, ZIP, 7z)
+/// 3. Clean up PAR2 and archive files
+pub async fn run_usenet_pipeline(
+    download_dir: &Path,
+    config: &PostProcessConfig,
+) -> Result<(), crate::Error> {
+    // Step 1: Find and run PAR2 verify/repair
+    if config.par2_repair
+        && let Some(par2_file) = find_par2_file(download_dir)
+    {
+        info!("PAR2 verify: {:?}", par2_file);
+        match run_external("par2", &["v", &par2_file.to_string_lossy()]) {
+            Ok(()) => info!("PAR2 verification passed"),
+            Err(_) => {
+                info!("PAR2 verification failed, attempting repair...");
+                match run_external("par2", &["r", &par2_file.to_string_lossy()]) {
+                    Ok(()) => info!("PAR2 repair successful"),
+                    Err(e) => warn!("PAR2 repair failed: {e}"),
+                }
+            }
+        }
+
+        if config.par2_delete_after {
+            delete_par2_files(download_dir);
+        }
+    }
+
+    // Step 2: Extract archives
+    if config.auto_extract {
+        let archives = find_archives(download_dir);
+        for archive in &archives {
+            info!("Extracting: {:?}", archive);
+            let result = match archive_type(archive) {
+                Some(ArchiveType::Rar) => extract_rar(archive, download_dir),
+                Some(ArchiveType::Zip) => extract_zip(archive, download_dir),
+                Some(ArchiveType::SevenZip) => extract_7z(archive, download_dir),
+                Some(ArchiveType::Gzip | ArchiveType::Tar) => extract_tar(archive, download_dir),
+                None => continue,
+            };
+
+            match result {
+                Ok(()) => {
+                    if config.delete_archives {
+                        let _ = std::fs::remove_file(archive);
+                    }
+                }
+                Err(e) => warn!("Extraction failed for {:?}: {e}", archive),
+            }
+        }
+
+        // Delete multipart rar volumes (.r00, .r01, etc.)
+        if config.delete_archives {
+            delete_rar_volumes(download_dir);
+        }
+    }
+
+    Ok(())
+}
+
+fn find_par2_file(dir: &Path) -> Option<std::path::PathBuf> {
+    let entries = std::fs::read_dir(dir).ok()?;
+    // Prefer the main .par2 file (not .vol*.par2)
+    let mut par2_files: Vec<std::path::PathBuf> = entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| {
+            p.extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("par2"))
+        })
+        .collect();
+    par2_files.sort_by_key(|p| p.to_string_lossy().len());
+    par2_files.into_iter().next()
+}
+
+fn find_archives(dir: &Path) -> Vec<std::path::PathBuf> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(e) => e,
+        Err(_) => return Vec::new(),
+    };
+    entries
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| archive_type(p).is_some())
+        // Only include first RAR volume or standalone archives
+        .filter(|p| {
+            let ext = p
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            // Skip .r00, .r01 etc — only keep .rar
+            !ext.starts_with('r') || ext == "rar"
+        })
+        .collect()
+}
+
+fn delete_par2_files(dir: &Path) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if entry
+                .path()
+                .extension()
+                .is_some_and(|ext| ext.eq_ignore_ascii_case("par2"))
+            {
+                debug!("Deleting PAR2 file: {:?}", entry.path());
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
+}
+
+fn delete_rar_volumes(dir: &Path) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let ext = entry
+                .path()
+                .extension()
+                .and_then(|e| e.to_str())
+                .unwrap_or("")
+                .to_lowercase();
+            // Delete .r00, .r01, .r02, ... (multipart rar volumes)
+            if ext.starts_with('r') && ext.len() >= 2 && ext[1..].chars().all(|c| c.is_ascii_digit())
+            {
+                debug!("Deleting RAR volume: {:?}", entry.path());
+                let _ = std::fs::remove_file(entry.path());
+            }
+        }
+    }
 }
 
 fn run_external(cmd: &str, args: &[&str]) -> Result<(), crate::Error> {

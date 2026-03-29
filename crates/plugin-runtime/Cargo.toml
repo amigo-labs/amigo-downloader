@@ -12,10 +12,20 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 reqwest = { workspace = true }
 regex = "1"
+url = "2"
+urlencoding = "2"
+scraper = "0.22"
 semver = { workspace = true }
 sha2 = { workspace = true }
+sha1 = "0.10"
+md-5 = "0.10"
+hmac = "0.12"
 hex = { workspace = true }
 tempfile = { workspace = true }
+
+# AES-CBC encryption/decryption for plugins
+aes = "0.8"
+cbc = "0.1"
 
 # QuickJS-NG runtime (replaces rune)
 rquickjs = { workspace = true }
