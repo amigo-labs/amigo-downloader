@@ -3,6 +3,7 @@ mod background;
 mod clicknload;
 mod feedback;
 mod nzbget_api;
+mod resolver;
 mod static_files;
 mod update_api;
 pub mod webhooks;
@@ -40,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
         PathBuf::from(&config.temp_dir),
     )?;
 
-    let coordinator = Arc::new(Coordinator::new(config.clone(), storage));
+    let mut coordinator = Coordinator::new(config.clone(), storage);
 
     // Shared HTTP client
     let http_client = reqwest::Client::builder()
@@ -93,6 +94,12 @@ async fn main() -> anyhow::Result<()> {
     );
     let discovered = plugin_loader.discover().await.unwrap_or_default();
     tracing::info!("Loaded {} plugins", discovered.len());
+
+    // Wire URL resolvers: plugins first, then fallthrough to raw URL
+    let plugin_resolver = resolver::PluginUrlResolver::new(plugin_loader.clone());
+    coordinator.set_resolvers(vec![std::sync::Arc::new(plugin_resolver)]);
+
+    let coordinator = std::sync::Arc::new(coordinator);
 
     // Recover any downloads that were in-progress when the server last stopped
     let recovered = coordinator.recover_downloads().await.unwrap_or(0);

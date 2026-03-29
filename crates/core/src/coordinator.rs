@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::bandwidth::BandwidthLimiter;
 use crate::config::Config;
 use crate::postprocess;
-use crate::protocol::Protocol;
+use crate::protocol::{Protocol, ResolvedDownload, UrlResolver};
 use crate::protocol::http::{DownloadProgress, HttpDownloader};
 use crate::protocol::hls::HlsDownloader;
 use crate::protocol::dash::DashDownloader;
@@ -87,6 +87,7 @@ pub struct Coordinator {
     retry_policy: Arc<Mutex<RetryPolicy>>,
     active: Arc<Mutex<HashMap<String, ActiveDownload>>>,
     event_tx: broadcast::Sender<DownloadEvent>,
+    resolvers: Vec<Arc<dyn UrlResolver>>,
 }
 
 impl Coordinator {
@@ -103,7 +104,14 @@ impl Coordinator {
             retry_policy: Arc::new(Mutex::new(retry_policy)),
             active: Arc::new(Mutex::new(HashMap::new())),
             event_tx,
+            resolvers: Vec::new(),
         }
+    }
+
+    /// Register URL resolvers (plugins, extractors). Called after construction.
+    /// Resolvers are tried in order; first match wins.
+    pub fn set_resolvers(&mut self, resolvers: Vec<Arc<dyn UrlResolver>>) {
+        self.resolvers = resolvers;
     }
 
     /// Get a reference to the bandwidth limiter.
@@ -166,7 +174,17 @@ impl Coordinator {
         }
 
         let id = Uuid::new_v4().to_string();
-        let protocol = detect_protocol(url);
+
+        // Try URL resolution: plugins → extractors → raw URL fallback
+        let resolved = self.resolve_url(url).await;
+        let (download_url, resolved_filename, protocol) = match &resolved {
+            Some(r) => (
+                r.url.clone(),
+                r.filename.clone().or(filename.clone()),
+                r.protocol.clone(),
+            ),
+            None => (url.to_string(), filename.clone(), detect_protocol(url)),
+        };
 
         // Determine download directory (category-based subdirectory if set)
         let base_dir = self.storage.download_dir.to_string_lossy().to_string();
@@ -177,10 +195,10 @@ impl Coordinator {
 
         let row = DownloadRow {
             id: id.clone(),
-            url: url.to_string(),
+            url: download_url,
             protocol: protocol.as_str().to_string(),
-            filename,
-            filesize: None,
+            filename: resolved_filename,
+            filesize: resolved.as_ref().and_then(|r| r.filesize),
             status: QueueStatus::Queued.as_str().to_string(),
             priority,
             package_id: category.clone(),
@@ -513,6 +531,23 @@ impl Coordinator {
         }
 
         Ok(count)
+    }
+
+    /// Try each registered URL resolver in order. Returns None if no resolver matches.
+    async fn resolve_url(&self, url: &str) -> Option<ResolvedDownload> {
+        for resolver in &self.resolvers {
+            match resolver.resolve(url).await {
+                Some(resolved) => {
+                    info!(
+                        "URL resolved: {url} → {} (protocol: {:?})",
+                        resolved.url, resolved.protocol
+                    );
+                    return Some(resolved);
+                }
+                None => continue,
+            }
+        }
+        None
     }
 }
 
