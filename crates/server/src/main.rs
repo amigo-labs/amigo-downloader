@@ -31,7 +31,8 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    let config = Config::load_auto();
+    let config_path = Config::resolve_path();
+    let config = Config::load(&config_path).unwrap_or_default();
 
     let storage = Storage::open(
         PathBuf::from("amigo.db"),
@@ -127,6 +128,7 @@ async fn main() -> anyhow::Result<()> {
         http_client,
         captcha_manager,
         webhook_dispatcher,
+        config_path,
     };
 
     // Feedback rate limiter

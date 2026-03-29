@@ -109,7 +109,7 @@ async fn jsonrpc_handler(
         "listgroups" => handle_listgroups(&state.coordinator).await,
         "history" => handle_history(&state.coordinator).await,
         "editqueue" => handle_editqueue(&state.coordinator, &req.params).await,
-        "config" => handle_config(&state.coordinator),
+        "config" => handle_config(&state.coordinator).await,
         "postqueue" => Ok(json!([])),
         "listfiles" => Ok(json!([])),
         "log" => Ok(json!([])),
@@ -184,7 +184,7 @@ async fn handle_status(coordinator: &Arc<Coordinator>) -> RpcResult {
         "DownloadedSizeLo": 0,
         "DownloadedSizeHi": 0,
         "DownloadedSizeMB": 0,
-        "DownloadLimit": coordinator.config().bandwidth.global_limit,
+        "DownloadLimit": coordinator.config().await.bandwidth.global_limit,
         "AverageDownloadRate": speed,
         "DownloadRate": speed,
         "ThreadCount": active,
@@ -447,8 +447,8 @@ async fn handle_editqueue(coordinator: &Arc<Coordinator>, params: &[Value]) -> R
     Ok(json!(true))
 }
 
-fn handle_config(coordinator: &Arc<Coordinator>) -> RpcResult {
-    let config = coordinator.config();
+async fn handle_config(coordinator: &Arc<Coordinator>) -> RpcResult {
+    let config = coordinator.config().await;
     Ok(json!([
         {"Name": "MainDir", "Value": config.download_dir},
         {"Name": "DestDir", "Value": config.download_dir},

@@ -232,6 +232,14 @@ impl Config {
         Ok(config)
     }
 
+    /// Resolve the config file path (first writable standard path).
+    pub fn resolve_path() -> std::path::PathBuf {
+        if let Ok(dir) = std::env::var("AMIGO_CONFIG_DIR") {
+            return std::path::PathBuf::from(dir).join("config.toml");
+        }
+        std::path::PathBuf::from("config.toml")
+    }
+
     /// Load config, trying standard paths in order:
     /// 1. $AMIGO_CONFIG_DIR/config.toml
     /// 2. ./config.toml

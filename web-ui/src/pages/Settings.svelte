@@ -1,25 +1,11 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { theme, layout, accent, features, type AccentColor, type LayoutMode, type ThemeMode } from "../lib/stores";
-  import { getWebhooks, createWebhook, deleteWebhook, testWebhook, getFeatures, updateFeatures, getUsenetProcessing, updateUsenetProcessing, getRetryConfig, updateRetryConfig, type UsenetProcessing, type RetryConfig } from "../lib/api";
+  import { getConfig, putConfig, getWebhooks, createWebhook, deleteWebhook, testWebhook, type AppConfig } from "../lib/api";
   import { addToast } from "../lib/toast";
 
-  // Usenet processing state
-  let usenetProc = $state<UsenetProcessing>({
-    par2_repair: true,
-    auto_unrar: true,
-    delete_archives_after_extract: true,
-    delete_par2_after_repair: true,
-    selective_par2: true,
-    sequential_postprocess: false,
-  });
-
-  // Retry config state
-  let retryConfig = $state<RetryConfig>({
-    max_retries: 5,
-    base_delay_secs: 1.0,
-    max_delay_secs: 60.0,
-  });
+  // Full config state
+  let config = $state<AppConfig | null>(null);
 
   // Webhook state
   let webhooks = $state<any[]>([]);
@@ -31,31 +17,37 @@
 
   onMount(async () => {
     try {
-      const [wh, up, rc] = await Promise.all([getWebhooks(), getUsenetProcessing(), getRetryConfig()]);
+      const [cfg, wh] = await Promise.all([getConfig(), getWebhooks()]);
+      config = cfg;
       webhooks = wh;
-      usenetProc = up;
-      retryConfig = rc;
+      // Sync feature flags store
+      if (cfg.features) {
+        features.set(cfg.features);
+      }
     } catch { /* server offline */ }
   });
 
-  async function toggleUsenetProc(key: keyof UsenetProcessing) {
-    const updated = { ...usenetProc, [key]: !usenetProc[key] };
+  async function saveConfig() {
+    if (!config) return;
     try {
-      await updateUsenetProcessing(updated);
-      usenetProc = updated;
-      addToast("Usenet processing updated", "success");
+      config = await putConfig(config);
+      features.set(config.features);
+      addToast("success", "Settings saved");
     } catch {
-      addToast("Failed to update", "error");
+      addToast("error", "Failed to save settings");
     }
   }
 
-  async function saveRetryConfig() {
-    try {
-      await updateRetryConfig(retryConfig);
-      addToast("success", "Retry settings saved");
-    } catch {
-      addToast("error", "Failed to save retry settings");
-    }
+  function toggleUsenetProc(key: string) {
+    if (!config) return;
+    (config.usenet as any)[key] = !(config.usenet as any)[key];
+    saveConfig();
+  }
+
+  function toggleFeature(key: "rss_feeds" | "server_stats") {
+    if (!config) return;
+    config.features[key] = !config.features[key];
+    saveConfig();
   }
 
   async function handleAddWebhook() {
@@ -99,18 +91,6 @@
     }
   }
 
-  async function toggleFeature(key: "rss_feeds" | "server_stats") {
-    const current = { ...$features };
-    current[key] = !current[key];
-    try {
-      await updateFeatures(current);
-      features.set(current);
-      addToast(`Feature ${current[key] ? "enabled" : "disabled"}`, "success");
-    } catch {
-      addToast("Failed to update feature", "error");
-    }
-  }
-
   const accentColors: { id: AccentColor; label: string; hex: string }[] = [
     { id: "blue", label: "Blue", hex: "#3b82f6" },
     { id: "green", label: "Green", hex: "#10b981" },
@@ -121,6 +101,7 @@
   ];
 </script>
 
+{#if config}
 <div class="max-w-2xl space-y-8">
   <!-- Optional Features -->
   <section>
@@ -136,11 +117,11 @@
         <button
           onclick={() => toggleFeature("rss_feeds")}
           class="w-12 h-6 rounded-full relative transition-colors"
-          style="background: {$features.rss_feeds ? 'var(--accent-color)' : 'var(--surface-3-color)'}"
+          style="background: {config.features.rss_feeds ? 'var(--accent-color)' : 'var(--surface-3-color)'}"
         >
           <span
             class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all shadow"
-            style="left: {$features.rss_feeds ? '1.625rem' : '0.125rem'}"
+            style="left: {config.features.rss_feeds ? '1.625rem' : '0.125rem'}"
           ></span>
         </button>
       </div>
@@ -154,11 +135,11 @@
         <button
           onclick={() => toggleFeature("server_stats")}
           class="w-12 h-6 rounded-full relative transition-colors"
-          style="background: {$features.server_stats ? 'var(--accent-color)' : 'var(--surface-3-color)'}"
+          style="background: {config.features.server_stats ? 'var(--accent-color)' : 'var(--surface-3-color)'}"
         >
           <span
             class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all shadow"
-            style="left: {$features.server_stats ? '1.625rem' : '0.125rem'}"
+            style="left: {config.features.server_stats ? '1.625rem' : '0.125rem'}"
           ></span>
         </button>
       </div>
@@ -183,13 +164,13 @@
             <p class="text-xs" style="color: var(--text-secondary-color)">{opt.desc}</p>
           </div>
           <button
-            onclick={() => toggleUsenetProc(opt.key as keyof UsenetProcessing)}
+            onclick={() => toggleUsenetProc(opt.key)}
             class="w-12 h-6 rounded-full relative transition-colors shrink-0 ml-4"
-            style="background: {usenetProc[opt.key as keyof UsenetProcessing] ? 'var(--accent-color)' : 'var(--surface-3-color)'}"
+            style="background: {(config.usenet as any)[opt.key] ? 'var(--accent-color)' : 'var(--surface-3-color)'}"
           >
             <span
               class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all shadow"
-              style="left: {usenetProc[opt.key as keyof UsenetProcessing] ? '1.625rem' : '0.125rem'}"
+              style="left: {(config.usenet as any)[opt.key] ? '1.625rem' : '0.125rem'}"
             ></span>
           </button>
         </div>
@@ -264,8 +245,7 @@
         <label class="text-sm font-semibold mb-1.5 block">Download Directory</label>
         <input
           type="text"
-          value="downloads"
-          readonly
+          bind:value={config.download_dir}
           class="w-full rounded-lg px-4 py-2.5 text-sm font-mono outline-none"
           style="background: var(--surface-3-color); border: 1px solid var(--border-color); color: var(--text-color)"
         />
@@ -274,7 +254,7 @@
         <label class="text-sm font-semibold mb-1.5 block">Max Concurrent Downloads</label>
         <input
           type="number"
-          value="10"
+          bind:value={config.max_concurrent_downloads}
           min="1"
           max="50"
           class="w-32 rounded-lg px-4 py-2.5 text-sm font-mono outline-none"
@@ -286,12 +266,12 @@
         <div class="flex items-center gap-2">
           <input
             type="number"
-            value="0"
+            bind:value={config.bandwidth.global_limit}
             min="0"
             class="w-32 rounded-lg px-4 py-2.5 text-sm font-mono outline-none"
             style="background: var(--surface-3-color); border: 1px solid var(--border-color); color: var(--text-color)"
           />
-          <span class="text-sm" style="color: var(--text-secondary-color)">KB/s (0 = unlimited)</span>
+          <span class="text-sm" style="color: var(--text-secondary-color)">B/s (0 = unlimited)</span>
         </div>
       </div>
     </div>
@@ -308,7 +288,7 @@
         </p>
         <input
           type="number"
-          bind:value={retryConfig.max_retries}
+          bind:value={config.retry.max_retries}
           min="0"
           max="20"
           class="w-32 rounded-lg px-4 py-2.5 text-sm font-mono outline-none"
@@ -323,7 +303,7 @@
         <div class="flex items-center gap-2">
           <input
             type="number"
-            bind:value={retryConfig.base_delay_secs}
+            bind:value={config.retry.base_delay_secs}
             min="0.1"
             max="30"
             step="0.5"
@@ -341,7 +321,7 @@
         <div class="flex items-center gap-2">
           <input
             type="number"
-            bind:value={retryConfig.max_delay_secs}
+            bind:value={config.retry.max_delay_secs}
             min="1"
             max="600"
             step="1"
@@ -352,7 +332,7 @@
         </div>
       </div>
       <button
-        onclick={saveRetryConfig}
+        onclick={saveConfig}
         class="px-4 py-2 rounded-lg text-sm font-semibold text-white"
         style="background: var(--accent-color)"
       >Save</button>
@@ -464,3 +444,8 @@
     </div>
   </section>
 </div>
+{:else}
+<div class="flex items-center justify-center h-32">
+  <p class="text-sm" style="color: var(--text-secondary-color)">Loading settings...</p>
+</div>
+{/if}

@@ -93,7 +93,7 @@ async fn check_updates(
     // Check core update
     let core_status = updater::check_for_update(
         &state.http_client,
-        &state.coordinator.config().update.github_repo,
+        &state.coordinator.config().await.update.github_repo,
     )
     .await;
 
@@ -147,7 +147,7 @@ async fn apply_core_update(
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
     let status = updater::check_for_update(
         &state.http_client,
-        &state.coordinator.config().update.github_repo,
+        &state.coordinator.config().await.update.github_repo,
     )
     .await
     .map_err(|e| {

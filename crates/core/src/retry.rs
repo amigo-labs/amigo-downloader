@@ -6,6 +6,7 @@ use std::time::Duration;
 use rand::Rng;
 use tracing::warn;
 
+#[derive(Clone)]
 pub struct RetryPolicy {
     pub max_retries: u32,
     pub base_delay: Duration,

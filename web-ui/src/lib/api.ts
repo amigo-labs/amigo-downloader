@@ -250,68 +250,55 @@ export async function setNzbWatchDir(path: string) {
 }
 
 // ========================================
-// USENET PROCESSING CONFIG
+// UNIFIED CONFIG
 // ========================================
 
-export interface UsenetProcessing {
-  par2_repair: boolean;
-  auto_unrar: boolean;
-  delete_archives_after_extract: boolean;
-  delete_par2_after_repair: boolean;
-  selective_par2: boolean;
-  sequential_postprocess: boolean;
+export interface AppConfig {
+  download_dir: string;
+  temp_dir: string;
+  max_concurrent_downloads: number;
+  bandwidth: {
+    global_limit: number;
+    http_limit: number;
+    usenet_limit: number;
+    schedule_enabled: boolean;
+    schedules: { name: string; start: string; end: string; limit: number }[];
+  };
+  http: {
+    max_chunks_per_download: number;
+    max_connections_per_host: number;
+    user_agent: string;
+    timeout_connect_secs: number;
+    timeout_read_secs: number;
+  };
+  usenet: {
+    par2_repair: boolean;
+    auto_unrar: boolean;
+    delete_archives_after_extract: boolean;
+    delete_par2_after_repair: boolean;
+    selective_par2: boolean;
+    sequential_postprocess: boolean;
+  };
+  retry: {
+    max_retries: number;
+    base_delay_secs: number;
+    max_delay_secs: number;
+  };
+  features: {
+    rss_feeds: boolean;
+    server_stats: boolean;
+  };
+  [key: string]: unknown;
 }
 
-export async function getUsenetProcessing(): Promise<UsenetProcessing> {
-  const res = await fetch(`${API_BASE}/usenet/processing`);
+export async function getConfig(): Promise<AppConfig> {
+  const res = await fetch(`${API_BASE}/config`);
   return res.json();
 }
 
-export async function updateUsenetProcessing(config: UsenetProcessing) {
-  const res = await fetch(`${API_BASE}/usenet/processing`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(config),
-  });
-  return res.json();
-}
-
-// ========================================
-// FEATURE FLAGS
-// ========================================
-
-export async function getFeatures(): Promise<{ rss_feeds: boolean; server_stats: boolean }> {
-  const res = await fetch(`${API_BASE}/features`);
-  return res.json();
-}
-
-export async function updateFeatures(features: { rss_feeds: boolean; server_stats: boolean }) {
-  const res = await fetch(`${API_BASE}/features`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(features),
-  });
-  return res.json();
-}
-
-// ========================================
-// RETRY CONFIG
-// ========================================
-
-export interface RetryConfig {
-  max_retries: number;
-  base_delay_secs: number;
-  max_delay_secs: number;
-}
-
-export async function getRetryConfig(): Promise<RetryConfig> {
-  const res = await fetch(`${API_BASE}/retry`);
-  return res.json();
-}
-
-export async function updateRetryConfig(config: RetryConfig) {
-  const res = await fetch(`${API_BASE}/retry`, {
-    method: "PATCH",
+export async function putConfig(config: AppConfig): Promise<AppConfig> {
+  const res = await fetch(`${API_BASE}/config`, {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(config),
   });

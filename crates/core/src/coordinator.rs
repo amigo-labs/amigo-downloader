@@ -79,10 +79,10 @@ struct ActiveDownload {
 }
 
 pub struct Coordinator {
-    config: Config,
+    config: Arc<Mutex<Config>>,
     storage: Storage,
     bandwidth: BandwidthLimiter,
-    retry_policy: RetryPolicy,
+    retry_policy: Arc<Mutex<RetryPolicy>>,
     active: Arc<Mutex<HashMap<String, ActiveDownload>>>,
     event_tx: broadcast::Sender<DownloadEvent>,
 }
@@ -95,10 +95,10 @@ impl Coordinator {
         let retry_policy = RetryPolicy::from(config.retry.clone());
 
         Self {
-            config,
+            config: Arc::new(Mutex::new(config)),
             storage,
             bandwidth,
-            retry_policy,
+            retry_policy: Arc::new(Mutex::new(retry_policy)),
             active: Arc::new(Mutex::new(HashMap::new())),
             event_tx,
         }
@@ -124,9 +124,16 @@ impl Coordinator {
         &self.storage
     }
 
-    /// Get a reference to config.
-    pub fn config(&self) -> &Config {
-        &self.config
+    /// Get a snapshot of the current config.
+    pub async fn config(&self) -> Config {
+        self.config.lock().await.clone()
+    }
+
+    /// Update the config at runtime and propagate to subsystems.
+    pub async fn update_config(&self, new_config: Config) {
+        self.bandwidth.update_config(new_config.bandwidth.clone()).await;
+        *self.retry_policy.lock().await = RetryPolicy::from(new_config.retry.clone());
+        *self.config.lock().await = new_config;
     }
 
     /// Add a new download and start it if slots are available.
@@ -207,7 +214,7 @@ impl Coordinator {
             active.len() as u32
         };
 
-        if active_count >= self.config.max_concurrent_downloads {
+        if active_count >= self.config.lock().await.max_concurrent_downloads {
             return Ok(());
         }
 
@@ -264,17 +271,13 @@ impl Coordinator {
         let protocol = row.protocol.clone();
         let download_dir = PathBuf::from(row.download_dir.as_deref().unwrap_or("downloads"));
         let temp_dir = self.storage.temp_dir.clone();
-        let user_agent = self.config.http.user_agent.clone();
-        let max_chunks = self.config.http.max_chunks_per_download;
+        let config = self.config.lock().await.clone();
+        let user_agent = config.http.user_agent.clone();
+        let max_chunks = config.http.max_chunks_per_download;
         let active = self.active.clone();
-        let retry_policy = RetryPolicy {
-            max_retries: self.retry_policy.max_retries,
-            base_delay: self.retry_policy.base_delay,
-            max_delay: self.retry_policy.max_delay,
-        };
+        let retry_policy = self.retry_policy.lock().await.clone();
         let bandwidth = self.bandwidth.clone();
-        let pp_config = self.config.postprocessing.clone();
-        let _usenet_config = self.config.usenet.clone();
+        let pp_config = config.postprocessing.clone();
 
         tokio::spawn(async move {
             let mut original_progress_tx = Some(progress_tx);
