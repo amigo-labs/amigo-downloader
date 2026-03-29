@@ -776,7 +776,13 @@ async fn main() -> anyhow::Result<()> {
                     match loader.run_spec(&meta.id).await {
                         Ok(results) => {
                             for r in &results.results {
-                                if r.passed {
+                                if r.skipped {
+                                    println!(
+                                        "  SKIP  {} — {}",
+                                        r.name,
+                                        r.skip_reason.as_deref().unwrap_or("skipped")
+                                    );
+                                } else if r.passed {
                                     println!("  PASS  {}", r.name);
                                 } else {
                                     println!(
@@ -787,7 +793,14 @@ async fn main() -> anyhow::Result<()> {
                                 }
                             }
                             println!();
-                            println!("{} passed, {} failed", results.passed, results.failed);
+                            let mut summary = format!(
+                                "{} passed, {} failed",
+                                results.passed, results.failed
+                            );
+                            if results.skipped > 0 {
+                                summary.push_str(&format!(", {} skipped", results.skipped));
+                            }
+                            println!("{summary}");
                             if results.failed > 0 {
                                 std::process::exit(1);
                             }

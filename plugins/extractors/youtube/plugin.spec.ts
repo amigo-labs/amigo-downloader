@@ -25,9 +25,21 @@ test("has checkOnline function", () => {
     assertEqual(typeof plugin.checkOnline, "function");
 });
 
-// --- Integration tests (require network) ---
+// --- Integration tests (require network access to YouTube) ---
+// These skip automatically when YouTube is unreachable (CI, firewalled envs).
+
+function requireYouTube(): void {
+    try {
+        const resp = amigo.httpGet("https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=aqz-KE-bpKQ&format=json");
+        if (resp.status !== 200) skip("YouTube not reachable (status " + resp.status + ")");
+    } catch (e) {
+        skip("YouTube not reachable: " + e);
+    }
+}
 
 test("resolve returns valid DownloadPackage for known video", () => {
+    requireYouTube();
+
     // Big Buck Bunny trailer — Creative Commons, stable URL
     const result = plugin.resolve("https://www.youtube.com/watch?v=aqz-KE-bpKQ");
 
@@ -49,6 +61,8 @@ test("resolve returns valid DownloadPackage for known video", () => {
 });
 
 test("resolve works with short URL format", () => {
+    requireYouTube();
+
     const result = plugin.resolve("https://youtu.be/aqz-KE-bpKQ");
 
     assertNotNull(result, "resolve should return a result");
@@ -57,6 +71,8 @@ test("resolve works with short URL format", () => {
 });
 
 test("resolve throws on invalid video ID", () => {
+    requireYouTube();
+
     let threw = false;
     try {
         plugin.resolve("https://www.youtube.com/watch?v=XXXXXXXXXXX");
@@ -68,11 +84,15 @@ test("resolve throws on invalid video ID", () => {
 });
 
 test("checkOnline returns online for known video", () => {
+    requireYouTube();
+
     const status = plugin.checkOnline("https://www.youtube.com/watch?v=aqz-KE-bpKQ");
     assertEqual(status, "online", "Big Buck Bunny should be online");
 });
 
 test("checkOnline returns offline for nonexistent video", () => {
+    requireYouTube();
+
     const status = plugin.checkOnline("https://www.youtube.com/watch?v=XXXXXXXXXXX");
     // Nonexistent video should be offline or unknown, but not online
     assert(status !== "online", "nonexistent video should not be online");

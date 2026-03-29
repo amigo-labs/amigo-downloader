@@ -300,6 +300,10 @@ function assertNotNull(value, message) {
         throw new Error(message || "Expected non-null value");
     }
 }
+
+function skip(reason) {
+    throw { __skip: true, reason: reason || "skipped" };
+}
 "#;
 
         let runner = r#"
@@ -307,9 +311,13 @@ for (var i = 0; i < __tests.length; i++) {
     var t = __tests[i];
     try {
         t.fn();
-        __test_results.push({ name: t.name, passed: true, error: null });
+        __test_results.push({ name: t.name, passed: true, error: null, skipped: false });
     } catch (e) {
-        __test_results.push({ name: t.name, passed: false, error: String(e) });
+        if (e && e.__skip) {
+            __test_results.push({ name: t.name, passed: true, error: null, skipped: true, skipReason: e.reason });
+        } else {
+            __test_results.push({ name: t.name, passed: false, error: String(e), skipped: false });
+        }
     }
 }
 JSON.stringify(__test_results);
@@ -320,9 +328,12 @@ JSON.stringify(__test_results);
             return TestResults {
                 passed: 0,
                 failed: 1,
+                skipped: 0,
                 results: vec![SingleTestResult {
                     name: "<harness>".into(),
                     passed: false,
+                    skipped: false,
+                    skip_reason: None,
                     error: Some(format!("Failed to inject test harness: {e}")),
                 }],
             };
@@ -333,9 +344,12 @@ JSON.stringify(__test_results);
             return TestResults {
                 passed: 0,
                 failed: 1,
+                skipped: 0,
                 results: vec![SingleTestResult {
                     name: "<spec>".into(),
                     passed: false,
+                    skipped: false,
+                    skip_reason: None,
                     error: Some(format!("Spec file error: {e}")),
                 }],
             };
@@ -347,14 +361,19 @@ JSON.stringify(__test_results);
                 let raw: Vec<serde_json::Value> = serde_json::from_str(&json).unwrap_or_default();
                 let mut passed = 0;
                 let mut failed = 0;
+                let mut skipped = 0;
                 let mut results = Vec::new();
 
                 for entry in &raw {
                     let name = entry["name"].as_str().unwrap_or("?").to_string();
                     let ok = entry["passed"].as_bool().unwrap_or(false);
+                    let is_skipped = entry["skipped"].as_bool().unwrap_or(false);
                     let error = entry["error"].as_str().map(|s| s.to_string());
+                    let skip_reason = entry["skipReason"].as_str().map(|s| s.to_string());
 
-                    if ok {
+                    if is_skipped {
+                        skipped += 1;
+                    } else if ok {
                         passed += 1;
                     } else {
                         failed += 1;
@@ -362,6 +381,8 @@ JSON.stringify(__test_results);
                     results.push(SingleTestResult {
                         name,
                         passed: ok,
+                        skipped: is_skipped,
+                        skip_reason,
                         error,
                     });
                 }
@@ -369,15 +390,19 @@ JSON.stringify(__test_results);
                 TestResults {
                     passed,
                     failed,
+                    skipped,
                     results,
                 }
             }
             Err(e) => TestResults {
                 passed: 0,
                 failed: 1,
+                skipped: 0,
                 results: vec![SingleTestResult {
                     name: "<runner>".into(),
                     passed: false,
+                    skipped: false,
+                    skip_reason: None,
                     error: Some(format!("Test runner failed: {e}")),
                 }],
             },
@@ -390,6 +415,7 @@ JSON.stringify(__test_results);
 pub struct TestResults {
     pub passed: u32,
     pub failed: u32,
+    pub skipped: u32,
     pub results: Vec<SingleTestResult>,
 }
 
@@ -397,6 +423,8 @@ pub struct TestResults {
 pub struct SingleTestResult {
     pub name: String,
     pub passed: bool,
+    pub skipped: bool,
+    pub skip_reason: Option<String>,
     pub error: Option<String>,
 }
 
