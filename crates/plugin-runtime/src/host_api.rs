@@ -757,7 +757,9 @@ pub fn register_host_api(
                         .as_deref()
                         .and_then(|s| serde_json::from_str(s).ok());
                     let rt = tokio::runtime::Handle::current();
-                    let result = rt.block_on(async { h.http_get(&url, headers).await });
+                    let result = tokio::task::block_in_place(|| {
+                        rt.block_on(async { h.http_get(&url, headers).await })
+                    });
                     match result {
                         Ok((status, body, resp_headers)) => {
                             let resp = serde_json::json!({
@@ -790,8 +792,10 @@ pub fn register_host_api(
                         .as_deref()
                         .and_then(|s| serde_json::from_str(s).ok());
                     let rt = tokio::runtime::Handle::current();
-                    let result = rt.block_on(async {
-                        h.http_post(&url, &body, &content_type, headers).await
+                    let result = tokio::task::block_in_place(|| {
+                        rt.block_on(async {
+                            h.http_post(&url, &body, &content_type, headers).await
+                        })
                     });
                     match result {
                         Ok((status, body, resp_headers)) => {
@@ -821,7 +825,9 @@ pub fn register_host_api(
                         .as_deref()
                         .and_then(|s| serde_json::from_str(s).ok());
                     let rt = tokio::runtime::Handle::current();
-                    let result = rt.block_on(async { h.http_head(&url, headers).await });
+                    let result = tokio::task::block_in_place(|| {
+                        rt.block_on(async { h.http_head(&url, headers).await })
+                    });
                     match result {
                         Ok((status, resp_headers)) => {
                             let resp = serde_json::json!({
@@ -847,7 +853,9 @@ pub fn register_host_api(
                 move |domain: String, name: String, value: String| {
                     let h = h.clone();
                     let rt = tokio::runtime::Handle::current();
-                    rt.block_on(async { h.set_cookie(&domain, &name, &value).await });
+                    tokio::task::block_in_place(|| {
+                        rt.block_on(async { h.set_cookie(&domain, &name, &value).await })
+                    });
                 },
             ),
         )
@@ -862,7 +870,9 @@ pub fn register_host_api(
                 move |domain: String, name: String| -> rquickjs::Result<Option<String>> {
                     let h = h.clone();
                     let rt = tokio::runtime::Handle::current();
-                    Ok(rt.block_on(async { h.get_cookie(&domain, &name).await }))
+                    Ok(tokio::task::block_in_place(|| {
+                        rt.block_on(async { h.get_cookie(&domain, &name).await })
+                    }))
                 },
             ),
         )
@@ -875,7 +885,9 @@ pub fn register_host_api(
             Function::new(ctx.clone(), move |domain: String| {
                 let h = h.clone();
                 let rt = tokio::runtime::Handle::current();
-                rt.block_on(async { h.clear_cookies(&domain).await });
+                tokio::task::block_in_place(|| {
+                    rt.block_on(async { h.clear_cookies(&domain).await })
+                });
             }),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
@@ -1057,7 +1069,9 @@ pub fn register_host_api(
                     let h = h.clone();
                     let pid = pid.clone();
                     let rt = tokio::runtime::Handle::current();
-                    Ok(rt.block_on(async { h.storage_get(&pid, &key).await }))
+                    Ok(tokio::task::block_in_place(|| {
+                        rt.block_on(async { h.storage_get(&pid, &key).await })
+                    }))
                 },
             ),
         )
@@ -1072,7 +1086,9 @@ pub fn register_host_api(
                 let h = h.clone();
                 let pid = pid.clone();
                 let rt = tokio::runtime::Handle::current();
-                rt.block_on(async { h.storage_set(&pid, &key, &value).await });
+                tokio::task::block_in_place(|| {
+                    rt.block_on(async { h.storage_set(&pid, &key, &value).await })
+                });
             }),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
@@ -1086,7 +1102,9 @@ pub fn register_host_api(
                 let h = h.clone();
                 let pid = pid.clone();
                 let rt = tokio::runtime::Handle::current();
-                rt.block_on(async { h.storage_delete(&pid, &key).await });
+                tokio::task::block_in_place(|| {
+                    rt.block_on(async { h.storage_delete(&pid, &key).await })
+                });
             }),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
@@ -1318,8 +1336,10 @@ pub fn register_host_api(
                     let pid = pid.clone();
                     let ct = captcha_type.unwrap_or_else(|| "image".to_string());
                     let rt = tokio::runtime::Handle::current();
-                    let result = rt.block_on(async {
-                        h.solve_captcha(&pid, "", &image_url, &ct).await
+                    let result = tokio::task::block_in_place(|| {
+                        rt.block_on(async {
+                            h.solve_captcha(&pid, "", &image_url, &ct).await
+                        })
                     });
                     result.map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
                 },

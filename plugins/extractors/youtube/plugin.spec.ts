@@ -24,3 +24,56 @@ test("has resolve function", () => {
 test("has checkOnline function", () => {
     assertEqual(typeof plugin.checkOnline, "function");
 });
+
+// --- Integration tests (require network) ---
+
+test("resolve returns valid DownloadPackage for known video", () => {
+    // Big Buck Bunny trailer — Creative Commons, stable URL
+    const result = plugin.resolve("https://www.youtube.com/watch?v=aqz-KE-bpKQ");
+
+    assertNotNull(result, "resolve should return a result");
+    assertNotNull(result.name, "package should have a name");
+    assert(result.name.length > 0, "name should not be empty");
+
+    assertNotNull(result.downloads, "package should have downloads");
+    assert(result.downloads.length > 0, "should have at least one download");
+
+    const dl = result.downloads[0];
+    assertNotNull(dl.url, "download should have a URL");
+    assert(dl.url.indexOf("http") === 0, "URL should start with http");
+    assertNotNull(dl.filename, "download should have a filename");
+    assert(
+        dl.filename.indexOf(".mp4") >= 0 || dl.filename.indexOf(".webm") >= 0,
+        "filename should have video extension"
+    );
+});
+
+test("resolve works with short URL format", () => {
+    const result = plugin.resolve("https://youtu.be/aqz-KE-bpKQ");
+
+    assertNotNull(result, "resolve should return a result");
+    assert(result.downloads.length > 0, "should have downloads");
+    assert(result.downloads[0].url.indexOf("http") === 0, "URL should be valid");
+});
+
+test("resolve throws on invalid video ID", () => {
+    let threw = false;
+    try {
+        plugin.resolve("https://www.youtube.com/watch?v=XXXXXXXXXXX");
+    } catch (e) {
+        threw = true;
+    }
+    // Invalid/nonexistent video should throw (no streams or playability error)
+    assert(threw, "resolve should throw for invalid video ID");
+});
+
+test("checkOnline returns online for known video", () => {
+    const status = plugin.checkOnline("https://www.youtube.com/watch?v=aqz-KE-bpKQ");
+    assertEqual(status, "online", "Big Buck Bunny should be online");
+});
+
+test("checkOnline returns offline for nonexistent video", () => {
+    const status = plugin.checkOnline("https://www.youtube.com/watch?v=XXXXXXXXXXX");
+    // Nonexistent video should be offline or unknown, but not online
+    assert(status !== "online", "nonexistent video should not be online");
+});
