@@ -1,51 +1,53 @@
 ---
 name: spec-feature
-description: Orchestrate the complete spec-driven development workflow for a new feature. Walks through spec, types, tests, implementation, verification, and commit — step by step with user approval at each gate.
+description: Implement a feature based on an existing spec from docs/specs/. Use this AFTER /spec has been used to create the spec. Walks through types, tests, backend, frontend, verification, and commit — step by step with user approval at each gate.
 argument-hint: "<feature-name>"
 ---
 
-# Spec-Driven Feature Workflow
+# Spec-Driven Feature Implementation
 
-Implement **$ARGUMENTS** using the complete spec-driven development process. Each step requires user approval before proceeding.
+Implement **$ARGUMENTS** based on the existing spec. This skill is Step 2 in the workflow — the spec must already exist.
 
-## Workflow Steps
+## Prerequisites
 
-### Step 1: SPEC
-Write the feature specification first.
+1. **Read the spec** from `docs/specs/$0.md`
+2. If no spec exists, STOP and tell the user to run `/spec $ARGUMENTS` first
+3. Present a quick summary of the spec's acceptance criteria to confirm we're on the same page
 
-- Invoke the `/spec` skill logic (follow the same process as the spec skill for `$ARGUMENTS`)
-- Create `docs/specs/$0.md` with full spec including acceptance criteria, API contract, test plan
-- **GATE**: Present spec summary to user, ask for approval before proceeding
+## Implementation Steps
 
-### Step 2: TYPES
-Define the data contract.
+### Step 1: TYPES
+Define the data contract from the spec.
 
 - Create/modify Rust structs with `serde` derives in the appropriate crate
 - If API changes: define request/response types in server crate
 - If DB changes: add migration logic in storage.rs
 - If WebSocket events: define event types in ws.rs
+- Cross-check every type against the spec's "API Contract" section
 - **GATE**: Show user the type definitions, confirm they match the spec
 
-### Step 3: TESTS (TDD-light)
+### Step 2: TESTS (TDD-light)
 Write test stubs before implementation.
 
-- Create test functions for each acceptance criterion from the spec
+- Create one test function per acceptance criterion from the spec
+- Map each test to its AC: `// AC-1: <description>`
 - Unit tests: inline `#[cfg(test)]` modules in the relevant source files
 - Integration tests: in `tests/integration/` if API endpoints are involved
 - Tests should compile but can use `todo!()` for assertions that need implementation
-- **GATE**: Show user the test list, confirm coverage is adequate
+- Cross-check against spec's "Test Plan" section — every item must have a test
+- **GATE**: Show user the test list, confirm coverage matches the spec
 
-### Step 4: BACKEND
+### Step 3: BACKEND
 Implement the backend logic.
 
-- Follow the spec exactly — no scope creep
-- Implement in this order: types -> storage -> business logic -> API handler
+- Follow the spec exactly — no scope creep, no "improvements" beyond spec
+- Implement in this order: storage → business logic → API handler
 - Make tests pass as you implement
 - Run `cargo clippy` and `cargo test` after implementation
 - **GATE**: Show user which tests pass/fail, ask for approval
 
-### Step 5: FRONTEND (if applicable)
-Implement UI changes.
+### Step 4: FRONTEND (if applicable)
+Implement UI changes per the spec's "UI Changes" section.
 
 - Update TypeScript types in `web-ui/src/lib/api.ts` to match Rust types
 - Add API calls for new endpoints
@@ -55,40 +57,41 @@ Implement UI changes.
 - Run `npm run check` in web-ui/
 - **GATE**: Describe UI changes to user, confirm they match spec
 
-### Step 6: VERIFY
-Run the consistency check.
+### Step 5: VERIFY
+Run the full consistency check.
 
-- Invoke the `/spec-verify` skill logic (follow the same process as the spec-verify skill)
+- Invoke the `/spec-verify` skill logic
 - Address any FAIL items before proceeding
 - WARN items: present to user for decision
 - **GATE**: Show verification report, ask if issues should be fixed
 
-### Step 7: COMMIT
+### Step 6: COMMIT
 Create a clean commit.
 
 - Stage all changed files
 - Write a conventional commit message: `feat: <description>`
 - Reference the spec: `Spec: docs/specs/$0.md`
-- Mark acceptance criteria as checked in the spec file
+- Mark acceptance criteria as checked (`[x]`) in the spec file
 - **GATE**: Show commit message and changed files list, ask for confirmation
 
 ## Rules
 
+- **Spec is the source of truth** — implement exactly what's specified, nothing more
 - **NEVER skip a step** — each step builds on the previous
 - **NEVER proceed without user approval** at each gate
-- **Stick to the spec** — if implementation reveals the spec is wrong, go back and update it first
-- **One feature at a time** — do not bundle unrelated changes
+- **If the spec is wrong**, STOP implementation. Update the spec first, get approval, then continue
 - **Tests must pass** before moving to the next step
-- If the feature is backend-only, skip Step 5
-- If the feature is frontend-only, adjust Step 4 to be minimal (just type definitions)
+- If the feature is backend-only, skip Step 4
+- If the feature is frontend-only, adjust Step 3 accordingly
+- Check off each acceptance criterion in the spec as it's implemented
 
 ## Context
+
+The spec to implement:
+!`cat /home/user/amigo-downloader/docs/specs/$0.md 2>/dev/null || echo "NO SPEC FOUND — run /spec $0 first!"`
 
 Current branch:
 !`git branch --show-current`
 
 Recent commits (for commit message style):
 !`git log --oneline -5 2>/dev/null || echo "No commits yet"`
-
-Existing specs:
-!`ls /home/user/amigo-downloader/docs/specs/ 2>/dev/null || echo "No specs yet"`

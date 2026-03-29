@@ -464,9 +464,9 @@ Use the project skills to enforce consistency:
 
 | Skill | Usage | Purpose |
 |-------|-------|---------|
-| `/spec <feature>` | Before coding | Write structured spec with testable acceptance criteria |
-| `/spec-verify` | After coding | Run 7-point consistency check (types, API, tests, i18n, docs) |
-| `/spec-feature <name>` | Full workflow | Orchestrate: Spec → Types → Tests → Backend → Frontend → Verify → Commit |
+| `/spec <feature>` | 1. Before coding | Collaboratively develop spec with testable acceptance criteria |
+| `/spec-feature <name>` | 2. After spec | Implement the spec: Types → Tests → Backend → Frontend → Verify → Commit |
+| `/spec-verify` | Anytime | Run 7-point consistency check (types, API, tests, i18n, docs) |
 
 **Rules:**
 1. No feature without a spec in `docs/specs/<feature>.md`
