@@ -456,6 +456,23 @@ amigo-dl serve [--port 8080 --bind 0.0.0.0]
 - **Svelte**: TypeScript strict, Tailwind CSS v4
 - **Git**: Conventional Commits (`feat:`, `fix:`, `refactor:`, `docs:`)
 - **CI**: `cargo test`, `cargo clippy`, `npm run check`, Docker Build
+- **Spec-Driven Development**: Every feature starts with a spec in `docs/specs/` before implementation
+
+### Spec-Driven Development Workflow
+
+| Skill | When | Purpose |
+|-------|------|---------|
+| `/spec <name>` | Before coding | Create or update a feature spec collaboratively |
+| `/spec-extract <area>` | For existing code | Reverse-engineer a spec from what's already implemented |
+| `/spec-implement <name>` | After spec | Implement the spec: Contract → Code → Verify+Commit |
+| `/spec-verify [name]` | Anytime | Verify spec compliance and project consistency |
+| `/spec-fix <bug>` | Bugfixes | Lightweight: find root cause → fix → regression test → commit |
+
+**Rules:**
+1. Features and significant changes need a spec in `docs/specs/<name>.md`
+2. Bugfixes use `/spec-fix` — no spec needed unless the fix reveals a spec gap
+3. Every acceptance criterion must be testable
+4. `/spec-verify` must pass before merging
 
 ---
 
