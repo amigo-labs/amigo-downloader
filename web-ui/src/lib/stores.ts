@@ -72,7 +72,7 @@ export const accent = createAccentStore();
 // NAVIGATION
 // ========================================
 
-export type Page = "downloads" | "queue" | "usenet-downloads" | "usenet-servers" | "plugins" | "history" | "settings";
+export type Page = "downloads" | "queue" | "usenet-downloads" | "usenet-servers" | "rss" | "plugins" | "history" | "settings";
 export const currentPage = writable<Page>("downloads");
 
 // ========================================
@@ -150,3 +150,17 @@ export interface UsenetServer {
 
 export const usenetServers = writable<UsenetServer[]>([]);
 export const usenetDownloads = writable<Download[]>([]);
+
+// ========================================
+// FEATURE FLAGS
+// ========================================
+
+export interface Features {
+  rss_feeds: boolean;
+  server_stats: boolean;
+}
+
+export const features = writable<Features>({
+  rss_feeds: false,
+  server_stats: false,
+});

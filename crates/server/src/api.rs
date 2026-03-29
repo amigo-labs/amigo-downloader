@@ -51,6 +51,13 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/usenet/servers/{id}", delete(delete_usenet_server))
         .route("/api/v1/usenet/watch-dir", get(get_nzb_watch_dir))
         .route("/api/v1/usenet/watch-dir", post(set_nzb_watch_dir))
+        // Feature flags
+        .route("/api/v1/features", get(get_features))
+        .route("/api/v1/features", patch(update_features))
+        // RSS feed endpoints (feature-gated in handlers)
+        .route("/api/v1/rss", get(list_rss_feeds))
+        .route("/api/v1/rss", post(add_rss_feed))
+        .route("/api/v1/rss/{id}", delete(delete_rss_feed))
         // Plugin endpoints
         .route("/api/v1/plugins", get(list_plugins))
         .route("/api/v1/plugins/{id}", patch(update_plugin))
@@ -650,6 +657,162 @@ async fn set_nzb_watch_dir(
             )
         })?;
     Ok(Json(WatchDirResponse { path: req.path }))
+}
+
+// --- Feature flags ---
+
+#[derive(Serialize, Deserialize)]
+struct FeaturesResponse {
+    rss_feeds: bool,
+    server_stats: bool,
+}
+
+async fn get_features(State(state): State<AppState>) -> Json<FeaturesResponse> {
+    let f = &state.coordinator.config().features;
+    Json(FeaturesResponse {
+        rss_feeds: f.rss_feeds,
+        server_stats: f.server_stats,
+    })
+}
+
+async fn update_features(
+    State(state): State<AppState>,
+    Json(req): Json<FeaturesResponse>,
+) -> Result<Json<FeaturesResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Persist feature flags via update_state (config file would need reload)
+    let storage = state.coordinator.storage();
+    let val = serde_json::to_string(&req).unwrap_or_default();
+    storage
+        .set_update_state("feature_flags", &val)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+    Ok(Json(req))
+}
+
+// --- RSS feed handlers (feature-gated) ---
+
+#[derive(Serialize)]
+struct RssFeedResponse {
+    id: String,
+    name: String,
+    url: String,
+    category: String,
+    interval_minutes: u32,
+    enabled: bool,
+    last_check: Option<String>,
+    last_error: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct AddRssFeedRequest {
+    name: String,
+    url: String,
+    #[serde(default)]
+    category: String,
+    #[serde(default = "default_rss_interval")]
+    interval_minutes: u32,
+}
+
+fn default_rss_interval() -> u32 {
+    15
+}
+
+async fn list_rss_feeds(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<RssFeedResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    if !state.coordinator.config().features.rss_feeds {
+        return Ok(Json(Vec::new()));
+    }
+
+    let rows = state.coordinator.storage().list_rss_feeds().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e.to_string() }),
+        )
+    })?;
+
+    Ok(Json(
+        rows.into_iter()
+            .map(|r| RssFeedResponse {
+                id: r.id,
+                name: r.name,
+                url: r.url,
+                category: r.category,
+                interval_minutes: r.interval_minutes,
+                enabled: r.enabled,
+                last_check: r.last_check,
+                last_error: r.last_error,
+            })
+            .collect(),
+    ))
+}
+
+async fn add_rss_feed(
+    State(state): State<AppState>,
+    Json(req): Json<AddRssFeedRequest>,
+) -> Result<(StatusCode, Json<RssFeedResponse>), (StatusCode, Json<ErrorResponse>)> {
+    if !state.coordinator.config().features.rss_feeds {
+        return Err((
+            StatusCode::FORBIDDEN,
+            Json(ErrorResponse {
+                error: "RSS feeds feature is disabled. Enable it in Settings.".into(),
+            }),
+        ));
+    }
+
+    let id = uuid::Uuid::new_v4().to_string();
+    let row = amigo_core::storage::RssFeedRow {
+        id: id.clone(),
+        name: req.name.clone(),
+        url: req.url.clone(),
+        category: req.category.clone(),
+        interval_minutes: req.interval_minutes,
+        enabled: true,
+        last_check: None,
+        last_error: None,
+        created_at: String::new(),
+    };
+
+    state.coordinator.storage().insert_rss_feed(&row).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e.to_string() }),
+        )
+    })?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(RssFeedResponse {
+            id,
+            name: req.name,
+            url: req.url,
+            category: req.category,
+            interval_minutes: req.interval_minutes,
+            enabled: true,
+            last_check: None,
+            last_error: None,
+        }),
+    ))
+}
+
+async fn delete_rss_feed(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
+    state.coordinator.storage().delete_rss_feed(&id).await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e.to_string() }),
+        )
+    })?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // --- Captcha handlers ---

@@ -250,6 +250,49 @@ export async function setNzbWatchDir(path: string) {
 }
 
 // ========================================
+// FEATURE FLAGS
+// ========================================
+
+export async function getFeatures(): Promise<{ rss_feeds: boolean; server_stats: boolean }> {
+  const res = await fetch(`${API_BASE}/features`);
+  return res.json();
+}
+
+export async function updateFeatures(features: { rss_feeds: boolean; server_stats: boolean }) {
+  const res = await fetch(`${API_BASE}/features`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(features),
+  });
+  return res.json();
+}
+
+// ========================================
+// RSS FEEDS
+// ========================================
+
+export async function getRssFeeds() {
+  const res = await fetch(`${API_BASE}/rss`);
+  return res.json();
+}
+
+export async function addRssFeed(feed: {
+  name: string; url: string; category: string; interval_minutes: number;
+}) {
+  const res = await fetch(`${API_BASE}/rss`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(feed),
+  });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function deleteRssFeed(id: string) {
+  return fetch(`${API_BASE}/rss/${id}`, { method: "DELETE" });
+}
+
+// ========================================
 // HELPERS
 // ========================================
 

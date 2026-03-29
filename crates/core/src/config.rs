@@ -54,6 +54,26 @@ pub struct Config {
     pub captcha: CaptchaConfig,
     #[serde(default)]
     pub webhooks: Vec<WebhookEndpoint>,
+    #[serde(default)]
+    pub features: FeatureFlags,
+}
+
+/// Optional feature toggles — disabled by default, user enables in Settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeatureFlags {
+    /// RSS/Atom feed monitoring for automatic NZB import.
+    pub rss_feeds: bool,
+    /// Show per-server connection statistics in the Usenet UI.
+    pub server_stats: bool,
+}
+
+impl Default for FeatureFlags {
+    fn default() -> Self {
+        Self {
+            rss_feeds: false,
+            server_stats: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,6 +132,7 @@ impl Default for Config {
             feedback: FeedbackConfig::default(),
             captcha: CaptchaConfig::default(),
             webhooks: Vec::new(),
+            features: FeatureFlags::default(),
         }
     }
 }

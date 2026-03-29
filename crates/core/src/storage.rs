@@ -98,6 +98,26 @@ CREATE TABLE IF NOT EXISTS usenet_servers (
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS rss_feeds (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT '',
+    interval_minutes INTEGER NOT NULL DEFAULT 15,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_check TEXT,
+    last_error TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS rss_seen (
+    feed_id TEXT NOT NULL REFERENCES rss_feeds(id) ON DELETE CASCADE,
+    guid TEXT NOT NULL,
+    title TEXT,
+    added_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (feed_id, guid)
+);
+
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_downloads_package ON downloads(package_id);
 CREATE INDEX IF NOT EXISTS idx_downloads_protocol ON downloads(protocol);
@@ -137,6 +157,19 @@ pub struct UsenetServerRow {
     pub password: String,
     pub connections: u32,
     pub priority: u32,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RssFeedRow {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub category: String,
+    pub interval_minutes: u32,
+    pub enabled: bool,
+    pub last_check: Option<String>,
+    pub last_error: Option<String>,
     pub created_at: String,
 }
 
@@ -396,6 +429,86 @@ impl Storage {
         )?;
         let rows = stmt.query_map(rusqlite::params![protocol], row_to_download)?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    // --- RSS feeds ---
+
+    pub async fn list_rss_feeds(&self) -> Result<Vec<RssFeedRow>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare(
+            "SELECT id, name, url, category, interval_minutes, enabled, last_check, last_error, created_at
+             FROM rss_feeds ORDER BY name ASC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(RssFeedRow {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                url: row.get(2)?,
+                category: row.get(3)?,
+                interval_minutes: row.get::<_, i64>(4)? as u32,
+                enabled: row.get::<_, i64>(5)? != 0,
+                last_check: row.get(6)?,
+                last_error: row.get(7)?,
+                created_at: row.get(8)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub async fn insert_rss_feed(&self, row: &RssFeedRow) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "INSERT INTO rss_feeds (id, name, url, category, interval_minutes, enabled)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                row.id, row.name, row.url, row.category,
+                row.interval_minutes as i64, row.enabled as i64,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub async fn delete_rss_feed(&self, id: &str) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute("DELETE FROM rss_feeds WHERE id = ?1", rusqlite::params![id])?;
+        Ok(())
+    }
+
+    pub async fn update_rss_feed_status(
+        &self,
+        id: &str,
+        last_error: Option<&str>,
+    ) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "UPDATE rss_feeds SET last_check = datetime('now'), last_error = ?1 WHERE id = ?2",
+            rusqlite::params![last_error, id],
+        )?;
+        Ok(())
+    }
+
+    pub async fn is_rss_item_seen(&self, feed_id: &str, guid: &str) -> Result<bool, crate::Error> {
+        let db = self.db.lock().await;
+        let count: u32 = db.query_row(
+            "SELECT COUNT(*) FROM rss_seen WHERE feed_id = ?1 AND guid = ?2",
+            rusqlite::params![feed_id, guid],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
+    pub async fn mark_rss_item_seen(
+        &self,
+        feed_id: &str,
+        guid: &str,
+        title: Option<&str>,
+    ) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "INSERT OR IGNORE INTO rss_seen (feed_id, guid, title) VALUES (?1, ?2, ?3)",
+            rusqlite::params![feed_id, guid, title],
+        )?;
+        Ok(())
     }
 }
 

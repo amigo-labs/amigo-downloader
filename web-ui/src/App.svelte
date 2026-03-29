@@ -1,12 +1,13 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { theme, layout, accent, currentPage, downloads, stats, pendingCaptcha, type Page, type CaptchaChallenge } from "./lib/stores";
-  import { addDownload, getDownloads, getStats, connectWebSocket, formatSpeed } from "./lib/api";
+  import { theme, layout, accent, currentPage, downloads, stats, pendingCaptcha, features, type Page, type CaptchaChallenge } from "./lib/stores";
+  import { addDownload, getDownloads, getStats, getFeatures, connectWebSocket, formatSpeed } from "./lib/api";
   import { addToast } from "./lib/toast";
   import Downloads from "./pages/Downloads.svelte";
   import Queue from "./pages/Queue.svelte";
   import UsenetDownloads from "./pages/UsenetDownloads.svelte";
   import UsenetServers from "./pages/UsenetServers.svelte";
+  import RssFeeds from "./pages/RssFeeds.svelte";
   import Plugins from "./pages/Plugins.svelte";
   import History from "./pages/History.svelte";
   import Settings from "./pages/Settings.svelte";
@@ -35,15 +36,24 @@
     (window as any).__amigo_report_crash = openCrashReport;
   }
 
-  const navItems: { id: Page; label: string; icon: string }[] = [
+  const allNavItems: { id: Page; label: string; icon: string; feature?: string }[] = [
     { id: "downloads", label: "Downloads", icon: "arrow-down" },
     { id: "queue", label: "Queue", icon: "list" },
     { id: "usenet-downloads", label: "Usenet", icon: "newspaper" },
     { id: "usenet-servers", label: "Servers", icon: "server" },
+    { id: "rss", label: "RSS Feeds", icon: "rss", feature: "rss_feeds" },
     { id: "plugins", label: "Plugins", icon: "puzzle" },
     { id: "history", label: "History", icon: "clock" },
     { id: "settings", label: "Settings", icon: "gear" },
   ];
+
+  let navItems = $derived(
+    allNavItems.filter((item) => {
+      if (!item.feature) return true;
+      const f = $features;
+      return (f as any)[item.feature] === true;
+    })
+  );
 
   onMount(() => {
     // Initialize theme
@@ -113,9 +123,10 @@
 
   async function loadData() {
     try {
-      const [dl, st] = await Promise.all([getDownloads(), getStats()]);
+      const [dl, st, feat] = await Promise.all([getDownloads(), getStats(), getFeatures()]);
       downloads.set(dl);
       stats.set(st);
+      features.set(feat);
 
       // Track speed history (last 30 samples)
       speedHistory = [...speedHistory.slice(-29), st.speed_bytes_per_sec];
@@ -281,6 +292,8 @@
             <UsenetDownloads />
           {:else if $currentPage === "usenet-servers"}
             <UsenetServers />
+          {:else if $currentPage === "rss"}
+            <RssFeeds />
           {:else if $currentPage === "plugins"}
             <Plugins />
           {:else if $currentPage === "history"}
@@ -324,6 +337,9 @@
       <path d="M4 6h16M4 12h16M4 18h16" />
     {:else if name === "newspaper"}
       <path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zM7 7h10M7 11h4m-4 4h10" />
+    {:else if name === "rss"}
+      <path d="M4 11a9 9 0 019 9M4 4a16 16 0 0116 16" />
+      <circle cx="5" cy="19" r="1.5" fill="currentColor" />
     {:else if name === "server"}
       <path d="M5 4h14a2 2 0 012 2v2a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2zm0 8h14a2 2 0 012 2v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2a2 2 0 012-2z" />
       <circle cx="7" cy="7" r="1" fill="currentColor" />

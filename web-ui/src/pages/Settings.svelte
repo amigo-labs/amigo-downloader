@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { theme, layout, accent, type AccentColor, type LayoutMode, type ThemeMode } from "../lib/stores";
-  import { getWebhooks, createWebhook, deleteWebhook, testWebhook } from "../lib/api";
+  import { theme, layout, accent, features, type AccentColor, type LayoutMode, type ThemeMode } from "../lib/stores";
+  import { getWebhooks, createWebhook, deleteWebhook, testWebhook, getFeatures, updateFeatures } from "../lib/api";
   import { addToast } from "../lib/toast";
 
   // Webhook state
@@ -59,6 +59,18 @@
     }
   }
 
+  async function toggleFeature(key: "rss_feeds" | "server_stats") {
+    const current = { ...$features };
+    current[key] = !current[key];
+    try {
+      await updateFeatures(current);
+      features.set(current);
+      addToast(`Feature ${current[key] ? "enabled" : "disabled"}`, "success");
+    } catch {
+      addToast("Failed to update feature", "error");
+    }
+  }
+
   const accentColors: { id: AccentColor; label: string; hex: string }[] = [
     { id: "blue", label: "Blue", hex: "#3b82f6" },
     { id: "green", label: "Green", hex: "#10b981" },
@@ -70,6 +82,49 @@
 </script>
 
 <div class="max-w-2xl space-y-8">
+  <!-- Optional Features -->
+  <section>
+    <h3 class="text-lg font-bold mb-4">Features</h3>
+    <div class="rounded-xl p-5 space-y-4" style="background: var(--surface-2-color); border: 1px solid var(--border-color)">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm font-semibold">RSS Feeds</p>
+          <p class="text-xs" style="color: var(--text-secondary-color)">
+            Monitor RSS/Atom feeds for automatic NZB import
+          </p>
+        </div>
+        <button
+          onclick={() => toggleFeature("rss_feeds")}
+          class="w-12 h-6 rounded-full relative transition-colors"
+          style="background: {$features.rss_feeds ? 'var(--accent-color)' : 'var(--surface-3-color)'}"
+        >
+          <span
+            class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all shadow"
+            style="left: {$features.rss_feeds ? '1.625rem' : '0.125rem'}"
+          ></span>
+        </button>
+      </div>
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm font-semibold">Server Statistics</p>
+          <p class="text-xs" style="color: var(--text-secondary-color)">
+            Show per-server connection stats in Usenet UI
+          </p>
+        </div>
+        <button
+          onclick={() => toggleFeature("server_stats")}
+          class="w-12 h-6 rounded-full relative transition-colors"
+          style="background: {$features.server_stats ? 'var(--accent-color)' : 'var(--surface-3-color)'}"
+        >
+          <span
+            class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all shadow"
+            style="left: {$features.server_stats ? '1.625rem' : '0.125rem'}"
+          ></span>
+        </button>
+      </div>
+    </div>
+  </section>
+
   <!-- Appearance -->
   <section>
     <h3 class="text-lg font-bold mb-4">Appearance</h3>

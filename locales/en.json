@@ -59,6 +59,18 @@
     "usenet.watch_dir.set": "Watch folder set",
     "usenet.watch_dir.disabled": "Watch folder disabled",
 
+    "rss.feeds": "RSS Feeds",
+    "rss.feeds.empty": "No RSS feeds configured. Add a feed to automatically import NZBs.",
+    "rss.feeds.add": "Add Feed",
+    "rss.feeds.deleted": "Feed removed",
+
+    "features.rss_feeds": "RSS Feeds",
+    "features.rss_feeds.desc": "Monitor RSS/Atom feeds for automatic NZB import",
+    "features.server_stats": "Server Statistics",
+    "features.server_stats.desc": "Show per-server connection stats in Usenet UI",
+    "features.enabled": "Feature enabled",
+    "features.disabled": "Feature disabled",
+
     "confirm.yes": "Yes",
     "confirm.no": "No"
 }
