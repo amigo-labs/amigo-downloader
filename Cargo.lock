@@ -151,6 +151,7 @@ dependencies = [
  "amigo-plugin-runtime",
  "anyhow",
  "axum",
+ "base64",
  "chrono",
  "hex",
  "hmac",
