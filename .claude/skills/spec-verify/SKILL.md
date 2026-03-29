@@ -1,78 +1,101 @@
 ---
 name: spec-verify
-description: Run a comprehensive consistency check across the entire project. Verifies type sync between frontend and backend, test coverage, i18n completeness, documentation accuracy, and spec compliance. Use after implementing a feature or before a release.
-argument-hint: "[scope: all|types|tests|i18n|api|docs|specs]"
+description: Verify spec compliance and project consistency. Pass a spec name to check just that spec, or run without arguments for general consistency checks. Use "all" to run everything.
+argument-hint: "[spec-name | all]"
 ---
 
-# Consistency Verification Check
+# Spec Verification
 
-Run a comprehensive consistency check across the amigo-downloader project. Scope: **$ARGUMENTS** (default: all).
+## Mode Selection
 
-## Checks to Perform
+Based on the argument, run in one of three modes:
 
-Launch parallel Explore agents for independent checks, then compile a unified report.
+- **`/spec-verify <name>`** — Fast: verify only spec `docs/specs/<name>.md` against its affected files
+- **`/spec-verify`** (no argument) — Medium: run general consistency checks (no spec compliance)
+- **`/spec-verify all`** — Full: all consistency checks + all specs. Use before releases.
+
+---
+
+## Mode 1: Single Spec Verification (`/spec-verify <name>`)
+
+Read `docs/specs/$0.md` and verify only what that spec covers:
+
+1. **Acceptance Criteria** — For each AC, check if the code satisfies it
+   - Read the affected files listed in the spec
+   - Verify the described behavior exists in the implementation
+   - Report: PASS/FAIL per AC with evidence (file:line)
+
+2. **Test Coverage** — Check the spec's test plan
+   - Every test plan item should have a corresponding test function
+   - Tests should actually test what the AC describes (not just exist)
+   - Report: missing tests, tests that don't match their AC
+
+3. **API Contract** — If spec defines endpoints/types
+   - Verify Rust types exist as specified
+   - Verify endpoints are registered in the router
+   - Verify frontend API calls match
+   - Report: mismatches between spec and implementation
+
+4. **Affected Files** — Verify the spec's file list
+   - Were all listed files actually modified?
+   - Were files changed that aren't listed in the spec? (potential spec gap)
+
+Output: Focused report for just this spec.
+
+---
+
+## Mode 2: General Consistency (`/spec-verify` without argument)
+
+Run these checks in parallel using Explore agents:
 
 ### 1. Type Consistency (Frontend <-> Backend)
-
 Compare Rust API types in `crates/server/src/api.rs` with TypeScript types in `web-ui/src/lib/api.ts`:
 - Every Rust response struct should have a matching TypeScript interface
 - Field names and types must match (snake_case Rust -> camelCase TS via serde)
-- Enum variants must be in sync
 - Report: mismatches, missing types, extra types
 
 ### 2. API Completeness
-
-Compare implemented endpoints vs documented endpoints:
 - Scan `crates/server/src/api.rs` for all route definitions
 - Compare against REST API section in `CLAUDE.md`
-- Check that every endpoint has a corresponding frontend API call in `web-ui/src/lib/api.ts`
-- Report: undocumented endpoints, documented but unimplemented endpoints, frontend calls to non-existent endpoints
+- Check that every endpoint has a corresponding frontend API call
+- Report: undocumented endpoints, documented but unimplemented, frontend calls to missing endpoints
 
 ### 3. Test Coverage
-
-Identify public functions without tests:
-- Scan all `pub fn` and `pub async fn` in `crates/*/src/**/*.rs`
-- Check for corresponding `#[test]` or `#[tokio::test]` in the same file or in `tests/`
-- Pay special attention to: coordinator, chunk, bandwidth, queue, retry, protocol backends
-- Report: untested public functions grouped by crate, coverage percentage estimate
+- Scan `pub fn` and `pub async fn` in `crates/*/src/**/*.rs`
+- Check for corresponding `#[test]` or `#[tokio::test]`
+- Report: untested public functions grouped by crate
 
 ### 4. i18n Completeness
-
-Compare locale files:
-- Parse `locales/en.json` and `locales/de.json`
-- Find keys present in one but missing in the other
-- Check that all i18n keys used in web-ui (`$t(...)` or equivalent) exist in locale files
-- Report: missing keys per locale, unused keys, keys used in code but not in locale files
+- Compare keys in `locales/en.json` vs `locales/de.json`
+- Check i18n keys used in web-ui exist in locale files
+- Report: missing keys, unused keys
 
 ### 5. Frontend <-> Backend API Sync
+- Extract all API calls from `web-ui/src/lib/api.ts`
+- Compare against route definitions in `crates/server/src/api.rs`
+- Check WebSocket events in `crates/server/src/ws.rs` vs `web-ui/src/lib/stores.ts`
+- Report: mismatched calls, missing endpoints
 
-Verify frontend API calls match actual backend:
-- Extract all fetch/API calls from `web-ui/src/lib/api.ts`
-- Extract all route definitions from `crates/server/src/api.rs`
-- Verify HTTP methods, paths, and expected response shapes match
-- Check WebSocket event names in `crates/server/src/ws.rs` vs `web-ui/src/lib/stores.ts`
-- Report: mismatched calls, unused endpoints, frontend calls to missing endpoints
-
-### 6. Spec Compliance
-
-If `docs/specs/` contains specs:
-- For each spec, check acceptance criteria against actual implementation
-- Verify that listed files were actually modified
-- Check that test plan items have corresponding test implementations
-- Report: unmet acceptance criteria, missing tests from test plan
-
-### 7. Documentation Freshness
-
-Verify CLAUDE.md accuracy:
-- Compare "Repository-Struktur" section against actual file tree
-- Check that listed files actually exist
-- Check for files that exist but aren't listed
-- Verify tech stack versions match Cargo.toml/package.json
+### 6. Documentation Freshness
+- Compare CLAUDE.md "Repository-Struktur" against actual file tree
 - Report: stale docs, missing entries, phantom entries
 
-## Output Format
+---
 
-Present results as a structured report:
+## Mode 3: Full Verification (`/spec-verify all`)
+
+Run Mode 2 (general consistency) PLUS Mode 1 for every spec in `docs/specs/`:
+
+```
+For each *.md in docs/specs/:
+  Run single spec verification
+```
+
+Compile into one unified report.
+
+---
+
+## Output Format
 
 ```markdown
 # Verification Report
@@ -80,26 +103,27 @@ Present results as a structured report:
 ## Summary
 | Check | Status | Issues |
 |-------|--------|--------|
-| Type Consistency | PASS/WARN/FAIL | N issues |
-| API Completeness | ... | ... |
-| ... | ... | ... |
+| ... | PASS/WARN/FAIL | N issues |
 
 ## Details
 
 ### [Check Name] — STATUS
 - Issue 1: description + file:line
-- Issue 2: ...
 - **Action needed**: what to fix
 
 ## Priority Actions
 1. [Most critical fix]
-2. [Next most critical]
-...
+2. ...
 ```
 
 ## Rules
-- Do NOT make any changes — this is a read-only audit
+- **Read-only** — do NOT make any changes
 - Be specific: include file paths and line numbers
-- Distinguish between FAIL (broken/wrong) and WARN (missing/incomplete)
-- PASS means verified correct, not just "didn't check"
-- If a check cannot be performed (e.g., no specs exist), report as SKIP with reason
+- FAIL = broken/wrong, WARN = missing/incomplete, PASS = verified correct
+- If a check cannot be performed, report as SKIP with reason
+- Keep it fast: only read files that are relevant to the scope
+
+## Context
+
+Available specs:
+!`ls /home/user/amigo-downloader/docs/specs/*.md 2>/dev/null || echo "No specs yet"`
