@@ -40,7 +40,16 @@ Read `docs/specs/$0.md` and verify only what that spec covers:
    - Were all listed files actually modified?
    - Were files changed that aren't listed in the spec? (potential spec gap)
 
-Output: Focused report for just this spec.
+5. **Update the spec file** based on verification results:
+   - Set `[x]` for acceptance criteria that are verified as met
+   - Reset `[ ]` for acceptance criteria that are no longer met (regression)
+   - Update the `status` field at the top of the spec:
+     - `status: verified` — all ACs pass
+     - `status: partial` — some ACs pass, some fail
+     - `status: failing` — most/all ACs fail
+     - `status: draft` — not yet implemented (no matching code found)
+
+Output: Focused report for this spec + updated spec file.
 
 ---
 
@@ -117,7 +126,7 @@ Compile into one unified report.
 ```
 
 ## Rules
-- **Read-only** — do NOT make any changes
+- **Read-only EXCEPT for spec files** — only update `[ ]`/`[x]` checkboxes and `status` field in `docs/specs/*.md`
 - Be specific: include file paths and line numbers
 - FAIL = broken/wrong, WARN = missing/incomplete, PASS = verified correct
 - If a check cannot be performed, report as SKIP with reason

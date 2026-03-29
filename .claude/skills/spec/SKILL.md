@@ -56,6 +56,8 @@ Once all questions are answered, write the spec to `docs/specs/$0.md`:
 ```markdown
 # Feature: <name>
 
+> status: draft
+
 ## Summary
 One paragraph: what, why, and key design decision.
 
