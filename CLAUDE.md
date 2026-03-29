@@ -456,6 +456,23 @@ amigo-dl serve [--port 8080 --bind 0.0.0.0]
 - **Svelte**: TypeScript strict, Tailwind CSS v4
 - **Git**: Conventional Commits (`feat:`, `fix:`, `refactor:`, `docs:`)
 - **CI**: `cargo test`, `cargo clippy`, `npm run check`, Docker Build
+- **Spec-Driven Development**: Every feature starts with a spec in `docs/specs/` before implementation
+
+### Spec-Driven Development Workflow
+
+Use the project skills to enforce consistency:
+
+| Skill | Usage | Purpose |
+|-------|-------|---------|
+| `/spec <feature>` | Before coding | Write structured spec with testable acceptance criteria |
+| `/verify` | After coding | Run 7-point consistency check (types, API, tests, i18n, docs) |
+| `/feature <name>` | Full workflow | Orchestrate: Spec → Types → Tests → Backend → Frontend → Verify → Commit |
+
+**Rules:**
+1. No feature without a spec in `docs/specs/<feature>.md`
+2. Every acceptance criterion must be testable
+3. API contract (Rust types) defined before implementation
+4. `/verify` must pass before merging
 
 ---
 
