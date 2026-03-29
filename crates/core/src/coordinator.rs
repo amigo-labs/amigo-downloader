@@ -104,6 +104,11 @@ impl Coordinator {
         self.event_tx.subscribe()
     }
 
+    /// Get the event sender (for wiring captcha manager, notifications, etc.)
+    pub fn event_sender(&self) -> broadcast::Sender<DownloadEvent> {
+        self.event_tx.clone()
+    }
+
     /// Get a reference to storage.
     pub fn storage(&self) -> &Storage {
         &self.storage

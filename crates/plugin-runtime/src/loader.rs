@@ -33,6 +33,15 @@ pub struct PluginLoader {
 
 impl PluginLoader {
     pub fn new(plugin_dir: PathBuf, sandbox_limits: SandboxLimits) -> Self {
+        Self::new_with_host_api(plugin_dir, sandbox_limits, HostApi::new(20))
+    }
+
+    /// Create a PluginLoader with a pre-configured HostApi (for wiring callbacks).
+    pub fn new_with_host_api(
+        plugin_dir: PathBuf,
+        sandbox_limits: SandboxLimits,
+        host_api: HostApi,
+    ) -> Self {
         let engine = PluginEngine::new(EngineConfig {
             max_memory: sandbox_limits.max_memory_bytes as usize,
             ..Default::default()
@@ -42,7 +51,7 @@ impl PluginLoader {
         Self {
             plugin_dir,
             plugins: Arc::new(Mutex::new(Vec::new())),
-            host_api: HostApi::new(sandbox_limits.max_http_requests),
+            host_api,
             sandbox_limits,
             engine: Arc::new(engine),
         }
