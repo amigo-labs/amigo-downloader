@@ -295,6 +295,30 @@ export async function updateFeatures(features: { rss_feeds: boolean; server_stat
 }
 
 // ========================================
+// RETRY CONFIG
+// ========================================
+
+export interface RetryConfig {
+  max_retries: number;
+  base_delay_secs: number;
+  max_delay_secs: number;
+}
+
+export async function getRetryConfig(): Promise<RetryConfig> {
+  const res = await fetch(`${API_BASE}/retry`);
+  return res.json();
+}
+
+export async function updateRetryConfig(config: RetryConfig) {
+  const res = await fetch(`${API_BASE}/retry`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+  return res.json();
+}
+
+// ========================================
 // RSS FEEDS
 // ========================================
 

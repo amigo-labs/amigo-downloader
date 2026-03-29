@@ -69,6 +69,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/captcha/pending", get(list_pending_captchas))
         .route("/api/v1/captcha/{id}/solve", post(solve_captcha))
         .route("/api/v1/captcha/{id}/cancel", post(cancel_captcha))
+        // Retry config
+        .route("/api/v1/retry", get(get_retry_config))
+        .route("/api/v1/retry", patch(update_retry_config))
         // Webhook endpoints
         .route("/api/v1/webhooks", get(list_webhooks))
         .route("/api/v1/webhooks", post(create_webhook))
@@ -757,6 +760,43 @@ async fn update_features(
                 Json(ErrorResponse {
                     error: e.to_string(),
                 }),
+            )
+        })?;
+    Ok(Json(req))
+}
+
+// --- Retry config ---
+
+#[derive(Serialize, Deserialize)]
+struct RetryConfigResponse {
+    max_retries: u32,
+    base_delay_secs: f64,
+    max_delay_secs: f64,
+}
+
+async fn get_retry_config(State(state): State<AppState>) -> Json<RetryConfigResponse> {
+    let c = &state.coordinator.config().retry;
+    Json(RetryConfigResponse {
+        max_retries: c.max_retries,
+        base_delay_secs: c.base_delay_secs,
+        max_delay_secs: c.max_delay_secs,
+    })
+}
+
+async fn update_retry_config(
+    State(state): State<AppState>,
+    Json(req): Json<RetryConfigResponse>,
+) -> Result<Json<RetryConfigResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let val = serde_json::to_string(&req).unwrap_or_default();
+    state
+        .coordinator
+        .storage()
+        .set_update_state("retry_config", &val)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: e.to_string() }),
             )
         })?;
     Ok(Json(req))

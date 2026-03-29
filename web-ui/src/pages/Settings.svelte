@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { theme, layout, accent, features, type AccentColor, type LayoutMode, type ThemeMode } from "../lib/stores";
-  import { getWebhooks, createWebhook, deleteWebhook, testWebhook, getFeatures, updateFeatures, getUsenetProcessing, updateUsenetProcessing, type UsenetProcessing } from "../lib/api";
+  import { getWebhooks, createWebhook, deleteWebhook, testWebhook, getFeatures, updateFeatures, getUsenetProcessing, updateUsenetProcessing, getRetryConfig, updateRetryConfig, type UsenetProcessing, type RetryConfig } from "../lib/api";
   import { addToast } from "../lib/toast";
 
   // Usenet processing state
@@ -14,6 +14,13 @@
     sequential_postprocess: false,
   });
 
+  // Retry config state
+  let retryConfig = $state<RetryConfig>({
+    max_retries: 5,
+    base_delay_secs: 1.0,
+    max_delay_secs: 60.0,
+  });
+
   // Webhook state
   let webhooks = $state<any[]>([]);
   let showAddWebhook = $state(false);
@@ -24,9 +31,10 @@
 
   onMount(async () => {
     try {
-      const [wh, up] = await Promise.all([getWebhooks(), getUsenetProcessing()]);
+      const [wh, up, rc] = await Promise.all([getWebhooks(), getUsenetProcessing(), getRetryConfig()]);
       webhooks = wh;
       usenetProc = up;
+      retryConfig = rc;
     } catch { /* server offline */ }
   });
 
@@ -38,6 +46,15 @@
       addToast("Usenet processing updated", "success");
     } catch {
       addToast("Failed to update", "error");
+    }
+  }
+
+  async function saveRetryConfig() {
+    try {
+      await updateRetryConfig(retryConfig);
+      addToast("success", "Retry settings saved");
+    } catch {
+      addToast("error", "Failed to save retry settings");
     }
   }
 
@@ -277,6 +294,68 @@
           <span class="text-sm" style="color: var(--text-secondary-color)">KB/s (0 = unlimited)</span>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- Retry Behavior -->
+  <section>
+    <h3 class="text-lg font-bold mb-4">Retry Behavior</h3>
+    <div class="rounded-xl p-5 space-y-4" style="background: var(--surface-2-color); border: 1px solid var(--border-color)">
+      <div>
+        <label class="text-sm font-semibold mb-1.5 block">Max Retries</label>
+        <p class="text-xs mb-2" style="color: var(--text-secondary-color)">
+          Number of retry attempts before marking a download as failed
+        </p>
+        <input
+          type="number"
+          bind:value={retryConfig.max_retries}
+          min="0"
+          max="20"
+          class="w-32 rounded-lg px-4 py-2.5 text-sm font-mono outline-none"
+          style="background: var(--surface-3-color); border: 1px solid var(--border-color); color: var(--text-color)"
+        />
+      </div>
+      <div>
+        <label class="text-sm font-semibold mb-1.5 block">Initial Delay</label>
+        <p class="text-xs mb-2" style="color: var(--text-secondary-color)">
+          Wait time before the first retry. Doubles with each attempt (exponential backoff).
+        </p>
+        <div class="flex items-center gap-2">
+          <input
+            type="number"
+            bind:value={retryConfig.base_delay_secs}
+            min="0.1"
+            max="30"
+            step="0.5"
+            class="w-32 rounded-lg px-4 py-2.5 text-sm font-mono outline-none"
+            style="background: var(--surface-3-color); border: 1px solid var(--border-color); color: var(--text-color)"
+          />
+          <span class="text-sm" style="color: var(--text-secondary-color)">seconds</span>
+        </div>
+      </div>
+      <div>
+        <label class="text-sm font-semibold mb-1.5 block">Max Delay</label>
+        <p class="text-xs mb-2" style="color: var(--text-secondary-color)">
+          Maximum wait time between retries, even after exponential growth
+        </p>
+        <div class="flex items-center gap-2">
+          <input
+            type="number"
+            bind:value={retryConfig.max_delay_secs}
+            min="1"
+            max="600"
+            step="1"
+            class="w-32 rounded-lg px-4 py-2.5 text-sm font-mono outline-none"
+            style="background: var(--surface-3-color); border: 1px solid var(--border-color); color: var(--text-color)"
+          />
+          <span class="text-sm" style="color: var(--text-secondary-color)">seconds</span>
+        </div>
+      </div>
+      <button
+        onclick={saveRetryConfig}
+        class="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+        style="background: var(--accent-color)"
+      >Save</button>
     </div>
   </section>
 
