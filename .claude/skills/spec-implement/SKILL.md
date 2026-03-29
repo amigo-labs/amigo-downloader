@@ -71,7 +71,6 @@ Create a clean commit.
 - Stage all changed files
 - Write a conventional commit message: `feat: <description>`
 - Reference the spec: `Spec: docs/specs/$0.md`
-- Mark acceptance criteria as checked (`[x]`) in the spec file
 - **GATE**: Show commit message and changed files list, ask for confirmation
 
 ## Rules
@@ -81,9 +80,9 @@ Create a clean commit.
 - **NEVER proceed without user approval** at each gate
 - **If the spec is wrong**, STOP implementation. Update the spec first, get approval, then continue
 - **Tests must pass** before moving to the next step
+- **Do NOT modify the spec file during implementation** — acceptance criteria stay as `[ ]`, their real status is determined by `/spec-verify` at runtime
 - If the feature is backend-only, skip Step 4
 - If the feature is frontend-only, adjust Step 3 accordingly
-- Check off each acceptance criterion in the spec as it's implemented
 
 ## Context
 
