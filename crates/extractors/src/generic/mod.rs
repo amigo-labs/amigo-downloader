@@ -14,7 +14,7 @@ pub mod players;
 
 use regex::Regex;
 use scraper::{Html, Selector};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 use url::Url;
 
 use crate::error::ExtractorError;
@@ -30,6 +30,7 @@ const MEDIA_EXTENSIONS: &[&str] = &[
 const MANIFEST_EXTENSIONS: &[&str] = &[".m3u8", ".mpd"];
 
 /// Content-Type prefixes that indicate media.
+#[allow(dead_code)]
 const MEDIA_CONTENT_TYPES: &[&str] = &[
     "video/", "audio/", "application/x-mpegurl", "application/dash+xml",
     "application/vnd.apple.mpegurl",
@@ -117,7 +118,17 @@ impl GenericExtractor {
     }
 
     /// Extract media from an HTML page using all detection methods.
-    async fn extract_from_html(
+    fn extract_from_html<'a>(
+        &'a self,
+        client: &'a reqwest::Client,
+        page_url: &'a str,
+        html: &'a str,
+        depth: u32,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<MediaStream>> + Send + 'a>> {
+        Box::pin(self.extract_from_html_inner(client, page_url, html, depth))
+    }
+
+    async fn extract_from_html_inner(
         &self,
         client: &reqwest::Client,
         page_url: &str,
@@ -163,7 +174,7 @@ impl GenericExtractor {
     }
 
     /// Mine JavaScript source for media URLs.
-    fn mine_script_urls(html: &str, base_url: &str) -> Vec<MediaStream> {
+    fn mine_script_urls(html: &str, _base_url: &str) -> Vec<MediaStream> {
         let mut streams = Vec::new();
 
         // Find m3u8 URLs
@@ -265,37 +276,40 @@ impl GenericExtractor {
         base_url: &str,
         depth: u32,
     ) -> Result<Vec<MediaStream>, ExtractorError> {
+        // Collect iframe URLs first to avoid holding non-Send scraper types across await
+        let iframe_urls: Vec<String> = {
+            let document = Html::parse_document(html);
+            let iframe_sel = Selector::parse("iframe[src]").unwrap();
+            document
+                .select(&iframe_sel)
+                .filter_map(|elem| {
+                    let src = elem.value().attr("src")?;
+                    if src.is_empty() || src.starts_with("about:") || src.starts_with("javascript:") {
+                        return None;
+                    }
+                    resolve_url(base_url, src)
+                })
+                .collect()
+        };
+
         let mut streams = Vec::new();
-        let document = Html::parse_document(html);
-        let iframe_sel = Selector::parse("iframe[src]").unwrap();
+        for iframe_url in iframe_urls {
+            debug!("Following iframe (depth {}): {}", depth + 1, iframe_url);
 
-        for elem in document.select(&iframe_sel) {
-            if let Some(src) = elem.value().attr("src") {
-                if src.is_empty() || src.starts_with("about:") || src.starts_with("javascript:") {
-                    continue;
+            match client.get(&iframe_url).send().await {
+                Ok(resp) if resp.status().is_success() => {
+                    if let Ok(body) = resp.text().await {
+                        let iframe_streams = self
+                            .extract_from_html(client, &iframe_url, &body, depth + 1)
+                            .await;
+                        streams.extend(iframe_streams);
+                    }
                 }
-                let iframe_url = match resolve_url(base_url, src) {
-                    Some(u) => u,
-                    None => continue,
-                };
-
-                debug!("Following iframe (depth {}): {}", depth + 1, iframe_url);
-
-                match client.get(&iframe_url).send().await {
-                    Ok(resp) if resp.status().is_success() => {
-                        if let Ok(body) = resp.text().await {
-                            let iframe_streams = self
-                                .extract_from_html(client, &iframe_url, &body, depth + 1)
-                                .await;
-                            streams.extend(iframe_streams);
-                        }
-                    }
-                    Ok(resp) => {
-                        debug!("iframe returned {}: {}", resp.status(), iframe_url);
-                    }
-                    Err(e) => {
-                        debug!("Failed to fetch iframe {}: {}", iframe_url, e);
-                    }
+                Ok(resp) => {
+                    debug!("iframe returned {}: {}", resp.status(), iframe_url);
+                }
+                Err(e) => {
+                    debug!("Failed to fetch iframe {}: {}", iframe_url, e);
                 }
             }
         }
@@ -359,11 +373,11 @@ impl Extractor for GenericExtractor {
             .get(url)
             .send()
             .await
-            .map_err(|e| ExtractorError::Network(e.to_string()))?;
+            .map_err(|e| ExtractorError::Other(e.to_string()))?;
         let body = resp
             .text()
             .await
-            .map_err(|e| ExtractorError::Network(e.to_string()))?;
+            .map_err(|e| ExtractorError::Other(e.to_string()))?;
 
         // Extract title
         let title = extract_page_title(&body).unwrap_or_else(|| "Download".to_string());
