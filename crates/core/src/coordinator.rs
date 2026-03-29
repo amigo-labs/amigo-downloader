@@ -92,11 +92,13 @@ impl Coordinator {
         let bandwidth = BandwidthLimiter::new(config.bandwidth.clone());
         let (event_tx, _) = broadcast::channel(256);
 
+        let retry_policy = RetryPolicy::from(config.retry.clone());
+
         Self {
             config,
             storage,
             bandwidth,
-            retry_policy: RetryPolicy::default(),
+            retry_policy,
             active: Arc::new(Mutex::new(HashMap::new())),
             event_tx,
         }

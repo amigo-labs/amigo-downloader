@@ -53,9 +53,32 @@ pub struct Config {
     pub feedback: FeedbackConfig,
     pub captcha: CaptchaConfig,
     #[serde(default)]
+    pub retry: RetryConfig,
+    #[serde(default)]
     pub webhooks: Vec<WebhookEndpoint>,
     #[serde(default)]
     pub features: FeatureFlags,
+}
+
+/// Retry behavior for failed downloads.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetryConfig {
+    /// Maximum number of retry attempts before giving up.
+    pub max_retries: u32,
+    /// Initial delay before the first retry (seconds).
+    pub base_delay_secs: f64,
+    /// Maximum delay between retries (seconds). Exponential backoff is capped at this.
+    pub max_delay_secs: f64,
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: 5,
+            base_delay_secs: 1.0,
+            max_delay_secs: 60.0,
+        }
+    }
 }
 
 /// Optional feature toggles — disabled by default, user enables in Settings.
@@ -135,6 +158,7 @@ impl Default for Config {
             update: UpdateConfig::default(),
             feedback: FeedbackConfig::default(),
             captcha: CaptchaConfig::default(),
+            retry: RetryConfig::default(),
             webhooks: Vec::new(),
             features: FeatureFlags::default(),
         }

@@ -22,6 +22,16 @@ impl Default for RetryPolicy {
     }
 }
 
+impl From<crate::config::RetryConfig> for RetryPolicy {
+    fn from(cfg: crate::config::RetryConfig) -> Self {
+        Self {
+            max_retries: cfg.max_retries,
+            base_delay: Duration::from_secs_f64(cfg.base_delay_secs),
+            max_delay: Duration::from_secs_f64(cfg.max_delay_secs),
+        }
+    }
+}
+
 impl RetryPolicy {
     /// Calculate delay for attempt N with exponential backoff + jitter.
     pub fn delay_for_attempt(&self, attempt: u32) -> Duration {
