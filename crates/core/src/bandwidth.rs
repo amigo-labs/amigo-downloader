@@ -46,15 +46,21 @@ pub struct BandwidthLimiter {
 struct BucketState {
     tokens: u64,
     last_refill: tokio::time::Instant,
+    /// Cached effective limit to avoid locking config on every acquire().
+    cached_limit: u64,
+    limit_cached_at: tokio::time::Instant,
 }
 
 impl BandwidthLimiter {
     pub fn new(config: BandwidthConfig) -> Self {
         let initial_tokens = config.global_limit.max(1024 * 1024);
+        let limit = config.global_limit;
         Self {
             inner: Arc::new(Mutex::new(BucketState {
                 tokens: initial_tokens,
                 last_refill: tokio::time::Instant::now(),
+                cached_limit: limit,
+                limit_cached_at: tokio::time::Instant::now(),
             })),
             config: Arc::new(Mutex::new(config)),
         }
@@ -96,15 +102,22 @@ impl BandwidthLimiter {
 
     /// Request `bytes` worth of bandwidth. Returns when the tokens are available.
     pub async fn acquire(&self, bytes: u64) {
-        let limit = self.effective_limit().await;
-        if limit == 0 {
-            return; // Unlimited
-        }
-
         loop {
             {
                 let mut state = self.inner.lock().await;
                 let now = tokio::time::Instant::now();
+
+                // Refresh cached limit every second (avoids locking config on every chunk)
+                if now.duration_since(state.limit_cached_at).as_secs() >= 1 {
+                    state.cached_limit = self.effective_limit().await;
+                    state.limit_cached_at = now;
+                }
+
+                let limit = state.cached_limit;
+                if limit == 0 {
+                    return; // Unlimited
+                }
+
                 let elapsed = now.duration_since(state.last_refill);
                 let new_tokens = (elapsed.as_secs_f64() * limit as f64) as u64;
                 if new_tokens > 0 {

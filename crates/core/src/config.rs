@@ -261,8 +261,38 @@ impl Config {
         Self::default()
     }
 
-    /// Save config to a TOML file.
+    /// Validate config values. Returns a list of problems (empty = valid).
+    pub fn validate(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+
+        if self.max_concurrent_downloads == 0 {
+            errors.push("max_concurrent_downloads must be > 0".into());
+        }
+        if self.download_dir.is_empty() {
+            errors.push("download_dir must not be empty".into());
+        }
+        if self.http.max_chunks_per_download == 0 {
+            errors.push("http.max_chunks_per_download must be > 0".into());
+        }
+        if self.http.timeout_connect_secs == 0 {
+            errors.push("http.timeout_connect_secs must be > 0".into());
+        }
+        if self.retry.max_delay_secs < self.retry.base_delay_secs {
+            errors.push("retry.max_delay_secs must be >= retry.base_delay_secs".into());
+        }
+
+        errors
+    }
+
+    /// Save config to a TOML file. Validates before saving.
     pub fn save(&self, path: &Path) -> Result<(), crate::Error> {
+        let errors = self.validate();
+        if !errors.is_empty() {
+            return Err(crate::Error::Other(format!(
+                "Invalid config: {}",
+                errors.join("; ")
+            )));
+        }
         let content = toml::to_string_pretty(self)
             .map_err(|e| crate::Error::Other(format!("Failed to serialize config: {e}")))?;
 
