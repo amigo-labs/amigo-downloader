@@ -278,6 +278,19 @@ impl Storage {
         Ok(())
     }
 
+    pub async fn set_download_priority(
+        &self,
+        id: &str,
+        priority: i32,
+    ) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "UPDATE downloads SET priority = ?1 WHERE id = ?2",
+            rusqlite::params![priority, id],
+        )?;
+        Ok(())
+    }
+
     pub async fn delete_download(&self, id: &str) -> Result<(), crate::Error> {
         let db = self.db.lock().await;
         db.execute("DELETE FROM downloads WHERE id = ?1", rusqlite::params![id])?;
