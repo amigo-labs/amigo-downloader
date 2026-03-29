@@ -1,57 +1,44 @@
 ---
 name: spec
-description: Interactively develop a structured feature spec together with the user. Explores the codebase, asks targeted questions, and iteratively builds a complete spec with all necessary changes identified. Use this whenever a new feature is planned.
+description: Collaboratively create or update a feature spec. Creates a new spec if none exists, or updates an existing one when requirements change. Use for new features and significant changes — not for bugfixes.
 argument-hint: "<feature-name>"
 ---
 
-# Spec-Driven Development: Collaborative Spec Discovery
+# Spec: Create or Update
 
-You are helping the user develop a complete feature specification for **$ARGUMENTS**. This is a COLLABORATIVE process — you research, ask, propose, and refine together until every detail is nailed down.
+You are helping the user define **$ARGUMENTS**. This is collaborative — research, propose, refine.
 
-## Process: 3 Phases
+## Step 1: Check if spec exists
 
-### Phase 1: DISCOVER — Understand what's needed
+Check `docs/specs/$0.md`:
+- **Exists** → Read it, ask the user what should change, then update it (keep existing ACs, add/modify/remove as needed, reset status to `draft` for changed ACs)
+- **New** → Continue with Step 2
 
-1. **Research the codebase** using Explore agents in parallel:
-   - Find all code related to the feature area (existing implementations, types, API endpoints, UI components)
-   - Identify existing patterns, utilities, and abstractions that can be reused
-   - Check for potential conflicts or dependencies
+## Step 2: Research + Ask
 
-2. **Present your findings** to the user:
-   - "Here's what already exists related to this feature: ..."
-   - "These files/components will likely be affected: ..."
-   - "I see these potential approaches: ..."
+Do both in parallel:
 
-3. **Ask targeted questions** using AskUserQuestion to fill gaps. Cover these dimensions one by one — do NOT dump all questions at once, instead ask in logical groups of 1-4 questions:
+**Research** (Explore agents):
+- Find existing code related to this feature area
+- Identify reusable patterns, types, utilities
+- Check for conflicts with existing specs in `docs/specs/`
 
-   **Scope & Behavior:**
-   - What exactly should happen? Walk me through the user flow step by step
-   - What should NOT be included? (explicit boundaries)
+**Then present findings and ask questions** in small batches (1-4 at a time via AskUserQuestion):
 
-   **Data & API:**
-   - What data is needed? Where does it come from?
-   - Do we need new API endpoints? New DB fields?
-   - How should errors be communicated to the user?
+- **What & Why** — What should happen? What's out of scope?
+- **Data & API** — New endpoints? DB changes? Error handling?
+- **UI** (if applicable) — Which page? User flow? Loading/error states?
+- **Edge Cases** — Propose specific scenarios, let user confirm/deny
 
-   **UI (if applicable):**
-   - Which page/view does this live on?
-   - What does the user see/click/interact with?
-   - What happens during loading/error/empty states?
+**Propose, don't just ask**: "I'd use the existing `RetryConfig` here — works for you?" is better than "What retry mechanism?"
 
-   **Edge Cases** (propose specific scenarios for the user to confirm/deny):
-   - "What should happen if [specific scenario]?"
-   - "Should we handle [edge case] now or is that out of scope?"
+Keep asking until no open questions remain.
 
-   **Integration:**
-   - Does this affect WebSocket events?
-   - Does this need i18n strings?
-   - Does this interact with the plugin system?
+## Step 3: Write + Review
 
-4. **Iterate**: After each answer, dig deeper. If the user says "it should support X", ask HOW specifically. Keep asking until there are no open questions.
+Write the spec to `docs/specs/$0.md`, then present a concise summary (not the full markdown). Ask if anything is missing or wrong. Iterate until approved.
 
-### Phase 2: PROPOSE — Draft the spec
-
-Once all questions are answered, write the spec to `docs/specs/$0.md`:
+### Spec Template
 
 ```markdown
 # Feature: <name>
@@ -59,10 +46,9 @@ Once all questions are answered, write the spec to `docs/specs/$0.md`:
 > status: draft
 
 ## Summary
-One paragraph: what, why, and key design decision.
+What, why, key design decision.
 
 ## Acceptance Criteria
-Testable, numbered. Each must be verifiable by a test.
 - [ ] AC-1: <specific, testable statement>
 - [ ] AC-2: ...
 
@@ -70,99 +56,55 @@ Testable, numbered. Each must be verifiable by a test.
 
 ### Rust Types
 \`\`\`rust
-// Concrete serde structs — not pseudocode
+// Concrete serde structs with derives
 \`\`\`
 
 ### REST Endpoints
 | Method | Path | Request Body | Response | Status Codes |
 |--------|------|-------------|----------|-------------|
 
-### WebSocket Events
+### WebSocket Events (if applicable)
 | Event | Payload | When |
 |-------|---------|------|
 
 ## Data Model Changes
-- DB migrations (SQLite schema changes)
-- New tables/columns with types
+SQLite schema changes, new tables/columns.
 
-## UI Changes
-- Affected pages/components
-- New components needed
-- User interaction flow (step by step)
-- Loading/error/empty states
+## UI Changes (if applicable)
+Affected pages/components, user flow, loading/error/empty states.
 
 ## Affected Files
-Grouped by layer:
-### Backend
 - `crates/.../file.rs` — what changes
-### Frontend
 - `web-ui/src/.../File.svelte` — what changes
-### Other
-- `locales/*.json` — new keys
-- `CLAUDE.md` — doc updates if needed
 
-## Edge Cases & Error Handling
+## Edge Cases
 | Scenario | Expected Behavior |
 |----------|------------------|
-| ... | ... |
 
 ## Test Plan
-### Unit Tests
-- [ ] ...
-### Integration Tests
-- [ ] ...
-### E2E Tests (if UI)
-- [ ] ...
-
-## Dependencies
-- External crates/packages needed
-- Other features this depends on
+- [ ] Unit: ...
+- [ ] Integration: ...
+- [ ] E2E (if UI): ...
 
 ## Out of Scope
-- What this feature explicitly does NOT include
+What this does NOT include.
 ```
 
-### Phase 3: REVIEW — Refine together
-
-1. **Present a summary** of the spec (not the full markdown — a concise overview):
-   - Key acceptance criteria
-   - Files that will change
-   - Anything that surprised you or seems risky
-
-2. **Ask for approval** using AskUserQuestion:
-   - "Is there anything missing or wrong?"
-   - "Should I adjust scope on any of these points?"
-
-3. **Iterate** until the user confirms the spec is complete.
-
-4. **Save** the final spec to `docs/specs/$0.md`.
+**Omit empty sections.** Backend-only? Drop UI Changes. No new endpoints? Drop API Contract.
 
 ## Rules
-
-- **NEVER write the spec before understanding the feature** — Phase 1 comes first
-- **Ask questions in small batches** (1-4 at a time), not a wall of 15 questions
-- **Be specific in your questions** — "Should cancelled downloads be deletable from history?" is better than "How should history work?"
-- **Propose, don't just ask** — "I'd suggest we use the existing `RetryConfig` struct here. Does that work?" is better than "What retry mechanism should we use?"
-- **Every acceptance criterion MUST be testable** — no vague statements
-- **API types must be concrete Rust structs** with serde derives, not pseudocode
-- **Edge cases section must have at least 3 scenarios** with expected behavior
-- **Test plan must cover every acceptance criterion**
-- **Check existing `docs/specs/`** for related specs to avoid contradictions
-- If a feature touches both frontend and backend, the API contract section is MANDATORY
+- Every AC must be testable — not "should be fast" but "responds within 200ms for files < 1GB"
+- API types must be concrete Rust structs, not pseudocode
+- At least 3 edge cases
+- Test plan must cover every AC
+- When updating an existing spec: preserve history, add a `## Changelog` section at the bottom
 
 ## Context
 
-Current project architecture and conventions:
 !`head -20 /home/user/amigo-downloader/CLAUDE.md`
 
 Existing specs:
-!`ls /home/user/amigo-downloader/docs/specs/ 2>/dev/null || echo "No specs yet"`
+!`ls /home/user/amigo-downloader/docs/specs/*.md 2>/dev/null || echo "No specs yet"`
 
-Existing API endpoints in server:
-!`grep -n "fn\|Router\|route\|.get\|.post\|.patch\|.delete" /home/user/amigo-downloader/crates/server/src/api.rs 2>/dev/null | head -40`
-
-Existing Rust types (core):
-!`grep -n "pub struct\|pub enum" /home/user/amigo-downloader/crates/core/src/lib.rs 2>/dev/null | head -30`
-
-Existing frontend API functions:
-!`grep -n "export.*function\|export.*async\|export.*const" /home/user/amigo-downloader/web-ui/src/lib/api.ts 2>/dev/null | head -30`
+Existing API:
+!`grep -n "\.get\|\.post\|\.patch\|\.delete\|\.route" /home/user/amigo-downloader/crates/server/src/api.rs 2>/dev/null | head -30`
