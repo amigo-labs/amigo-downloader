@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { usenetServers } from "../lib/stores";
+  import { usenetServers, features } from "../lib/stores";
   import { getUsenetServers, addUsenetServer, deleteUsenetServer } from "../lib/api";
   import { addToast } from "../lib/toast";
 
@@ -216,26 +216,53 @@
   <!-- Server list -->
   {#each $usenetServers as server (server.id)}
     <div
-      class="rounded-xl p-4 flex items-center justify-between gap-3"
+      class="rounded-xl p-4"
       style="background: var(--surface-2-color); border: 1px solid var(--border-color)"
     >
-      <div class="min-w-0 flex-1">
-        <p class="font-semibold text-sm truncate">{server.name}</p>
-        <p class="text-xs font-mono truncate" style="color: var(--text-secondary-color)">
-          {server.host}:{server.port} {server.ssl ? "(SSL)" : ""}
-        </p>
-        <p class="text-[10px] mt-0.5" style="color: var(--text-secondary-color)">
-          {server.connections} connections &middot; Priority {server.priority}
-        </p>
+      <div class="flex items-center justify-between gap-3">
+        <div class="min-w-0 flex-1">
+          <p class="font-semibold text-sm truncate">{server.name}</p>
+          <p class="text-xs font-mono truncate" style="color: var(--text-secondary-color)">
+            {server.host}:{server.port} {server.ssl ? "(SSL)" : ""}
+          </p>
+          <p class="text-[10px] mt-0.5" style="color: var(--text-secondary-color)">
+            {server.connections} connections &middot; Priority {server.priority}
+          </p>
+        </div>
+        <div class="flex gap-1.5 shrink-0">
+          <button
+            onclick={() => handleDelete(server.id)}
+            class="px-2.5 py-1.5 rounded-lg text-xs text-red-400 hover:bg-red-400/10"
+          >
+            Delete
+          </button>
+        </div>
       </div>
-      <div class="flex gap-1.5 shrink-0">
-        <button
-          onclick={() => handleDelete(server.id)}
-          class="px-2.5 py-1.5 rounded-lg text-xs text-red-400 hover:bg-red-400/10"
+
+      <!-- Server stats (only shown when feature enabled) -->
+      {#if $features.server_stats}
+        <div
+          class="mt-3 pt-3 grid grid-cols-4 gap-2 text-center"
+          style="border-top: 1px solid var(--border-color)"
         >
-          Delete
-        </button>
-      </div>
+          <div>
+            <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary-color)">Status</p>
+            <p class="text-xs font-semibold" style="color: #10b981">Idle</p>
+          </div>
+          <div>
+            <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary-color)">Active</p>
+            <p class="text-xs font-mono">0/{server.connections}</p>
+          </div>
+          <div>
+            <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary-color)">Articles</p>
+            <p class="text-xs font-mono">—</p>
+          </div>
+          <div>
+            <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary-color)">Speed</p>
+            <p class="text-xs font-mono">—</p>
+          </div>
+        </div>
+      {/if}
     </div>
   {/each}
 </div>
