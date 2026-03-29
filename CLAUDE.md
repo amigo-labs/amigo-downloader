@@ -441,7 +441,7 @@ amigo-dl export-dlc [--ids <id1,id2,...>]   # DLC Export
 amigo-dl list / pause / resume / cancel / queue / status / speed
 amigo-dl config get/set <key> <value>
 amigo-dl plugins list / enable / login
-amigo-dl serve [--port 8080 --bind 0.0.0.0]
+amigo-dl serve [--port 1516 --bind 0.0.0.0]
 ```
 
 ---

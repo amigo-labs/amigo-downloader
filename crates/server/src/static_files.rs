@@ -5,7 +5,6 @@
 
 use axum::{
     Router,
-    body::Body,
     extract::Request,
     http::{StatusCode, header},
     response::{IntoResponse, Response},
@@ -40,8 +39,8 @@ async fn serve_static(req: Request) -> Response {
     }
 
     // SPA fallback: serve index.html for all non-file paths
-    if !path.contains('.') || path.is_empty() {
-        if let Some(index) = WebUiAssets::get("index.html") {
+    if (!path.contains('.') || path.is_empty())
+        && let Some(index) = WebUiAssets::get("index.html") {
             return (
                 StatusCode::OK,
                 [
@@ -52,7 +51,6 @@ async fn serve_static(req: Request) -> Response {
             )
                 .into_response();
         }
-    }
 
     StatusCode::NOT_FOUND.into_response()
 }

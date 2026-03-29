@@ -98,7 +98,7 @@ enum Commands {
     },
     /// Start the web server
     Serve {
-        #[arg(long, default_value = "8080")]
+        #[arg(long, default_value = "1516")]
         port: u16,
         #[arg(long, default_value = "0.0.0.0")]
         bind: String,
@@ -728,7 +728,16 @@ async fn main() -> anyhow::Result<()> {
                     anyhow::bail!("Plugin file not found: {plugin}");
                 }
 
-                let plugin_dir = path.parent().unwrap_or(std::path::Path::new("."));
+                // plugin_dir for discover() must be the root that contains
+                // category dirs (e.g. `plugins/`) or flat plugin dirs.
+                // Given `plugins/extractors/youtube/plugin.ts`, parent is the
+                // plugin dir (`youtube/`), grandparent is the category
+                // (`extractors/`), and great-grandparent is the root (`plugins/`).
+                // We go up to the category level so discover finds the plugin dir.
+                let plugin_parent = path.parent().unwrap_or(std::path::Path::new("."));
+                let plugin_dir = plugin_parent
+                    .parent()
+                    .unwrap_or(plugin_parent);
                 let loader = PluginLoader::new(plugin_dir.to_path_buf(), SandboxLimits::default());
                 loader
                     .discover()
@@ -767,7 +776,13 @@ async fn main() -> anyhow::Result<()> {
                     match loader.run_spec(&meta.id).await {
                         Ok(results) => {
                             for r in &results.results {
-                                if r.passed {
+                                if r.skipped {
+                                    println!(
+                                        "  SKIP  {} — {}",
+                                        r.name,
+                                        r.skip_reason.as_deref().unwrap_or("skipped")
+                                    );
+                                } else if r.passed {
                                     println!("  PASS  {}", r.name);
                                 } else {
                                     println!(
@@ -778,7 +793,14 @@ async fn main() -> anyhow::Result<()> {
                                 }
                             }
                             println!();
-                            println!("{} passed, {} failed", results.passed, results.failed);
+                            let mut summary = format!(
+                                "{} passed, {} failed",
+                                results.passed, results.failed
+                            );
+                            if results.skipped > 0 {
+                                summary.push_str(&format!(", {} skipped", results.skipped));
+                            }
+                            println!("{summary}");
                             if results.failed > 0 {
                                 std::process::exit(1);
                             }

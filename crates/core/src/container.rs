@@ -169,9 +169,9 @@ fn parse_dlc_xml(xml: &str) -> Result<Vec<ContainerPackage>, crate::Error> {
 
             let file_content = &xml[abs_fstart..file_end];
 
-            if let Some(url_b64) = extract_tag(file_content, "url") {
-                if let Ok(url_bytes) = b64_decode(&url_b64) {
-                    if let Ok(url) = String::from_utf8(url_bytes) {
+            if let Some(url_b64) = extract_tag(file_content, "url")
+                && let Ok(url_bytes) = b64_decode(&url_b64)
+                    && let Ok(url) = String::from_utf8(url_bytes) {
                         let filename = extract_tag(file_content, "filename")
                             .and_then(|f| String::from_utf8(b64_decode(&f).ok()?).ok());
                         let filesize =
@@ -182,8 +182,6 @@ fn parse_dlc_xml(xml: &str) -> Result<Vec<ContainerPackage>, crate::Error> {
                             filesize,
                         });
                     }
-                }
-            }
 
             fpos = file_end + 7;
         }
@@ -236,15 +234,11 @@ pub fn import_dlc(data: &[u8]) -> Result<Vec<ContainerPackage>, crate::Error> {
         .trim();
 
     // Try decoding as Base64 → XML
-    match b64_decode(text) {
-        Ok(decoded) => {
-            if let Ok(xml) = String::from_utf8(decoded) {
-                if xml.contains("<dlc") || xml.contains("<file") {
-                    return parse_dlc_xml(&xml);
-                }
-            }
-        }
-        Err(_) => {}
+    if let Ok(decoded) = b64_decode(text)
+        && let Ok(xml) = String::from_utf8(decoded)
+        && (xml.contains("<dlc") || xml.contains("<file"))
+    {
+        return parse_dlc_xml(&xml);
     }
 
     // Maybe it's already plain XML

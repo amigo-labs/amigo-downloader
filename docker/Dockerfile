@@ -20,7 +20,7 @@ COPY --from=rust-builder /app/target/release/amigo-dl /usr/local/bin/
 COPY plugins/ /etc/amigo/plugins/
 COPY locales/ /etc/amigo/locales/
 
-EXPOSE 8080
+EXPOSE 1516
 VOLUME ["/config", "/downloads"]
 
 ENV AMIGO_CONFIG_DIR=/config

@@ -34,7 +34,7 @@ impl QueueStatus {
         }
     }
 
-    pub fn from_str(s: &str) -> Option<Self> {
+    pub fn parse_status(s: &str) -> Option<Self> {
         match s {
             "queued" => Some(Self::Queued),
             "downloading" => Some(Self::Downloading),

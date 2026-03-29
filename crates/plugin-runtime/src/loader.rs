@@ -90,11 +90,10 @@ impl PluginLoader {
             if let Ok(sub_entries) = std::fs::read_dir(&dir) {
                 for sub_entry in sub_entries.flatten() {
                     let sub_dir = sub_entry.path();
-                    if sub_dir.is_dir() {
-                        if let Some(path) = find_plugin_entry(&sub_dir) {
+                    if sub_dir.is_dir()
+                        && let Some(path) = find_plugin_entry(&sub_dir) {
                             self.try_load_plugin(&path, &mut metas).await;
                         }
-                    }
                 }
             }
         }

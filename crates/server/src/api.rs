@@ -349,8 +349,8 @@ async fn suggest_plugin(
     let config = amigo_plugin_runtime::registry::RegistryConfig::default();
     let index = amigo_plugin_runtime::registry::load_index(&state.http_client, &config).await;
 
-    if let Ok(index) = index {
-        if let Some(plugin) =
+    if let Ok(index) = index
+        && let Some(plugin) =
             amigo_plugin_runtime::registry::suggest_plugin_for_url(&index, &req.url)
         {
             return Json(SuggestPluginResponse {
@@ -360,7 +360,6 @@ async fn suggest_plugin(
                 install_command: Some(format!("amigo-dl plugins install {}", plugin.id)),
             });
         }
-    }
 
     Json(SuggestPluginResponse {
         found: false,
@@ -378,6 +377,7 @@ struct NzbUploadRequest {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct AddUsenetServerRequest {
     name: String,
     host: String,
