@@ -460,18 +460,18 @@ amigo-dl serve [--port 8080 --bind 0.0.0.0]
 
 ### Spec-Driven Development Workflow
 
-Use the project skills to enforce consistency:
-
-| Skill | Usage | Purpose |
-|-------|-------|---------|
-| `/spec <feature>` | 1. Before coding | Collaboratively develop spec with testable acceptance criteria |
-| `/spec-implement <name>` | 2. After spec | Implement the spec: Types → Tests → Backend → Frontend → Verify → Commit |
-| `/spec-verify` | Anytime | Run 7-point consistency check (types, API, tests, i18n, docs) |
+| Skill | When | Purpose |
+|-------|------|---------|
+| `/spec <name>` | Before coding | Create or update a feature spec collaboratively |
+| `/spec-extract <area>` | For existing code | Reverse-engineer a spec from what's already implemented |
+| `/spec-implement <name>` | After spec | Implement the spec: Contract → Code → Verify+Commit |
+| `/spec-verify [name]` | Anytime | Verify spec compliance and project consistency |
+| `/spec-fix <bug>` | Bugfixes | Lightweight: find root cause → fix → regression test → commit |
 
 **Rules:**
-1. No feature without a spec in `docs/specs/<feature>.md`
-2. Every acceptance criterion must be testable
-3. API contract (Rust types) defined before implementation
+1. Features and significant changes need a spec in `docs/specs/<name>.md`
+2. Bugfixes use `/spec-fix` — no spec needed unless the fix reveals a spec gap
+3. Every acceptance criterion must be testable
 4. `/spec-verify` must pass before merging
 
 ---
