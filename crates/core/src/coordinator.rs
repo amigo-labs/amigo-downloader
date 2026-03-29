@@ -17,7 +17,7 @@ use crate::protocol::usenet::nntp::NntpServerConfig;
 use crate::protocol::usenet::UsenetConfig;
 use crate::protocol::usenet::UsenetDownloader;
 use crate::queue::QueueStatus;
-use crate::retry::RetryPolicy;
+use crate::retry::{RetryOutcome, RetryPolicy, retry_with_policy};
 use crate::storage::{DownloadRow, Storage};
 
 /// Events broadcast to subscribers (WebSocket clients, webhooks, etc.)
@@ -265,7 +265,6 @@ impl Coordinator {
         let user_agent = self.config.http.user_agent.clone();
         let max_chunks = self.config.http.max_chunks_per_download;
         let active = self.active.clone();
-        let max_retries = self.retry_policy.max_retries;
         let retry_policy = RetryPolicy {
             max_retries: self.retry_policy.max_retries,
             base_delay: self.retry_policy.base_delay,
@@ -276,22 +275,10 @@ impl Coordinator {
         let _usenet_config = self.config.usenet.clone();
 
         tokio::spawn(async move {
-            let mut last_error = String::new();
             let mut original_progress_tx = Some(progress_tx);
             let mut original_cancel_rx = Some(cancel_rx);
 
-            for attempt in 0..=max_retries {
-                if attempt > 0 {
-                    let delay = retry_policy.delay_for_attempt(attempt - 1);
-                    warn!(
-                        "Retrying download {download_id} (attempt {attempt}/{max_retries}) after {delay:?}"
-                    );
-                    let _ = storage
-                        .update_download_error(&download_id, &last_error, attempt)
-                        .await;
-                    tokio::time::sleep(delay).await;
-                }
-
+            let result = retry_with_policy(&retry_policy, |attempt| {
                 // Use the original progress_tx/cancel_rx on first attempt, create new ones for retries
                 let ptx = original_progress_tx.take().unwrap_or_else(|| {
                     let (tx, _rx) = watch::channel(DownloadProgress {
@@ -307,85 +294,100 @@ impl Coordinator {
                     rx
                 });
 
-                let result = if protocol == "usenet" {
-                    // Usenet download — load server configs from DB, download via NNTP
-                    run_usenet_download(
-                        &storage,
-                        &download_id,
-                        &download_dir,
-                        row.filename.as_deref(),
-                        ptx,
-                    )
-                    .await
-                } else {
-                    // HTTP/HLS/DASH download
-                    let http = HttpDownloader::new(&user_agent);
-                    run_http_download(
-                        &http,
-                        &bandwidth,
-                        &url,
-                        &download_dir,
-                        &temp_dir,
-                        row.filename.as_deref(),
-                        max_chunks,
-                        ptx,
-                        crx,
-                    )
-                    .await
-                };
+                let storage = &storage;
+                let download_id = &download_id;
+                let protocol = &protocol;
+                let url = &url;
+                let download_dir = &download_dir;
+                let temp_dir = &temp_dir;
+                let user_agent = &user_agent;
+                let bandwidth = &bandwidth;
+                let row_filename = &row.filename;
 
-                match result {
-                    Ok((bytes, actual_path)) => {
+                async move {
+                    if attempt > 0 {
                         let _ = storage
-                            .update_download_progress(&download_id, bytes, 0)
+                            .update_download_error(download_id, "retrying", attempt)
                             .await;
-
-                        // Run post-processing
-                        if protocol == "usenet" {
-                            // Full Usenet pipeline: PAR2 verify/repair → extract → cleanup
-                            let dir = actual_path.parent().unwrap_or(&actual_path);
-                            if let Err(e) = postprocess::run_usenet_pipeline(dir, &pp_config).await
-                            {
-                                warn!("Usenet post-processing failed for {download_id}: {e}");
-                            }
-                        } else if let Err(e) =
-                            postprocess::run_pipeline(&actual_path, &pp_config).await
-                        {
-                            warn!("Post-processing failed for {download_id}: {e}");
-                        }
-
-                        let _ = storage
-                            .update_download_status(&download_id, QueueStatus::Completed)
-                            .await;
-                        let _ = event_tx.send(DownloadEvent::Completed {
-                            id: download_id.clone(),
-                        });
-                        info!("Download completed: {download_id}");
-                        active.lock().await.remove(&download_id);
-                        return;
                     }
-                    Err(e) => {
-                        last_error = e.to_string();
-                        if last_error.contains("cancelled") {
-                            break;
+
+                    let result = if protocol == "usenet" {
+                        run_usenet_download(
+                            storage,
+                            download_id,
+                            download_dir,
+                            row_filename.as_deref(),
+                            ptx,
+                        )
+                        .await
+                    } else {
+                        let http = HttpDownloader::new(user_agent, bandwidth.clone());
+                        run_http_download(
+                            &http,
+                            url,
+                            download_dir,
+                            temp_dir,
+                            row_filename.as_deref(),
+                            max_chunks,
+                            ptx,
+                            crx,
+                        )
+                        .await
+                    };
+
+                    match result {
+                        Ok(value) => RetryOutcome::Success(value),
+                        Err(e) if e.to_string().contains("cancelled") => RetryOutcome::Abort(e),
+                        Err(e) => {
+                            warn!("Download attempt failed: {download_id} — {e}");
+                            RetryOutcome::Retry(e)
                         }
-                        warn!("Download attempt failed: {download_id} — {last_error}");
                     }
                 }
-            }
+            })
+            .await;
 
-            // All retries exhausted
-            error!("Download failed after {max_retries} retries: {download_id} — {last_error}");
-            let _ = storage
-                .update_download_status(&download_id, QueueStatus::Failed)
-                .await;
-            let _ = storage
-                .update_download_error(&download_id, &last_error, max_retries)
-                .await;
-            let _ = event_tx.send(DownloadEvent::Failed {
-                id: download_id.clone(),
-                error: last_error,
-            });
+            match result {
+                Ok((bytes, actual_path)) => {
+                    let _ = storage
+                        .update_download_progress(&download_id, bytes, 0)
+                        .await;
+
+                    // Run post-processing
+                    if protocol == "usenet" {
+                        let dir = actual_path.parent().unwrap_or(&actual_path);
+                        if let Err(e) = postprocess::run_usenet_pipeline(dir, &pp_config).await {
+                            warn!("Usenet post-processing failed for {download_id}: {e}");
+                        }
+                    } else if let Err(e) =
+                        postprocess::run_pipeline(&actual_path, &pp_config).await
+                    {
+                        warn!("Post-processing failed for {download_id}: {e}");
+                    }
+
+                    let _ = storage
+                        .update_download_status(&download_id, QueueStatus::Completed)
+                        .await;
+                    let _ = event_tx.send(DownloadEvent::Completed {
+                        id: download_id.clone(),
+                    });
+                    info!("Download completed: {download_id}");
+                }
+                Err(e) => {
+                    let error_msg = e.to_string();
+                    error!("Download failed: {download_id} — {error_msg}");
+                    let _ = storage
+                        .update_download_status(&download_id, QueueStatus::Failed)
+                        .await;
+                    let _ = storage
+                        .update_download_error(&download_id, &error_msg, retry_policy.max_retries)
+                        .await;
+                    let _ = event_tx.send(DownloadEvent::Failed {
+                        id: download_id.clone(),
+                        error: error_msg,
+                    });
+                }
+            }
 
             active.lock().await.remove(&download_id);
         });
@@ -486,7 +488,6 @@ impl Coordinator {
 #[allow(clippy::too_many_arguments)]
 async fn run_http_download(
     http: &HttpDownloader,
-    _bandwidth: &BandwidthLimiter,
     url: &str,
     download_dir: &PathBuf,
     temp_dir: &PathBuf,

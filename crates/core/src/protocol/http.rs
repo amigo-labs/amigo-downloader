@@ -10,6 +10,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
+use crate::bandwidth::BandwidthLimiter;
+
 /// Progress update for a download.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DownloadProgress {
@@ -28,15 +30,16 @@ pub struct HeadInfo {
 
 pub struct HttpDownloader {
     client: reqwest::Client,
+    bandwidth: BandwidthLimiter,
 }
 
 impl HttpDownloader {
-    pub fn new(user_agent: &str) -> Self {
+    pub fn new(user_agent: &str, bandwidth: BandwidthLimiter) -> Self {
         let client = reqwest::Client::builder()
             .user_agent(user_agent)
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
-        Self { client }
+        Self { client, bandwidth }
     }
 
     /// Perform a HEAD request to get file info.
@@ -84,6 +87,7 @@ impl HttpDownloader {
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(crate::Error::Http)?;
+            self.bandwidth.acquire(chunk.len() as u64).await;
             file.write_all(&chunk).await?;
             downloaded += chunk.len() as u64;
             speed_bytes += chunk.len() as u64;
@@ -146,9 +150,10 @@ impl HttpDownloader {
             let client = self.client.clone();
             let url = url.to_string();
             let progress = chunk_progress.clone();
+            let bw = self.bandwidth.clone();
 
             let handle = tokio::spawn(async move {
-                download_chunk(&client, &url, &chunk_path, start, end, i, &progress).await
+                download_chunk(&client, &bw, &url, &chunk_path, start, end, i, &progress).await
             });
             handles.push(handle);
         }
@@ -268,6 +273,7 @@ impl HttpDownloader {
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(crate::Error::Http)?;
+            self.bandwidth.acquire(chunk.len() as u64).await;
             file.write_all(&chunk).await?;
             downloaded += chunk.len() as u64;
             speed_bytes += chunk.len() as u64;
@@ -293,8 +299,10 @@ impl HttpDownloader {
 }
 
 /// Download a single chunk (byte range) to a temp file.
+#[allow(clippy::too_many_arguments)]
 async fn download_chunk(
     client: &reqwest::Client,
+    bandwidth: &BandwidthLimiter,
     url: &str,
     chunk_path: &PathBuf,
     start: u64,
@@ -317,6 +325,7 @@ async fn download_chunk(
 
     while let Some(data) = stream.next().await {
         let data = data.map_err(crate::Error::Http)?;
+        bandwidth.acquire(data.len() as u64).await;
         file.write_all(&data).await?;
         chunk_downloaded += data.len() as u64;
         progress[chunk_index as usize]

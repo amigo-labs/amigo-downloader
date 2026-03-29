@@ -30,3 +30,4 @@ dash-mpd = { workspace = true }
 unrar = "0.5"
 sevenz-rust = "0.6"
 zip = "2"
+rand = "0.8"

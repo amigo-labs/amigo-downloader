@@ -7,6 +7,7 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use tokio::sync::watch;
 use tracing::debug;
 
+use amigo_core::bandwidth::{BandwidthConfig, BandwidthLimiter};
 use amigo_core::config::Config;
 use amigo_core::coordinator::Coordinator;
 use amigo_core::protocol::dash::{self, DashDownloader};
@@ -477,7 +478,7 @@ async fn resolve_url(user_agent: &str, url: &str, pb: &ProgressBar) -> anyhow::R
             })
         }
         DownloadProtocol::Http => {
-            let http = HttpDownloader::new(user_agent);
+            let http = HttpDownloader::new(user_agent, BandwidthLimiter::new(BandwidthConfig::default()));
             let head = http.head(url).await?;
             let filename = head
                 .filename
@@ -566,6 +567,7 @@ async fn direct_download(
 
             let temp_dir = PathBuf::from(output_dir).join(".amigo-tmp");
             tokio::fs::create_dir_all(&temp_dir).await?;
+            let bw = BandwidthLimiter::new(Config::load_auto().bandwidth);
 
             if use_chunked {
                 // Safe: use_chunked requires filesize.is_some_and(...)
@@ -575,7 +577,7 @@ async fn direct_download(
                 tokio::fs::create_dir_all(&chunk_dir).await?;
 
                 tokio::spawn(async move {
-                    let http = HttpDownloader::new(&ua);
+                    let http = HttpDownloader::new(&ua, bw);
                     http.download_chunked(
                         &download_url,
                         &dest_clone,
@@ -589,7 +591,7 @@ async fn direct_download(
                 })
             } else {
                 tokio::spawn(async move {
-                    let http = HttpDownloader::new(&ua);
+                    let http = HttpDownloader::new(&ua, bw);
                     http.download_single(&download_url, &dest_clone, progress_tx)
                         .await
                         .map_err(|e| anyhow::anyhow!("{e}"))
