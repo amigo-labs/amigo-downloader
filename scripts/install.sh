@@ -6,7 +6,20 @@ set -euo pipefail
 
 REPO="amigo-labs/amigo-downloader"
 INSTALL_DIR="${AMIGO_INSTALL_DIR:-/usr/local/bin}"
-TAG="${AMIGO_TAG:-nightly}"  # override with AMIGO_TAG=nightly-20260328
+TAG="${AMIGO_TAG:-latest}"  # override with AMIGO_TAG=v0.2.0 or AMIGO_TAG=nightly
+
+# Resolve "latest" to the actual release tag via GitHub API
+if [ "$TAG" = "latest" ]; then
+    RESOLVED=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
+        | grep '"tag_name"' | head -1 | sed 's/.*"\(.*\)".*/\1/' || true)
+    if [ -n "$RESOLVED" ]; then
+        TAG="$RESOLVED"
+        echo "Latest stable release: ${TAG}"
+    else
+        echo "No stable release found, falling back to nightly"
+        TAG="nightly"
+    fi
+fi
 
 # Detect OS and architecture
 OS="$(uname -s)"
