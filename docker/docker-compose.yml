@@ -3,7 +3,7 @@ services:
     image: ghcr.io/amigo-labs/amigo-downloader:latest
     container_name: amigo-downloader
     ports:
-      - "8080:8080"
+      - "1516:1516"
       - "9666:9666"    # Click'n'Load
     volumes:
       - ./config:/config

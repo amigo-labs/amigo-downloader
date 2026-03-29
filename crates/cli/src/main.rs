@@ -98,7 +98,7 @@ enum Commands {
     },
     /// Start the web server
     Serve {
-        #[arg(long, default_value = "8080")]
+        #[arg(long, default_value = "1516")]
         port: u16,
         #[arg(long, default_value = "0.0.0.0")]
         bind: String,

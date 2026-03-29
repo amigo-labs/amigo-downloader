@@ -142,7 +142,7 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    let bind = "0.0.0.0:8080";
+    let bind = "0.0.0.0:1516";
     tracing::info!("Starting amigo-server on {bind}");
 
     let listener = tokio::net::TcpListener::bind(bind).await?;

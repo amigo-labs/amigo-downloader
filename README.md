@@ -44,7 +44,7 @@
 docker compose -f docker/docker-compose.yml up -d
 ```
 
-Open `http://localhost:8080` in your browser.
+Open `http://localhost:1516` in your browser.
 
 ### From source
 
@@ -126,7 +126,7 @@ amigo-dl plugins login <id>            # login to a hoster account
 #### Server & updates
 
 ```bash
-amigo-dl serve                         # start REST API (port 8080)
+amigo-dl serve                         # start REST API (port 1516)
 amigo-dl serve --port 9090 --bind 127.0.0.1
 amigo-dl update check                  # check for new version
 amigo-dl update apply --yes            # apply update
@@ -273,7 +273,7 @@ The web interface is a Svelte 5 PWA with:
 
 ## Mobile / PWA
 
-1. Open `http://your-server:8080` on your phone
+1. Open `http://your-server:1516` on your phone
 2. "Add to Home Screen"
 3. Share any URL from any app to "Amigo"
 
@@ -320,7 +320,7 @@ services:
   amigo-downloader:
     image: ghcr.io/amigo-labs/amigo-downloader:latest
     ports:
-      - "8080:8080"   # Web UI
+      - "1516:1516"   # Web UI
       - "9666:9666"   # Click'n'Load
     volumes:
       - ./config:/config
