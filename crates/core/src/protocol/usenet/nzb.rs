@@ -34,11 +34,10 @@ impl NzbFile {
     /// Common format: "filename.ext" yEnc (1/10)
     pub fn filename(&self) -> String {
         // Try to extract quoted filename
-        if let Some(start) = self.subject.find('"') {
-            if let Some(end) = self.subject[start + 1..].find('"') {
+        if let Some(start) = self.subject.find('"')
+            && let Some(end) = self.subject[start + 1..].find('"') {
                 return self.subject[start + 1..start + 1 + end].to_string();
             }
-        }
         // Fallback: use subject as-is
         self.subject.clone()
     }

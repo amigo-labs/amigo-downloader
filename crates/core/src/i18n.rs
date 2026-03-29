@@ -91,11 +91,10 @@ pub fn available_locales(locales_dir: &std::path::Path) -> Vec<String> {
     if let Ok(entries) = std::fs::read_dir(locales_dir) {
         for entry in entries.flatten() {
             let path = entry.path();
-            if path.extension().is_some_and(|e| e == "json") {
-                if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+            if path.extension().is_some_and(|e| e == "json")
+                && let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
                     locales.push(stem.to_string());
                 }
-            }
         }
     }
     locales.sort();

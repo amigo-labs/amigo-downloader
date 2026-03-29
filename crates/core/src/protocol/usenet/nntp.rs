@@ -3,11 +3,9 @@
 //! Implements the NNTP protocol (RFC 3977) over TCP/TLS.
 //! Supports authentication, GROUP, ARTICLE, and BODY commands.
 
-use std::io;
-
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
-use tracing::{debug, warn};
+use tracing::debug;
 
 /// NNTP server configuration.
 #[derive(Debug, Clone)]

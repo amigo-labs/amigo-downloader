@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { theme, layout, accent, currentPage, downloads, stats, totalSpeed, pendingCaptcha, type Page, type CaptchaChallenge } from "./lib/stores";
-  import { getDownloads, getStats, connectWebSocket, formatSpeed } from "./lib/api";
+  import { addDownload, getDownloads, getStats, connectWebSocket, formatSpeed } from "./lib/api";
   import { addToast } from "./lib/toast";
   import Downloads from "./pages/Downloads.svelte";
   import Queue from "./pages/Queue.svelte";
@@ -192,7 +192,7 @@
               ? `background: var(--accent-color); color: white`
               : `color: var(--sidebar-text)`}
           >
-            <Icon name={item.icon} />
+            {@render Icon({ name: item.icon })}
             <span class="flex-1 text-left">{item.label}</span>
             <span class="text-[10px] opacity-40">{i + 1}</span>
           </button>
@@ -245,7 +245,7 @@
     <header class="flex items-center justify-between px-6 py-4 border-b" style="border-color: var(--border-color)">
       <div class="flex items-center gap-3">
         <button class="md:hidden p-1" onclick={() => (sidebarOpen = !sidebarOpen)}>
-          <Icon name="menu" />
+          {@render Icon({ name: "menu" })}
         </button>
         <h2 class="text-xl font-bold capitalize">{$currentPage}</h2>
         {#if $stats.active_downloads > 0 && $currentPage === "downloads"}
@@ -261,7 +261,7 @@
           style="color: var(--text-secondary-color)"
           title={$theme === "dark" ? "Light mode" : "Dark mode"}
         >
-          <Icon name={$theme === "dark" ? "sun" : "moon"} />
+          {@render Icon({ name: $theme === "dark" ? "sun" : "moon" })}
         </button>
       </div>
     </header>

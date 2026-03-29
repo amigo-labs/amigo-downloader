@@ -7,7 +7,7 @@ use std::path::PathBuf;
 
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 /// Current app version from Cargo.toml.
 pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -184,7 +184,6 @@ pub async fn download_and_verify(
             .map_err(|e| crate::Error::Update(format!("Checksum read failed: {e}")))?;
 
         let expected = expected
-            .trim()
             .split_whitespace()
             .next()
             .unwrap_or("")

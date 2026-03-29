@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Default)]
 pub struct BandwidthConfig {
     /// Global limit in bytes/s, 0 = unlimited.
     pub global_limit: u64,
@@ -34,17 +35,6 @@ pub struct BandwidthSchedule {
     pub limit: u64,
 }
 
-impl Default for BandwidthConfig {
-    fn default() -> Self {
-        Self {
-            global_limit: 0,
-            http_limit: 0,
-            usenet_limit: 0,
-            schedule_enabled: false,
-            schedules: vec![],
-        }
-    }
-}
 
 /// Token-bucket based bandwidth limiter with time-based scheduling.
 #[derive(Clone)]

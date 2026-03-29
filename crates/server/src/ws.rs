@@ -8,8 +8,6 @@ use axum::{
 };
 use tracing::{debug, warn};
 
-use amigo_core::coordinator::DownloadEvent;
-
 use crate::api::AppState;
 
 pub fn ws_router(state: AppState) -> Router {
@@ -30,11 +28,10 @@ async fn handle_socket(mut socket: axum::extract::ws::WebSocket, state: AppState
         match rx.recv().await {
             Ok(event) => {
                 // DownloadEvent derives Serialize with tag="type", so we can serialize directly
-                if let Ok(json) = serde_json::to_string(&event) {
-                    if socket.send(Message::Text(json.into())).await.is_err() {
+                if let Ok(json) = serde_json::to_string(&event)
+                    && socket.send(Message::Text(json.into())).await.is_err() {
                         break;
                     }
-                }
             }
             Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
                 warn!("WebSocket client lagged, skipped {n} events");

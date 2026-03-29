@@ -68,12 +68,11 @@ pub async fn load_index(
     config: &RegistryConfig,
 ) -> Result<RegistryIndex, crate::Error> {
     // Try local cache first
-    if let Some(cache_path) = &config.cache_path {
-        if let Some(index) = load_cached_index(cache_path, config.cache_max_age_secs) {
+    if let Some(cache_path) = &config.cache_path
+        && let Some(index) = load_cached_index(cache_path, config.cache_max_age_secs) {
             debug!("Using cached registry index from {:?}", cache_path);
             return Ok(index);
         }
-    }
 
     // Fetch from remote
     let index = fetch_index_remote(client, config).await?;
@@ -217,11 +216,10 @@ pub fn suggest_plugin_for_url<'a>(
     url: &str,
 ) -> Option<&'a RegistryPlugin> {
     for plugin in &index.plugins {
-        if let Ok(re) = regex::Regex::new(&plugin.url_pattern) {
-            if re.is_match(url) {
+        if let Ok(re) = regex::Regex::new(&plugin.url_pattern)
+            && re.is_match(url) {
                 return Some(plugin);
             }
-        }
     }
     None
 }

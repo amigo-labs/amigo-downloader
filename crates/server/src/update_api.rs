@@ -56,6 +56,7 @@ struct PluginUpdateEntry {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct PluginInstallResponse {
     id: String,
     name: String,
@@ -63,6 +64,7 @@ struct PluginInstallResponse {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct UpdateAllResponse {
     updated: Vec<PluginInstallResponse>,
 }

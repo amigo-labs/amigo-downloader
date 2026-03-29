@@ -77,8 +77,8 @@ struct ActiveDownload {
 pub struct Coordinator {
     config: Config,
     storage: Storage,
-    http: HttpDownloader,
-    bandwidth: BandwidthLimiter,
+    _http: HttpDownloader,
+    _bandwidth: BandwidthLimiter,
     active: Arc<Mutex<HashMap<String, ActiveDownload>>>,
     event_tx: broadcast::Sender<DownloadEvent>,
 }
@@ -92,8 +92,8 @@ impl Coordinator {
         Self {
             config,
             storage,
-            http,
-            bandwidth,
+            _http: http,
+            _bandwidth: bandwidth,
             active: Arc::new(Mutex::new(HashMap::new())),
             event_tx,
         }
@@ -376,6 +376,7 @@ impl Coordinator {
 }
 
 /// Run a single HTTP download to completion.
+#[allow(clippy::too_many_arguments)]
 async fn run_http_download(
     http: &HttpDownloader,
     url: &str,

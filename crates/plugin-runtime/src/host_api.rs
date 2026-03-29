@@ -465,15 +465,14 @@ impl HostApi {
         for name in names {
             for tmpl in &selectors {
                 let css = tmpl.replace("{name}", name);
-                if let Ok(sel) = Selector::parse(&css) {
-                    if let Some(content) = doc
+                if let Ok(sel) = Selector::parse(&css)
+                    && let Some(content) = doc
                         .select(&sel)
                         .next()
                         .and_then(|el| el.value().attr("content"))
                     {
                         return Some(content.to_string());
                     }
-                }
             }
         }
         None
