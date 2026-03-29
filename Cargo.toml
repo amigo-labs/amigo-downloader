@@ -74,6 +74,10 @@ rquickjs = { version = "0.9", features = ["bindgen", "parallel"] }
 m3u8-rs = "6"
 dash-mpd = "0.17"
 
+# HTML parsing
+scraper = "0.22"
+url = "2"
+
 # Internal crates
 amigo-core = { path = "crates/core" }
 amigo-extractors = { path = "crates/extractors" }

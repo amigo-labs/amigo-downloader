@@ -109,8 +109,9 @@ function findDownloadLinks(html: string, pageUrl: string): ScoredLink[] {
 module.exports = {
     id: "generic-http",
     name: "Generic HTTP",
-    version: "4.0.0",
+    version: "5.0.0",
     urlPattern: "https?://.+",
+    pluginType: "generic" as PluginTypeHint,
 
     resolve(url: string): DownloadPackage {
         // Step 1: HEAD to check if URL is a direct file download

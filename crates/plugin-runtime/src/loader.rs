@@ -13,7 +13,7 @@ use tracing::{debug, info, warn};
 use crate::engine::{EngineConfig, PluginContext, PluginEngine};
 use crate::host_api::{self, HostApi};
 use crate::sandbox::SandboxLimits;
-use crate::types::{DownloadPackage, PluginMeta, PostProcessContext, PostProcessResult};
+use crate::types::{DownloadPackage, PluginMeta, PluginType, PostProcessContext, PostProcessResult};
 
 /// A loaded, ready-to-execute plugin.
 struct LoadedPlugin {
@@ -167,6 +167,18 @@ var __plugin_exports = module.exports;
         let description = context.get_export_string("description").ok();
         let author = context.get_export_string("author").ok();
 
+        // Plugin type determines matching priority
+        let plugin_type = context
+            .get_export_string("pluginType")
+            .ok()
+            .and_then(|t| match t.as_str() {
+                "multi-hoster" => Some(PluginType::MultiHoster),
+                "hoster" => Some(PluginType::Hoster),
+                "generic" => Some(PluginType::Generic),
+                _ => None,
+            })
+            .unwrap_or_default();
+
         let meta = PluginMeta {
             id: id.clone(),
             name,
@@ -176,6 +188,7 @@ var __plugin_exports = module.exports;
             enabled: true,
             description,
             author,
+            plugin_type,
         };
 
         let mut plugins = self.plugins.lock().await;
@@ -191,26 +204,44 @@ var __plugin_exports = module.exports;
     }
 
     /// Find a plugin that matches the given URL.
+    ///
+    /// Priority order:
+    /// 1. Multi-hoster plugins (Real-Debrid, Premiumize, etc.) — when configured
+    /// 2. Site-specific hoster/extractor plugins
+    /// 3. Generic fallback plugins (generic-http, generic-media)
     pub async fn match_url(&self, url: &str) -> Option<PluginMeta> {
         let plugins = self.plugins.lock().await;
-        // Find most specific match (non-generic first)
+
+        // Pass 1: multi-hoster plugins (highest priority when available)
         for plugin in plugins.iter() {
             if plugin.meta.enabled
-                && plugin.meta.id != "generic-http"
+                && plugin.meta.plugin_type == PluginType::MultiHoster
                 && plugin.url_regex.is_match(url)
             {
                 return Some(plugin.meta.clone());
             }
         }
-        // Fall back to generic-http
+
+        // Pass 2: site-specific plugins
         for plugin in plugins.iter() {
             if plugin.meta.enabled
-                && plugin.meta.id == "generic-http"
+                && plugin.meta.plugin_type == PluginType::Hoster
                 && plugin.url_regex.is_match(url)
             {
                 return Some(plugin.meta.clone());
             }
         }
+
+        // Pass 3: generic fallback plugins
+        for plugin in plugins.iter() {
+            if plugin.meta.enabled
+                && plugin.meta.plugin_type == PluginType::Generic
+                && plugin.url_regex.is_match(url)
+            {
+                return Some(plugin.meta.clone());
+            }
+        }
+
         None
     }
 

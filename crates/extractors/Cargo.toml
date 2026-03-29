@@ -14,3 +14,5 @@ reqwest = { workspace = true }
 async-trait = { workspace = true }
 regex = "1"
 rquickjs = { workspace = true }
+scraper = { workspace = true }
+url = { workspace = true }
