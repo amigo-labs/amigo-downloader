@@ -1,5 +1,5 @@
 ---
-name: spec-feature
+name: spec-implement
 description: Implement a feature based on an existing spec from docs/specs/. Use this AFTER /spec has been used to create the spec. Walks through types, tests, backend, frontend, verification, and commit — step by step with user approval at each gate.
 argument-hint: "<feature-name>"
 ---
