@@ -52,8 +52,8 @@ impl Extractor for YoutubeExtractor {
             streams: vec![MediaStream {
                 url: video.stream_url,
                 protocol: StreamProtocol::Http,
-                quality_label: video.quality,
-                height: 0, // already selected best
+                quality_label: video.quality.clone(),
+                height: parse_height_from_quality(&video.quality),
                 mime_type: video.mime_type,
                 filesize: video.filesize,
                 has_audio: true,
@@ -61,6 +61,17 @@ impl Extractor for YoutubeExtractor {
             }],
         })
     }
+}
+
+/// Extract height from quality label like "1080p", "720p60", "480p".
+fn parse_height_from_quality(quality: &str) -> u32 {
+    quality
+        .trim_end_matches(|c: char| !c.is_ascii_digit())
+        .trim_start_matches(|c: char| !c.is_ascii_digit())
+        .split(|c: char| !c.is_ascii_digit())
+        .next()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(0)
 }
 
 /// Fetch video info and select the best stream.

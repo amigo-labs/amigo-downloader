@@ -27,36 +27,38 @@ pub struct ContainerPackage {
 /// Decode Base64 (standard alphabet, may have padding).
 fn b64_decode(input: &str) -> Result<Vec<u8>, crate::Error> {
     // Simple Base64 decoder — avoids pulling in an extra crate
-    use std::collections::HashMap;
-
     let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut table: HashMap<u8, u8> = HashMap::new();
+    let mut table = [255u8; 256];
     for (i, &c) in alphabet.iter().enumerate() {
-        table.insert(c, i as u8);
+        table[c as usize] = i as u8;
     }
 
-    let input = input.as_bytes();
     let mut buf = Vec::new();
 
     let filtered: Vec<u8> = input
-        .iter()
-        .copied()
+        .bytes()
         .filter(|&c| c != b'=' && c != b'\n' && c != b'\r' && c != b' ')
         .collect();
 
     for chunk in filtered.chunks(4) {
-        let vals: Vec<u8> = chunk
-            .iter()
-            .map(|&c| *table.get(&c).unwrap_or(&0))
-            .collect();
+        let mut vals = [0u8; 4];
+        for (i, &c) in chunk.iter().enumerate() {
+            let v = table[c as usize];
+            if v == 255 {
+                return Err(crate::Error::Other(format!(
+                    "Invalid Base64 character: 0x{c:02x}"
+                )));
+            }
+            vals[i] = v;
+        }
 
-        if vals.len() >= 2 {
+        if chunk.len() >= 2 {
             buf.push((vals[0] << 2) | (vals[1] >> 4));
         }
-        if vals.len() >= 3 {
+        if chunk.len() >= 3 {
             buf.push((vals[1] << 4) | (vals[2] >> 2));
         }
-        if vals.len() >= 4 {
+        if chunk.len() >= 4 {
             buf.push((vals[2] << 6) | vals[3]);
         }
     }

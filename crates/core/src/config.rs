@@ -54,6 +54,26 @@ pub struct Config {
     pub captcha: CaptchaConfig,
     #[serde(default)]
     pub webhooks: Vec<WebhookEndpoint>,
+    #[serde(default)]
+    pub features: FeatureFlags,
+}
+
+/// Optional feature toggles — disabled by default, user enables in Settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeatureFlags {
+    /// RSS/Atom feed monitoring for automatic NZB import.
+    pub rss_feeds: bool,
+    /// Show per-server connection statistics in the Usenet UI.
+    pub server_stats: bool,
+}
+
+impl Default for FeatureFlags {
+    fn default() -> Self {
+        Self {
+            rss_feeds: false,
+            server_stats: false,
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -87,6 +107,19 @@ pub struct UsenetProcessingConfig {
     pub auto_unrar: bool,
     pub delete_archives_after_extract: bool,
     pub delete_par2_after_repair: bool,
+    /// Selective PAR2: only download recovery volumes when repair is needed.
+    /// When false, all PAR2 files (including .vol*.par2) are downloaded upfront.
+    #[serde(default = "default_true_fn")]
+    pub selective_par2: bool,
+    /// Run PAR2 verify/repair and archive extraction sequentially (one after another).
+    /// Enable on low-power devices (Raspberry Pi) to reduce CPU/memory pressure.
+    /// When false, PAR2 and extraction run in parallel where possible.
+    #[serde(default)]
+    pub sequential_postprocess: bool,
+}
+
+fn default_true_fn() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,6 +145,7 @@ impl Default for Config {
             feedback: FeedbackConfig::default(),
             captcha: CaptchaConfig::default(),
             webhooks: Vec::new(),
+            features: FeatureFlags::default(),
         }
     }
 }
@@ -134,6 +168,8 @@ impl Default for UsenetProcessingConfig {
             auto_unrar: true,
             delete_archives_after_extract: true,
             delete_par2_after_repair: true,
+            selective_par2: true,
+            sequential_postprocess: false,
         }
     }
 }

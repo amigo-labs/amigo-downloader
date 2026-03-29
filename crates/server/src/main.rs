@@ -1,6 +1,8 @@
 mod api;
+mod background;
 mod clicknload;
 mod feedback;
+mod nzbget_api;
 mod static_files;
 mod update_api;
 pub mod webhooks;
@@ -80,11 +82,14 @@ async fn main() -> anyhow::Result<()> {
         }));
     }
 
-    let plugin_loader = Arc::new(PluginLoader::new_with_host_api(
-        PathBuf::from("plugins"),
-        SandboxLimits::default(),
-        plugin_host_api,
-    ));
+    let plugin_loader = Arc::new(
+        PluginLoader::new_with_host_api(
+            PathBuf::from("plugins"),
+            SandboxLimits::default(),
+            plugin_host_api,
+        )
+        .expect("Failed to initialize plugin runtime — cannot start server"),
+    );
     let discovered = plugin_loader.discover().await.unwrap_or_default();
     tracing::info!("Loaded {} plugins", discovered.len());
 
@@ -130,9 +135,13 @@ async fn main() -> anyhow::Result<()> {
     let app = api::router(state.clone())
         .merge(ws::ws_router(state.clone()))
         .merge(update_api::update_router(state.clone()))
-        .merge(feedback::feedback_router(state, feedback_limiter))
+        .merge(nzbget_api::nzbget_router(state.clone()))
+        .merge(feedback::feedback_router(state.clone(), feedback_limiter))
         .merge(static_files::static_router())
         .layer(CorsLayer::permissive());
+
+    // Start background tasks (NZB watch folder, RSS poller)
+    background::spawn_background_tasks(coordinator.clone(), state.http_client.clone());
 
     // Start Click'n'Load listener on port 9666 in background
     let cnl_coordinator = coordinator.clone();

@@ -85,8 +85,42 @@ CREATE TABLE IF NOT EXISTS update_state (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS usenet_servers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    host TEXT NOT NULL,
+    port INTEGER NOT NULL DEFAULT 563,
+    ssl INTEGER NOT NULL DEFAULT 1,
+    username TEXT NOT NULL DEFAULT '',
+    password TEXT NOT NULL DEFAULT '',
+    connections INTEGER NOT NULL DEFAULT 10,
+    priority INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS rss_feeds (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    category TEXT NOT NULL DEFAULT '',
+    interval_minutes INTEGER NOT NULL DEFAULT 15,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_check TEXT,
+    last_error TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+CREATE TABLE IF NOT EXISTS rss_seen (
+    feed_id TEXT NOT NULL REFERENCES rss_feeds(id) ON DELETE CASCADE,
+    guid TEXT NOT NULL,
+    title TEXT,
+    added_at TEXT NOT NULL DEFAULT (datetime('now')),
+    PRIMARY KEY (feed_id, guid)
+);
+
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_downloads_package ON downloads(package_id);
+CREATE INDEX IF NOT EXISTS idx_downloads_protocol ON downloads(protocol);
 CREATE INDEX IF NOT EXISTS idx_chunks_download ON chunks(download_id);
 CREATE INDEX IF NOT EXISTS idx_history_completed ON history(completed_at);
 "#;
@@ -110,6 +144,33 @@ pub struct DownloadRow {
     pub created_at: String,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsenetServerRow {
+    pub id: String,
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+    pub ssl: bool,
+    pub username: String,
+    pub password: String,
+    pub connections: u32,
+    pub priority: u32,
+    pub created_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RssFeedRow {
+    pub id: String,
+    pub name: String,
+    pub url: String,
+    pub category: String,
+    pub interval_minutes: u32,
+    pub enabled: bool,
+    pub last_check: Option<String>,
+    pub last_error: Option<String>,
+    pub created_at: String,
 }
 
 #[derive(Clone)]
@@ -250,6 +311,42 @@ impl Storage {
         Ok(())
     }
 
+    pub async fn update_download_metadata(
+        &self,
+        id: &str,
+        metadata: &str,
+    ) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "UPDATE downloads SET metadata = ?1 WHERE id = ?2",
+            rusqlite::params![metadata, id],
+        )?;
+        Ok(())
+    }
+
+    pub async fn get_download_metadata(
+        &self,
+        id: &str,
+    ) -> Result<Option<String>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare("SELECT metadata FROM downloads WHERE id = ?1")?;
+        let mut rows = stmt.query_map(rusqlite::params![id], |row| row.get::<_, Option<String>>(0))?;
+        Ok(rows.next().transpose()?.flatten())
+    }
+
+    pub async fn set_download_priority(
+        &self,
+        id: &str,
+        priority: i32,
+    ) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "UPDATE downloads SET priority = ?1 WHERE id = ?2",
+            rusqlite::params![priority, id],
+        )?;
+        Ok(())
+    }
+
     pub async fn delete_download(&self, id: &str) -> Result<(), crate::Error> {
         let db = self.db.lock().await;
         db.execute("DELETE FROM downloads WHERE id = ?1", rusqlite::params![id])?;
@@ -307,6 +404,150 @@ impl Storage {
         )?;
         Ok(())
     }
+
+    // --- Usenet servers ---
+
+    pub async fn list_usenet_servers(&self) -> Result<Vec<UsenetServerRow>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare(
+            "SELECT id, name, host, port, ssl, username, password, connections, priority, created_at
+             FROM usenet_servers ORDER BY priority ASC, name ASC",
+        )?;
+        let rows = stmt.query_map([], row_to_usenet_server)?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub async fn insert_usenet_server(&self, row: &UsenetServerRow) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "INSERT INTO usenet_servers (id, name, host, port, ssl, username, password, connections, priority)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                row.id, row.name, row.host, row.port as i64, row.ssl as i64,
+                row.username, row.password, row.connections as i64, row.priority as i64,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub async fn delete_usenet_server(&self, id: &str) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "DELETE FROM usenet_servers WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+        Ok(())
+    }
+
+    pub async fn list_downloads_by_protocol(
+        &self,
+        protocol: &str,
+    ) -> Result<Vec<DownloadRow>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare(
+            "SELECT id, url, protocol, filename, filesize, status, priority, package_id, plugin_id,
+                    download_dir, bytes_downloaded, speed_current, error_message, retry_count,
+                    created_at, started_at, completed_at
+             FROM downloads WHERE protocol = ?1 ORDER BY created_at DESC",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![protocol], row_to_download)?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    // --- RSS feeds ---
+
+    pub async fn list_rss_feeds(&self) -> Result<Vec<RssFeedRow>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare(
+            "SELECT id, name, url, category, interval_minutes, enabled, last_check, last_error, created_at
+             FROM rss_feeds ORDER BY name ASC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(RssFeedRow {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                url: row.get(2)?,
+                category: row.get(3)?,
+                interval_minutes: row.get::<_, i64>(4)? as u32,
+                enabled: row.get::<_, i64>(5)? != 0,
+                last_check: row.get(6)?,
+                last_error: row.get(7)?,
+                created_at: row.get(8)?,
+            })
+        })?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub async fn insert_rss_feed(&self, row: &RssFeedRow) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "INSERT INTO rss_feeds (id, name, url, category, interval_minutes, enabled)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                row.id, row.name, row.url, row.category,
+                row.interval_minutes as i64, row.enabled as i64,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub async fn delete_rss_feed(&self, id: &str) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute("DELETE FROM rss_feeds WHERE id = ?1", rusqlite::params![id])?;
+        Ok(())
+    }
+
+    pub async fn update_rss_feed_status(
+        &self,
+        id: &str,
+        last_error: Option<&str>,
+    ) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "UPDATE rss_feeds SET last_check = datetime('now'), last_error = ?1 WHERE id = ?2",
+            rusqlite::params![last_error, id],
+        )?;
+        Ok(())
+    }
+
+    pub async fn is_rss_item_seen(&self, feed_id: &str, guid: &str) -> Result<bool, crate::Error> {
+        let db = self.db.lock().await;
+        let count: u32 = db.query_row(
+            "SELECT COUNT(*) FROM rss_seen WHERE feed_id = ?1 AND guid = ?2",
+            rusqlite::params![feed_id, guid],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
+
+    pub async fn mark_rss_item_seen(
+        &self,
+        feed_id: &str,
+        guid: &str,
+        title: Option<&str>,
+    ) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "INSERT OR IGNORE INTO rss_seen (feed_id, guid, title) VALUES (?1, ?2, ?3)",
+            rusqlite::params![feed_id, guid, title],
+        )?;
+        Ok(())
+    }
+}
+
+fn row_to_usenet_server(row: &rusqlite::Row<'_>) -> rusqlite::Result<UsenetServerRow> {
+    Ok(UsenetServerRow {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        host: row.get(2)?,
+        port: row.get::<_, i64>(3)? as u16,
+        ssl: row.get::<_, i64>(4)? != 0,
+        username: row.get(5)?,
+        password: row.get(6)?,
+        connections: row.get::<_, i64>(7)? as u32,
+        priority: row.get::<_, i64>(8)? as u32,
+        created_at: row.get(9)?,
+    })
 }
 
 fn row_to_download(row: &rusqlite::Row<'_>) -> rusqlite::Result<DownloadRow> {

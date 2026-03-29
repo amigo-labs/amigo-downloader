@@ -1,8 +1,18 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { theme, layout, accent, type AccentColor, type LayoutMode, type ThemeMode } from "../lib/stores";
-  import { getWebhooks, createWebhook, deleteWebhook, testWebhook } from "../lib/api";
+  import { theme, layout, accent, features, type AccentColor, type LayoutMode, type ThemeMode } from "../lib/stores";
+  import { getWebhooks, createWebhook, deleteWebhook, testWebhook, getFeatures, updateFeatures, getUsenetProcessing, updateUsenetProcessing, type UsenetProcessing } from "../lib/api";
   import { addToast } from "../lib/toast";
+
+  // Usenet processing state
+  let usenetProc = $state<UsenetProcessing>({
+    par2_repair: true,
+    auto_unrar: true,
+    delete_archives_after_extract: true,
+    delete_par2_after_repair: true,
+    selective_par2: true,
+    sequential_postprocess: false,
+  });
 
   // Webhook state
   let webhooks = $state<any[]>([]);
@@ -14,9 +24,22 @@
 
   onMount(async () => {
     try {
-      webhooks = await getWebhooks();
+      const [wh, up] = await Promise.all([getWebhooks(), getUsenetProcessing()]);
+      webhooks = wh;
+      usenetProc = up;
     } catch { /* server offline */ }
   });
+
+  async function toggleUsenetProc(key: keyof UsenetProcessing) {
+    const updated = { ...usenetProc, [key]: !usenetProc[key] };
+    try {
+      await updateUsenetProcessing(updated);
+      usenetProc = updated;
+      addToast("Usenet processing updated", "success");
+    } catch {
+      addToast("Failed to update", "error");
+    }
+  }
 
   async function handleAddWebhook() {
     if (!newWebhookName.trim() || !newWebhookUrl.trim()) return;
@@ -59,6 +82,18 @@
     }
   }
 
+  async function toggleFeature(key: "rss_feeds" | "server_stats") {
+    const current = { ...$features };
+    current[key] = !current[key];
+    try {
+      await updateFeatures(current);
+      features.set(current);
+      addToast(`Feature ${current[key] ? "enabled" : "disabled"}`, "success");
+    } catch {
+      addToast("Failed to update feature", "error");
+    }
+  }
+
   const accentColors: { id: AccentColor; label: string; hex: string }[] = [
     { id: "blue", label: "Blue", hex: "#3b82f6" },
     { id: "green", label: "Green", hex: "#10b981" },
@@ -70,6 +105,81 @@
 </script>
 
 <div class="max-w-2xl space-y-8">
+  <!-- Optional Features -->
+  <section>
+    <h3 class="text-lg font-bold mb-4">Features</h3>
+    <div class="rounded-xl p-5 space-y-4" style="background: var(--surface-2-color); border: 1px solid var(--border-color)">
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm font-semibold">RSS Feeds</p>
+          <p class="text-xs" style="color: var(--text-secondary-color)">
+            Monitor RSS/Atom feeds for automatic NZB import
+          </p>
+        </div>
+        <button
+          onclick={() => toggleFeature("rss_feeds")}
+          class="w-12 h-6 rounded-full relative transition-colors"
+          style="background: {$features.rss_feeds ? 'var(--accent-color)' : 'var(--surface-3-color)'}"
+        >
+          <span
+            class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all shadow"
+            style="left: {$features.rss_feeds ? '1.625rem' : '0.125rem'}"
+          ></span>
+        </button>
+      </div>
+      <div class="flex items-center justify-between">
+        <div>
+          <p class="text-sm font-semibold">Server Statistics</p>
+          <p class="text-xs" style="color: var(--text-secondary-color)">
+            Show per-server connection stats in Usenet UI
+          </p>
+        </div>
+        <button
+          onclick={() => toggleFeature("server_stats")}
+          class="w-12 h-6 rounded-full relative transition-colors"
+          style="background: {$features.server_stats ? 'var(--accent-color)' : 'var(--surface-3-color)'}"
+        >
+          <span
+            class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all shadow"
+            style="left: {$features.server_stats ? '1.625rem' : '0.125rem'}"
+          ></span>
+        </button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Usenet Post-Processing -->
+  <section>
+    <h3 class="text-lg font-bold mb-4">Usenet Post-Processing</h3>
+    <div class="rounded-xl p-5 space-y-4" style="background: var(--surface-2-color); border: 1px solid var(--border-color)">
+      {#each [
+        { key: "par2_repair", label: "PAR2 Verify & Repair", desc: "Check file integrity and repair damaged files using PAR2 recovery data" },
+        { key: "selective_par2", label: "Selective PAR2", desc: "Only download recovery volumes when repair is needed. Saves bandwidth. Disable to pre-download all PAR2 files." },
+        { key: "auto_unrar", label: "Auto-Extract Archives", desc: "Automatically extract RAR, ZIP, and 7z archives after download" },
+        { key: "sequential_postprocess", label: "Sequential Mode (low-power)", desc: "Run PAR2 and extraction one after another instead of parallel. Recommended for Raspberry Pi and NAS devices." },
+        { key: "delete_archives_after_extract", label: "Delete Archives After Extract", desc: "Remove archive files after successful extraction" },
+        { key: "delete_par2_after_repair", label: "Delete PAR2 After Repair", desc: "Remove PAR2 files after successful verification or repair" },
+      ] as opt (opt.key)}
+        <div class="flex items-center justify-between">
+          <div>
+            <p class="text-sm font-semibold">{opt.label}</p>
+            <p class="text-xs" style="color: var(--text-secondary-color)">{opt.desc}</p>
+          </div>
+          <button
+            onclick={() => toggleUsenetProc(opt.key as keyof UsenetProcessing)}
+            class="w-12 h-6 rounded-full relative transition-colors shrink-0 ml-4"
+            style="background: {usenetProc[opt.key as keyof UsenetProcessing] ? 'var(--accent-color)' : 'var(--surface-3-color)'}"
+          >
+            <span
+              class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all shadow"
+              style="left: {usenetProc[opt.key as keyof UsenetProcessing] ? '1.625rem' : '0.125rem'}"
+            ></span>
+          </button>
+        </div>
+      {/each}
+    </div>
+  </section>
+
   <!-- Appearance -->
   <section>
     <h3 class="text-lg font-bold mb-4">Appearance</h3>

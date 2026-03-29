@@ -41,7 +41,7 @@ impl HostApi {
             http_client: reqwest::Client::builder()
                 .user_agent("amigo-downloader/0.1.0")
                 .build()
-                .expect("Failed to build HTTP client"),
+                .unwrap_or_else(|_| reqwest::Client::new()),
             cookies: Arc::new(Mutex::new(HashMap::new())),
             storage: Arc::new(Mutex::new(HashMap::new())),
             request_count: Arc::new(Mutex::new(0)),

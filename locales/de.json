@@ -49,6 +49,33 @@
     "error.generic": "Fehler: {message}",
     "error.file_not_found": "Datei nicht gefunden: {path}",
 
+    "usenet.servers": "Usenet-Server",
+    "usenet.servers.empty": "Keine Usenet-Server konfiguriert. Füge einen hinzu, um von Usenet herunterzuladen.",
+    "usenet.servers.add": "Server hinzufügen",
+    "usenet.servers.deleted": "Server entfernt",
+    "usenet.downloads": "Usenet-Downloads",
+    "usenet.downloads.empty": "Keine Usenet-Downloads. Importiere eine NZB-Datei oder konfiguriere einen Überwachungsordner.",
+    "usenet.downloads.import": "NZB importieren",
+    "usenet.watch_dir.set": "Überwachungsordner gesetzt",
+    "usenet.watch_dir.disabled": "Überwachungsordner deaktiviert",
+
+    "rss.feeds": "RSS-Feeds",
+    "rss.feeds.empty": "Keine RSS-Feeds konfiguriert. Füge einen Feed hinzu, um NZBs automatisch zu importieren.",
+    "rss.feeds.add": "Feed hinzufügen",
+    "rss.feeds.deleted": "Feed entfernt",
+
+    "features.rss_feeds": "RSS-Feeds",
+    "features.rss_feeds.desc": "RSS/Atom-Feeds für automatischen NZB-Import überwachen",
+    "features.server_stats": "Server-Statistiken",
+    "features.server_stats.desc": "Verbindungsstatistiken pro Server in der Usenet-UI anzeigen",
+    "features.enabled": "Feature aktiviert",
+    "features.disabled": "Feature deaktiviert",
+
+    "postprocess.updated": "Nachbearbeitungs-Einstellungen aktualisiert",
+    "postprocess.par2_repair": "PAR2 Prüfung & Reparatur",
+    "postprocess.selective_par2": "Selektives PAR2",
+    "postprocess.sequential": "Sequenzieller Modus (energiesparend)",
+
     "confirm.yes": "Ja",
     "confirm.no": "Nein"
 }

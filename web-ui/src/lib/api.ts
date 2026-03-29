@@ -205,6 +205,121 @@ export function connectWebSocket(
 }
 
 // ========================================
+// USENET
+// ========================================
+
+export async function getUsenetServers() {
+  const res = await fetch(`${API_BASE}/usenet/servers`);
+  return res.json();
+}
+
+export async function addUsenetServer(server: {
+  name: string; host: string; port: number; ssl: boolean;
+  username: string; password: string; connections: number; priority: number;
+}) {
+  const res = await fetch(`${API_BASE}/usenet/servers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(server),
+  });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function deleteUsenetServer(id: string) {
+  return fetch(`${API_BASE}/usenet/servers/${id}`, { method: "DELETE" });
+}
+
+export async function getUsenetDownloads() {
+  const res = await fetch(`${API_BASE}/downloads/usenet`);
+  return res.json();
+}
+
+export async function getNzbWatchDir(): Promise<{ path: string }> {
+  const res = await fetch(`${API_BASE}/usenet/watch-dir`);
+  return res.json();
+}
+
+export async function setNzbWatchDir(path: string) {
+  const res = await fetch(`${API_BASE}/usenet/watch-dir`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  return res.json();
+}
+
+// ========================================
+// USENET PROCESSING CONFIG
+// ========================================
+
+export interface UsenetProcessing {
+  par2_repair: boolean;
+  auto_unrar: boolean;
+  delete_archives_after_extract: boolean;
+  delete_par2_after_repair: boolean;
+  selective_par2: boolean;
+  sequential_postprocess: boolean;
+}
+
+export async function getUsenetProcessing(): Promise<UsenetProcessing> {
+  const res = await fetch(`${API_BASE}/usenet/processing`);
+  return res.json();
+}
+
+export async function updateUsenetProcessing(config: UsenetProcessing) {
+  const res = await fetch(`${API_BASE}/usenet/processing`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+  return res.json();
+}
+
+// ========================================
+// FEATURE FLAGS
+// ========================================
+
+export async function getFeatures(): Promise<{ rss_feeds: boolean; server_stats: boolean }> {
+  const res = await fetch(`${API_BASE}/features`);
+  return res.json();
+}
+
+export async function updateFeatures(features: { rss_feeds: boolean; server_stats: boolean }) {
+  const res = await fetch(`${API_BASE}/features`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(features),
+  });
+  return res.json();
+}
+
+// ========================================
+// RSS FEEDS
+// ========================================
+
+export async function getRssFeeds() {
+  const res = await fetch(`${API_BASE}/rss`);
+  return res.json();
+}
+
+export async function addRssFeed(feed: {
+  name: string; url: string; category: string; interval_minutes: number;
+}) {
+  const res = await fetch(`${API_BASE}/rss`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(feed),
+  });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function deleteRssFeed(id: string) {
+  return fetch(`${API_BASE}/rss/${id}`, { method: "DELETE" });
+}
+
+// ========================================
 // HELPERS
 // ========================================
 

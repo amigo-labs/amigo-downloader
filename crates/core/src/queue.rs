@@ -53,17 +53,3 @@ impl std::fmt::Display for QueueStatus {
         f.write_str(self.as_str())
     }
 }
-
-pub struct QueueManager {
-    max_concurrent: u32,
-}
-
-impl QueueManager {
-    pub fn new(max_concurrent: u32) -> Self {
-        Self { max_concurrent }
-    }
-
-    pub fn max_concurrent(&self) -> u32 {
-        self.max_concurrent
-    }
-}

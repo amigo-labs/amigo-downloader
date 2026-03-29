@@ -568,7 +568,8 @@ async fn direct_download(
             tokio::fs::create_dir_all(&temp_dir).await?;
 
             if use_chunked {
-                let total = resolved.filesize.unwrap();
+                // Safe: use_chunked requires filesize.is_some_and(...)
+                let total = resolved.filesize.expect("use_chunked requires known filesize");
                 let num_chunks = max_chunks.min((total / (512 * 1024)).max(1) as u32);
                 let chunk_dir = temp_dir.join(&filename);
                 tokio::fs::create_dir_all(&chunk_dir).await?;
@@ -1108,7 +1109,8 @@ async fn main() -> anyhow::Result<()> {
                 let plugin_dir = plugin_parent
                     .parent()
                     .unwrap_or(plugin_parent);
-                let loader = PluginLoader::new(plugin_dir.to_path_buf(), SandboxLimits::default());
+                let loader = PluginLoader::new(plugin_dir.to_path_buf(), SandboxLimits::default())
+                    .map_err(|e| anyhow::anyhow!("{e}"))?;
                 loader
                     .discover()
                     .await

@@ -72,7 +72,7 @@ export const accent = createAccentStore();
 // NAVIGATION
 // ========================================
 
-export type Page = "downloads" | "queue" | "plugins" | "usenet" | "history" | "settings";
+export type Page = "downloads" | "queue" | "usenet-downloads" | "usenet-servers" | "rss" | "plugins" | "history" | "settings";
 export const currentPage = writable<Page>("downloads");
 
 // ========================================
@@ -94,7 +94,6 @@ export interface Download {
 }
 
 export const downloads = writable<Download[]>([]);
-export const totalSpeed = writable<number>(0);
 
 export const activeDownloads = derived(downloads, ($d) =>
   $d.filter((d) => d.status === "downloading")
@@ -134,3 +133,34 @@ export interface CaptchaChallenge {
 }
 
 export const pendingCaptcha = writable<CaptchaChallenge | null>(null);
+
+// ========================================
+// USENET
+// ========================================
+
+export interface UsenetServer {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  ssl: boolean;
+  connections: number;
+  priority: number;
+}
+
+export const usenetServers = writable<UsenetServer[]>([]);
+export const usenetDownloads = writable<Download[]>([]);
+
+// ========================================
+// FEATURE FLAGS
+// ========================================
+
+export interface Features {
+  rss_feeds: boolean;
+  server_stats: boolean;
+}
+
+export const features = writable<Features>({
+  rss_feeds: false,
+  server_stats: false,
+});
