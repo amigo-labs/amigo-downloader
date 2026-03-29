@@ -311,6 +311,29 @@ impl Storage {
         Ok(())
     }
 
+    pub async fn update_download_metadata(
+        &self,
+        id: &str,
+        metadata: &str,
+    ) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "UPDATE downloads SET metadata = ?1 WHERE id = ?2",
+            rusqlite::params![metadata, id],
+        )?;
+        Ok(())
+    }
+
+    pub async fn get_download_metadata(
+        &self,
+        id: &str,
+    ) -> Result<Option<String>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare("SELECT metadata FROM downloads WHERE id = ?1")?;
+        let mut rows = stmt.query_map(rusqlite::params![id], |row| row.get::<_, Option<String>>(0))?;
+        Ok(rows.next().transpose()?.flatten())
+    }
+
     pub async fn set_download_priority(
         &self,
         id: &str,

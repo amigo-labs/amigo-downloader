@@ -27,3 +27,6 @@ self-replace = { workspace = true }
 tempfile = { workspace = true }
 m3u8-rs = { workspace = true }
 dash-mpd = { workspace = true }
+unrar = "0.5"
+sevenz-rust = "0.6"
+zip = "2"

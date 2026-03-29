@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::bandwidth::BandwidthLimiter;
 use crate::config::Config;
-use crate::postprocess::{self, PostProcessConfig};
+use crate::postprocess;
 use crate::protocol::Protocol;
 use crate::protocol::http::{DownloadProgress, HttpDownloader};
 use crate::protocol::usenet::nntp::NntpServerConfig;
@@ -273,7 +273,7 @@ impl Coordinator {
         };
         let bandwidth = self.bandwidth.clone();
         let pp_config = self.config.postprocessing.clone();
-        let usenet_config = self.config.usenet.clone();
+        let _usenet_config = self.config.usenet.clone();
 
         tokio::spawn(async move {
             let mut last_error = String::new();
@@ -308,10 +308,10 @@ impl Coordinator {
                 });
 
                 let result = if protocol == "usenet" {
-                    // Usenet download — load server configs from DB
+                    // Usenet download — load server configs from DB, download via NNTP
                     run_usenet_download(
                         &storage,
-                        &url,
+                        &download_id,
                         &download_dir,
                         row.filename.as_deref(),
                         ptx,
@@ -540,10 +540,10 @@ async fn run_http_download(
     }
 }
 
-/// Run a Usenet download: load server configs from DB, download NZB, return total bytes.
+/// Run a Usenet download: load server configs from DB, download NZB segments via NNTP.
 async fn run_usenet_download(
     storage: &Storage,
-    _url: &str,
+    download_id: &str,
     download_dir: &PathBuf,
     _filename: Option<&str>,
     progress_tx: watch::Sender<DownloadProgress>,
@@ -570,7 +570,7 @@ async fn run_usenet_download(
         })
         .collect();
 
-    let _usenet = UsenetDownloader::new(UsenetConfig {
+    let usenet = UsenetDownloader::new(UsenetConfig {
         servers,
         par2_repair: true,
         auto_unrar: true,
@@ -579,11 +579,21 @@ async fn run_usenet_download(
 
     tokio::fs::create_dir_all(download_dir).await?;
 
-    // For now, Usenet downloads are NZB-based
-    // The NZB data would normally be stored in metadata, but for the basic integration
-    // we report progress and mark complete. The actual NNTP segment download happens
-    // when we have NZB data available.
-    // TODO: Store NZB data in download metadata and pass it to usenet.download_nzb()
+    // Load NZB data from download metadata
+    let metadata = storage.get_download_metadata(download_id).await?;
+    let nzb_data = metadata
+        .as_deref()
+        .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
+        .and_then(|v| v.get("nzb_data")?.as_str().map(String::from));
+
+    let nzb_data = match nzb_data {
+        Some(data) => data,
+        None => {
+            return Err(crate::Error::Other(
+                "No NZB data found in download metadata".into(),
+            ));
+        }
+    };
 
     let _ = progress_tx.send(DownloadProgress {
         bytes_downloaded: 0,
@@ -591,9 +601,35 @@ async fn run_usenet_download(
         speed_bytes_per_sec: 0,
     });
 
-    // Mark as completed with the download directory as the output path
-    info!("Usenet download queued for processing in {:?}", download_dir);
-    Ok((0, download_dir.clone()))
+    // Download all files from the NZB
+    info!("Starting Usenet download to {:?}", download_dir);
+    let results = usenet.download_nzb(&nzb_data, download_dir).await?;
+
+    let total_bytes: u64 = results.iter().map(|r| r.bytes).sum();
+    let total_ok: u32 = results.iter().map(|r| r.segments_ok).sum();
+    let total_failed: u32 = results.iter().map(|r| r.segments_failed).sum();
+
+    info!(
+        "Usenet download complete: {} files, {} bytes, {}/{} segments OK",
+        results.len(),
+        total_bytes,
+        total_ok,
+        total_ok + total_failed
+    );
+
+    let _ = progress_tx.send(DownloadProgress {
+        bytes_downloaded: total_bytes,
+        total_bytes: Some(total_bytes),
+        speed_bytes_per_sec: 0,
+    });
+
+    // Return the first file path or the directory
+    let output_path = results
+        .first()
+        .map(|r| r.path.clone())
+        .unwrap_or_else(|| download_dir.clone());
+
+    Ok((total_bytes, output_path))
 }
 
 fn detect_protocol(url: &str) -> Protocol {

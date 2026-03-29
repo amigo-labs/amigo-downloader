@@ -101,39 +101,58 @@ pub async fn run_pipeline(
 }
 
 fn extract_rar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
-    run_external(
-        "unrar",
-        &[
-            "x",
-            "-o+",
-            &archive.to_string_lossy(),
-            &format!("{}/", output_dir.to_string_lossy()),
-        ],
-    )
+    // Use unrar crate (FFI to libunrar) for in-process extraction
+    let rar = unrar::Archive::new(archive);
+    let mut open = rar
+        .open_for_processing()
+        .map_err(|e| crate::Error::Other(format!("Failed to open RAR archive: {e}")))?;
+
+    while let Some(header) = open
+        .read_header()
+        .map_err(|e| crate::Error::Other(format!("RAR header error: {e}")))?
+    {
+        let name = header.entry().filename.to_string_lossy().to_string();
+        debug!("Extracting: {name}");
+        open = header
+            .extract_with_base(output_dir)
+            .map_err(|e| crate::Error::Other(format!("RAR extract error for {name}: {e}")))?;
+    }
+
+    Ok(())
 }
 
 fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
-    run_external(
-        "unzip",
-        &[
-            "-o",
-            &archive.to_string_lossy(),
-            "-d",
-            &output_dir.to_string_lossy(),
-        ],
-    )
+    let file = std::fs::File::open(archive)?;
+    let mut zip = zip::ZipArchive::new(file)
+        .map_err(|e| crate::Error::Other(format!("Invalid ZIP: {e}")))?;
+
+    for i in 0..zip.len() {
+        let mut entry = zip
+            .by_index(i)
+            .map_err(|e| crate::Error::Other(format!("ZIP entry error: {e}")))?;
+
+        let name = entry.name().to_string();
+        let out_path = output_dir.join(&name);
+
+        if entry.is_dir() {
+            std::fs::create_dir_all(&out_path)?;
+        } else {
+            if let Some(parent) = out_path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            let mut out_file = std::fs::File::create(&out_path)?;
+            std::io::copy(&mut entry, &mut out_file)?;
+            debug!("Extracted: {name}");
+        }
+    }
+
+    Ok(())
 }
 
 fn extract_7z(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
-    run_external(
-        "7z",
-        &[
-            "x",
-            &archive.to_string_lossy(),
-            &format!("-o{}", output_dir.to_string_lossy()),
-            "-y",
-        ],
-    )
+    sevenz_rust::decompress_file(archive, output_dir)
+        .map_err(|e| crate::Error::Other(format!("7z extraction failed: {e}")))?;
+    Ok(())
 }
 
 fn extract_tar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
@@ -149,22 +168,30 @@ fn extract_tar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
 }
 
 /// Run the full Usenet post-processing pipeline for a directory of downloaded files:
-/// 1. PAR2 verify/repair (if .par2 files present)
-/// 2. Extract archives (RAR, ZIP, 7z)
-/// 3. Clean up PAR2 and archive files
+/// 1. PAR2 verify with index file only (selective — no recovery volumes loaded yet)
+/// 2. If damaged: PAR2 repair (loads recovery volumes on demand)
+/// 3. Extract archives (RAR, ZIP, 7z) using libraries (no CLI)
+/// 4. Clean up PAR2 and archive files
 pub async fn run_usenet_pipeline(
     download_dir: &Path,
     config: &PostProcessConfig,
 ) -> Result<(), crate::Error> {
-    // Step 1: Find and run PAR2 verify/repair
+    // Step 1: Selective PAR2 — verify with index only, repair only if needed
     if config.par2_repair
         && let Some(par2_file) = find_par2_file(download_dir)
     {
-        info!("PAR2 verify: {:?}", par2_file);
+        info!("PAR2 verify (index only): {:?}", par2_file);
+
+        // Verify: only reads the index .par2 file (not .vol*.par2 recovery volumes)
         match run_external("par2", &["v", &par2_file.to_string_lossy()]) {
-            Ok(()) => info!("PAR2 verification passed"),
+            Ok(()) => info!("PAR2 verification passed — no repair needed"),
             Err(_) => {
-                info!("PAR2 verification failed, attempting repair...");
+                // Only now load recovery volumes and attempt repair
+                info!("PAR2 verification found damage — loading recovery volumes for repair...");
+
+                let vol_count = count_par2_volumes(download_dir);
+                info!("Found {vol_count} PAR2 recovery volumes");
+
                 match run_external("par2", &["r", &par2_file.to_string_lossy()]) {
                     Ok(()) => info!("PAR2 repair successful"),
                     Err(e) => warn!("PAR2 repair failed: {e}"),
@@ -209,9 +236,9 @@ pub async fn run_usenet_pipeline(
     Ok(())
 }
 
+/// Find the PAR2 index file (shortest name, excludes .vol*.par2 recovery volumes).
 fn find_par2_file(dir: &Path) -> Option<std::path::PathBuf> {
     let entries = std::fs::read_dir(dir).ok()?;
-    // Prefer the main .par2 file (not .vol*.par2)
     let mut par2_files: Vec<std::path::PathBuf> = entries
         .filter_map(|e| e.ok())
         .map(|e| e.path())
@@ -220,8 +247,30 @@ fn find_par2_file(dir: &Path) -> Option<std::path::PathBuf> {
                 .is_some_and(|ext| ext.eq_ignore_ascii_case("par2"))
         })
         .collect();
-    par2_files.sort_by_key(|p| p.to_string_lossy().len());
+
+    // Prefer the index file (no ".vol" in name) over recovery volumes
+    par2_files.sort_by_key(|p| {
+        let name = p.to_string_lossy().to_lowercase();
+        let is_vol = name.contains(".vol");
+        (is_vol, name.len())
+    });
     par2_files.into_iter().next()
+}
+
+/// Count PAR2 recovery volume files (.vol*.par2) in a directory.
+fn count_par2_volumes(dir: &Path) -> usize {
+    std::fs::read_dir(dir)
+        .ok()
+        .map(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    let name = e.path().to_string_lossy().to_lowercase();
+                    name.ends_with(".par2") && name.contains(".vol")
+                })
+                .count()
+        })
+        .unwrap_or(0)
 }
 
 fn find_archives(dir: &Path) -> Vec<std::path::PathBuf> {
