@@ -1,5 +1,63 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import { theme, layout, accent, type AccentColor, type LayoutMode, type ThemeMode } from "../lib/stores";
+  import { getWebhooks, createWebhook, deleteWebhook, testWebhook } from "../lib/api";
+  import { addToast } from "../lib/toast";
+
+  // Webhook state
+  let webhooks = $state<any[]>([]);
+  let showAddWebhook = $state(false);
+  let newWebhookName = $state("");
+  let newWebhookUrl = $state("");
+  let newWebhookSecret = $state("");
+  let newWebhookEvents = $state("*");
+
+  onMount(async () => {
+    try {
+      webhooks = await getWebhooks();
+    } catch { /* server offline */ }
+  });
+
+  async function handleAddWebhook() {
+    if (!newWebhookName.trim() || !newWebhookUrl.trim()) return;
+    try {
+      const events = newWebhookEvents.split(",").map(e => e.trim()).filter(Boolean);
+      await createWebhook({
+        name: newWebhookName,
+        url: newWebhookUrl,
+        secret: newWebhookSecret || undefined,
+        events,
+      });
+      webhooks = await getWebhooks();
+      showAddWebhook = false;
+      newWebhookName = "";
+      newWebhookUrl = "";
+      newWebhookSecret = "";
+      newWebhookEvents = "*";
+      addToast("success", "Webhook added");
+    } catch {
+      addToast("error", "Failed to add webhook");
+    }
+  }
+
+  async function handleDeleteWebhook(id: string) {
+    try {
+      await deleteWebhook(id);
+      webhooks = webhooks.filter(w => w.id !== id);
+      addToast("info", "Webhook removed");
+    } catch {
+      addToast("error", "Failed to delete webhook");
+    }
+  }
+
+  async function handleTestWebhook(id: string) {
+    try {
+      const result = await testWebhook(id);
+      addToast("success", "Test sent", `Status: ${result.status || "OK"}`);
+    } catch {
+      addToast("error", "Test failed");
+    }
+  }
 
   const accentColors: { id: AccentColor; label: string; hex: string }[] = [
     { id: "blue", label: "Blue", hex: "#3b82f6" },
@@ -110,6 +168,94 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <!-- Webhooks -->
+  <section>
+    <div class="flex items-center justify-between mb-4">
+      <h3 class="text-lg font-bold">Webhooks</h3>
+      <button
+        onclick={() => (showAddWebhook = !showAddWebhook)}
+        class="px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
+        style="background: var(--accent-color)"
+      >
+        + Add Webhook
+      </button>
+    </div>
+
+    {#if showAddWebhook}
+      <div class="rounded-xl p-5 mb-4 space-y-3" style="background: var(--surface-2-color); border: 1px solid var(--border-color)">
+        <div>
+          <label class="text-xs font-semibold mb-1 block">Name</label>
+          <input bind:value={newWebhookName} type="text" placeholder="Discord Notifications"
+            class="w-full rounded-lg px-3 py-2 text-sm outline-none"
+            style="background: var(--surface-3-color); border: 1px solid var(--border-color); color: var(--text-color)" />
+        </div>
+        <div>
+          <label class="text-xs font-semibold mb-1 block">URL</label>
+          <input bind:value={newWebhookUrl} type="url" placeholder="https://discord.com/api/webhooks/..."
+            class="w-full rounded-lg px-3 py-2 text-sm font-mono outline-none"
+            style="background: var(--surface-3-color); border: 1px solid var(--border-color); color: var(--text-color)" />
+        </div>
+        <div>
+          <label class="text-xs font-semibold mb-1 block">Secret <span class="opacity-50">(optional, for HMAC signing)</span></label>
+          <input bind:value={newWebhookSecret} type="text" placeholder="my-secret-key"
+            class="w-full rounded-lg px-3 py-2 text-sm font-mono outline-none"
+            style="background: var(--surface-3-color); border: 1px solid var(--border-color); color: var(--text-color)" />
+        </div>
+        <div>
+          <label class="text-xs font-semibold mb-1 block">Events <span class="opacity-50">(comma-separated, * = all)</span></label>
+          <input bind:value={newWebhookEvents} type="text" placeholder="download.completed, download.failed"
+            class="w-full rounded-lg px-3 py-2 text-sm font-mono outline-none"
+            style="background: var(--surface-3-color); border: 1px solid var(--border-color); color: var(--text-color)" />
+        </div>
+        <div class="flex gap-2 pt-1">
+          <button onclick={handleAddWebhook}
+            class="px-4 py-2 rounded-lg text-sm font-semibold text-white"
+            style="background: var(--accent-color)"
+            disabled={!newWebhookName.trim() || !newWebhookUrl.trim()}
+          >Save</button>
+          <button onclick={() => (showAddWebhook = false)}
+            class="px-4 py-2 rounded-lg text-sm"
+            style="color: var(--text-secondary-color)"
+          >Cancel</button>
+        </div>
+      </div>
+    {/if}
+
+    {#if webhooks.length === 0 && !showAddWebhook}
+      <div class="rounded-xl p-5 text-center" style="background: var(--surface-2-color); border: 1px solid var(--border-color)">
+        <p class="text-sm" style="color: var(--text-secondary-color)">
+          No webhooks configured. Add one to receive notifications on Discord, Slack, Home Assistant, etc.
+        </p>
+      </div>
+    {:else}
+      <div class="space-y-2">
+        {#each webhooks as wh}
+          <div class="rounded-xl p-4 flex items-center justify-between gap-3" style="background: var(--surface-2-color); border: 1px solid var(--border-color)">
+            <div class="min-w-0 flex-1">
+              <p class="font-semibold text-sm truncate">{wh.name}</p>
+              <p class="text-xs font-mono truncate" style="color: var(--text-secondary-color)">{wh.url}</p>
+              <p class="text-[10px] mt-0.5" style="color: var(--text-secondary-color)">
+                Events: {wh.events?.join(", ") || "*"}
+                {#if wh.secret}&middot; signed{/if}
+              </p>
+            </div>
+            <div class="flex gap-1.5 shrink-0">
+              <button onclick={() => handleTestWebhook(wh.id)}
+                class="px-2.5 py-1.5 rounded-lg text-xs border"
+                style="border-color: var(--border-color); color: var(--text-secondary-color)"
+                title="Send test event"
+              >Test</button>
+              <button onclick={() => handleDeleteWebhook(wh.id)}
+                class="px-2.5 py-1.5 rounded-lg text-xs text-red-400 border border-red-400/30 hover:bg-red-400/10"
+                title="Delete webhook"
+              >Delete</button>
+            </div>
+          </div>
+        {/each}
+      </div>
+    {/if}
   </section>
 
   <!-- About -->

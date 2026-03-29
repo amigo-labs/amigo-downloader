@@ -261,6 +261,38 @@ amigo.base64Encode(input: string): string
 amigo.base64Decode(input: string): string
 ```
 
+### Crypto
+
+```typescript
+amigo.md5(input: string): string              // hex-encoded
+amigo.sha1(input: string): string             // hex-encoded
+amigo.sha256(input: string): string           // hex-encoded
+amigo.hmacSha256(key: string, data: string): string  // hex-encoded
+amigo.aesDecryptCbc(data: string, key: string, iv: string): string  // base64 in/out, hex key/iv
+amigo.aesEncryptCbc(data: string, key: string, iv: string): string  // base64 in/out, hex key/iv
+```
+
+AES uses 128-bit keys (16 bytes = 32 hex chars) with PKCS7 padding.
+
+### Captcha
+
+```typescript
+// Blocks until the user solves the captcha via the Web UI, or timeout (5 min).
+// Throws on timeout or if the user clicks "Skip".
+amigo.solveCaptcha(imageUrl: string, captchaType?: "image" | "recaptcha" | "hcaptcha"): string
+```
+
+The captcha image is displayed in a dialog in the Web UI. The user types the solution
+and the plugin receives it as the return value. This is the same pattern as JDownloader's
+manual captcha solving.
+
+### Notifications
+
+```typescript
+// Sends a toast notification to the Web UI + triggers webhooks.
+amigo.notify(title: string, message: string): void
+```
+
 ### Logging
 
 ```typescript

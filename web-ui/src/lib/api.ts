@@ -119,6 +119,59 @@ export async function submitFeedback(data: {
 }
 
 // ========================================
+// CAPTCHA
+// ========================================
+
+export async function getPendingCaptchas() {
+  const res = await fetch(`${API_BASE}/captcha/pending`);
+  return res.json();
+}
+
+export async function solveCaptcha(id: string, answer: string) {
+  return fetch(`${API_BASE}/captcha/${id}/solve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ answer }),
+  });
+}
+
+export async function cancelCaptcha(id: string) {
+  return fetch(`${API_BASE}/captcha/${id}/cancel`, { method: "POST" });
+}
+
+// ========================================
+// WEBHOOKS
+// ========================================
+
+export async function getWebhooks() {
+  const res = await fetch(`${API_BASE}/webhooks`);
+  return res.json();
+}
+
+export async function createWebhook(webhook: {
+  name: string;
+  url: string;
+  secret?: string;
+  events: string[];
+}) {
+  const res = await fetch(`${API_BASE}/webhooks`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(webhook),
+  });
+  return res.json();
+}
+
+export async function deleteWebhook(id: string) {
+  return fetch(`${API_BASE}/webhooks/${id}`, { method: "DELETE" });
+}
+
+export async function testWebhook(id: string) {
+  const res = await fetch(`${API_BASE}/webhooks/${id}/test`, { method: "POST" });
+  return res.json();
+}
+
+// ========================================
 // WEBSOCKET
 // ========================================
 

@@ -120,3 +120,17 @@ export const stats = writable<Stats>({
   queued: 0,
   completed: 0,
 });
+
+// ========================================
+// CAPTCHA
+// ========================================
+
+export interface CaptchaChallenge {
+  id: string;
+  plugin_id: string;
+  download_id: string;
+  image_url: string;
+  captcha_type: string;
+}
+
+export const pendingCaptcha = writable<CaptchaChallenge | null>(null);

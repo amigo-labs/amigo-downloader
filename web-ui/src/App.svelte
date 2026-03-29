@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { theme, layout, accent, currentPage, downloads, stats, totalSpeed, type Page } from "./lib/stores";
+  import { theme, layout, accent, currentPage, downloads, stats, totalSpeed, pendingCaptcha, type Page, type CaptchaChallenge } from "./lib/stores";
   import { getDownloads, getStats, connectWebSocket, formatSpeed } from "./lib/api";
   import { addToast } from "./lib/toast";
   import Downloads from "./pages/Downloads.svelte";
@@ -9,6 +9,7 @@
   import History from "./pages/History.svelte";
   import Settings from "./pages/Settings.svelte";
   import AddDialog from "./components/AddDialog.svelte";
+  import CaptchaDialog from "./components/CaptchaDialog.svelte";
   import Mascot from "./components/Mascot.svelte";
   import Sparkline from "./components/Sparkline.svelte";
   import Toasts from "./components/Toasts.svelte";
@@ -58,6 +59,13 @@
         addToast("success", "Download complete", msg.data?.filename as string || msg.id);
       } else if (msg.type === "failed") {
         addToast("error", "Download failed", msg.data?.error as string || msg.id);
+      } else if (msg.type === "captcha_challenge") {
+        // Show captcha dialog
+        pendingCaptcha.set(msg.data as unknown as CaptchaChallenge);
+      } else if (msg.type === "captcha_solved" || msg.type === "captcha_timeout") {
+        pendingCaptcha.set(null);
+      } else if (msg.type === "plugin_notification") {
+        addToast("info", msg.data?.title as string || "Plugin", msg.data?.message as string);
       }
       // Refresh data on any event
       loadData();
@@ -287,6 +295,11 @@
 <!-- Feedback Dialog -->
 {#if showFeedback}
   <FeedbackDialog onclose={() => (showFeedback = false)} prefill={feedbackPrefill} />
+{/if}
+
+<!-- Captcha Dialog -->
+{#if $pendingCaptcha}
+  <CaptchaDialog captcha={$pendingCaptcha} onclose={() => pendingCaptcha.set(null)} />
 {/if}
 
 <!-- Toast Notifications -->
