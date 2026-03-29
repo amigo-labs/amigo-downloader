@@ -14,6 +14,7 @@ use crate::postprocess::{self, PostProcessConfig};
 use crate::protocol::Protocol;
 use crate::protocol::http::{DownloadProgress, HttpDownloader};
 use crate::queue::QueueStatus;
+use crate::retry::RetryPolicy;
 use crate::storage::{DownloadRow, Storage};
 
 /// Events broadcast to subscribers (WebSocket clients, webhooks, etc.)
@@ -77,26 +78,30 @@ struct ActiveDownload {
 pub struct Coordinator {
     config: Config,
     storage: Storage,
-    _http: HttpDownloader,
-    _bandwidth: BandwidthLimiter,
+    bandwidth: BandwidthLimiter,
+    retry_policy: RetryPolicy,
     active: Arc<Mutex<HashMap<String, ActiveDownload>>>,
     event_tx: broadcast::Sender<DownloadEvent>,
 }
 
 impl Coordinator {
     pub fn new(config: Config, storage: Storage) -> Self {
-        let http = HttpDownloader::new(&config.http.user_agent);
         let bandwidth = BandwidthLimiter::new(config.bandwidth.clone());
         let (event_tx, _) = broadcast::channel(256);
 
         Self {
             config,
             storage,
-            _http: http,
-            _bandwidth: bandwidth,
+            bandwidth,
+            retry_policy: RetryPolicy::default(),
             active: Arc::new(Mutex::new(HashMap::new())),
             event_tx,
         }
+    }
+
+    /// Get a reference to the bandwidth limiter.
+    pub fn bandwidth(&self) -> &BandwidthLimiter {
+        &self.bandwidth
     }
 
     /// Subscribe to download events.
@@ -218,72 +223,116 @@ impl Coordinator {
             );
         }
 
-        // Spawn the download task
+        // Spawn the download task with retry support
         let storage = self.storage.clone();
         let event_tx = self.event_tx.clone();
         let download_id = id.to_string();
         let url = row.url.clone();
         let download_dir = PathBuf::from(row.download_dir.as_deref().unwrap_or("downloads"));
         let temp_dir = self.storage.temp_dir.clone();
-        let http = HttpDownloader::new(&self.config.http.user_agent);
+        let user_agent = self.config.http.user_agent.clone();
         let max_chunks = self.config.http.max_chunks_per_download;
         let active = self.active.clone();
+        let max_retries = self.retry_policy.max_retries;
+        let retry_policy = RetryPolicy {
+            max_retries: self.retry_policy.max_retries,
+            base_delay: self.retry_policy.base_delay,
+            max_delay: self.retry_policy.max_delay,
+        };
+        let bandwidth = self.bandwidth.clone();
 
         tokio::spawn(async move {
-            let result = run_http_download(
-                &http,
-                &url,
-                &download_dir,
-                &temp_dir,
-                row.filename.as_deref(),
-                max_chunks,
-                progress_tx,
-                cancel_rx,
-            )
-            .await;
+            let mut last_error = String::new();
+            let mut original_progress_tx = Some(progress_tx);
+            let mut original_cancel_rx = Some(cancel_rx);
 
-            match result {
-                Ok(bytes) => {
-                    let _ = storage
-                        .update_download_progress(&download_id, bytes, 0)
-                        .await;
-
-                    // Run post-processing (auto-extract archives, etc.)
-                    let dest = download_dir.join(
-                        url.rsplit('/')
-                            .next()
-                            .and_then(|s| s.split('?').next())
-                            .filter(|s| !s.is_empty())
-                            .unwrap_or("download"),
+            for attempt in 0..=max_retries {
+                if attempt > 0 {
+                    let delay = retry_policy.delay_for_attempt(attempt - 1);
+                    warn!(
+                        "Retrying download {download_id} (attempt {attempt}/{max_retries}) after {delay:?}"
                     );
-                    let pp_config = PostProcessConfig::default();
-                    if let Err(e) = postprocess::run_pipeline(&dest, &pp_config).await {
-                        warn!("Post-processing failed for {download_id}: {e}");
-                    }
-
                     let _ = storage
-                        .update_download_status(&download_id, QueueStatus::Completed)
+                        .update_download_error(&download_id, &last_error, attempt)
                         .await;
-                    let _ = event_tx.send(DownloadEvent::Completed {
-                        id: download_id.clone(),
-                    });
-                    info!("Download completed: {download_id}");
+                    tokio::time::sleep(delay).await;
                 }
-                Err(e) => {
-                    let err_msg = e.to_string();
-                    error!("Download failed: {download_id} — {err_msg}");
-                    let _ = storage
-                        .update_download_status(&download_id, QueueStatus::Failed)
-                        .await;
-                    let _ = storage
-                        .update_download_error(&download_id, &err_msg, 0)
-                        .await;
-                    let _ = event_tx.send(DownloadEvent::Failed {
-                        id: download_id.clone(),
-                        error: err_msg,
+
+                let http = HttpDownloader::new(&user_agent);
+
+                // Use the original progress_tx/cancel_rx on first attempt, create new ones for retries
+                let ptx = original_progress_tx.take().unwrap_or_else(|| {
+                    let (tx, _rx) = watch::channel(DownloadProgress {
+                        bytes_downloaded: 0,
+                        total_bytes: None,
+                        speed_bytes_per_sec: 0,
                     });
+                    tx
+                });
+
+                let crx = original_cancel_rx.take().unwrap_or_else(|| {
+                    let (_tx, rx) = tokio::sync::oneshot::channel();
+                    rx
+                });
+
+                let result = run_http_download(
+                    &http,
+                    &bandwidth,
+                    &url,
+                    &download_dir,
+                    &temp_dir,
+                    row.filename.as_deref(),
+                    max_chunks,
+                    ptx,
+                    crx,
+                )
+                .await;
+
+                match result {
+                    Ok((bytes, actual_path)) => {
+                        let _ = storage
+                            .update_download_progress(&download_id, bytes, 0)
+                            .await;
+
+                        // Run post-processing (auto-extract archives, etc.)
+                        let pp_config = PostProcessConfig::default();
+                        if let Err(e) = postprocess::run_pipeline(&actual_path, &pp_config).await {
+                            warn!("Post-processing failed for {download_id}: {e}");
+                        }
+
+                        let _ = storage
+                            .update_download_status(&download_id, QueueStatus::Completed)
+                            .await;
+                        let _ = event_tx.send(DownloadEvent::Completed {
+                            id: download_id.clone(),
+                        });
+                        info!("Download completed: {download_id}");
+                        active.lock().await.remove(&download_id);
+                        return;
+                    }
+                    Err(e) => {
+                        last_error = e.to_string();
+                        // Cancellation is not retryable
+                        if last_error.contains("cancelled") {
+                            break;
+                        }
+                        warn!("Download attempt failed: {download_id} — {last_error}");
+                    }
                 }
             }
+
+            // All retries exhausted
+            error!("Download failed after {max_retries} retries: {download_id} — {last_error}");
+            let _ = storage
+                .update_download_status(&download_id, QueueStatus::Failed)
+                .await;
+            let _ = storage
+                .update_download_error(&download_id, &last_error, max_retries)
+                .await;
+            let _ = event_tx.send(DownloadEvent::Failed {
+                id: download_id.clone(),
+                error: last_error,
+            });
 
             active.lock().await.remove(&download_id);
         });
@@ -379,6 +428,7 @@ impl Coordinator {
 #[allow(clippy::too_many_arguments)]
 async fn run_http_download(
     http: &HttpDownloader,
+    _bandwidth: &BandwidthLimiter,
     url: &str,
     download_dir: &PathBuf,
     temp_dir: &PathBuf,
@@ -386,7 +436,7 @@ async fn run_http_download(
     max_chunks: u32,
     progress_tx: watch::Sender<DownloadProgress>,
     cancel_rx: tokio::sync::oneshot::Receiver<()>,
-) -> Result<u64, crate::Error> {
+) -> Result<(u64, PathBuf), crate::Error> {
     // Get file info
     let head = http.head(url).await?;
 
@@ -414,7 +464,7 @@ async fn run_http_download(
         tokio::fs::create_dir_all(&chunk_dir).await?;
 
         tokio::select! {
-            result = http.download_chunked(url, &dest, &chunk_dir, total, chunks, progress_tx) => result,
+            result = http.download_chunked(url, &dest, &chunk_dir, total, chunks, progress_tx) => result.map(|bytes| (bytes, dest)),
             _ = cancel_rx => {
                 info!("Download cancelled: {url}");
                 Err(crate::Error::Other("Download cancelled".into()))
@@ -423,7 +473,7 @@ async fn run_http_download(
     } else {
         info!("Using single-stream download for {fname}");
         tokio::select! {
-            result = http.download_single(url, &dest, progress_tx) => result,
+            result = http.download_single(url, &dest, progress_tx) => result.map(|bytes| (bytes, dest)),
             _ = cancel_rx => {
                 info!("Download cancelled: {url}");
                 Err(crate::Error::Other("Download cancelled".into()))

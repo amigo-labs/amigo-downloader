@@ -22,7 +22,7 @@ async fn get_player_js(
 ) -> Result<String, ExtractorError> {
     // Check cache
     {
-        let cache = PLAYER_JS_CACHE.lock().unwrap();
+        let cache = PLAYER_JS_CACHE.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(js) = cache.get(player_js_url) {
             debug!("Player JS cache hit: {player_js_url}");
             return Ok(js.clone());
@@ -40,7 +40,7 @@ async fn get_player_js(
 
     // Cache it
     {
-        let mut cache = PLAYER_JS_CACHE.lock().unwrap();
+        let mut cache = PLAYER_JS_CACHE.lock().unwrap_or_else(|e| e.into_inner());
         cache.insert(player_js_url.to_string(), js.clone());
     }
 

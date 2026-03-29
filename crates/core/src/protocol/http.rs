@@ -35,7 +35,7 @@ impl HttpDownloader {
         let client = reqwest::Client::builder()
             .user_agent(user_agent)
             .build()
-            .expect("Failed to build reqwest client");
+            .unwrap_or_else(|_| reqwest::Client::new());
         Self { client }
     }
 

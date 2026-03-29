@@ -72,7 +72,7 @@ export const accent = createAccentStore();
 // NAVIGATION
 // ========================================
 
-export type Page = "downloads" | "queue" | "plugins" | "usenet" | "history" | "settings";
+export type Page = "downloads" | "queue" | "plugins" | "history" | "settings";
 export const currentPage = writable<Page>("downloads");
 
 // ========================================
@@ -94,7 +94,6 @@ export interface Download {
 }
 
 export const downloads = writable<Download[]>([]);
-export const totalSpeed = writable<number>(0);
 
 export const activeDownloads = derived(downloads, ($d) =>
   $d.filter((d) => d.status === "downloading")

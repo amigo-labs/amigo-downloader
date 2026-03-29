@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { theme, layout, accent, currentPage, downloads, stats, totalSpeed, pendingCaptcha, type Page, type CaptchaChallenge } from "./lib/stores";
+  import { theme, layout, accent, currentPage, downloads, stats, pendingCaptcha, type Page, type CaptchaChallenge } from "./lib/stores";
   import { addDownload, getDownloads, getStats, connectWebSocket, formatSpeed } from "./lib/api";
   import { addToast } from "./lib/toast";
   import Downloads from "./pages/Downloads.svelte";
@@ -112,7 +112,6 @@
       const [dl, st] = await Promise.all([getDownloads(), getStats()]);
       downloads.set(dl);
       stats.set(st);
-      totalSpeed.set(st.speed_bytes_per_sec);
 
       // Track speed history (last 30 samples)
       speedHistory = [...speedHistory.slice(-29), st.speed_bytes_per_sec];

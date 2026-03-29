@@ -80,11 +80,14 @@ async fn main() -> anyhow::Result<()> {
         }));
     }
 
-    let plugin_loader = Arc::new(PluginLoader::new_with_host_api(
-        PathBuf::from("plugins"),
-        SandboxLimits::default(),
-        plugin_host_api,
-    ));
+    let plugin_loader = Arc::new(
+        PluginLoader::new_with_host_api(
+            PathBuf::from("plugins"),
+            SandboxLimits::default(),
+            plugin_host_api,
+        )
+        .expect("Failed to initialize plugin runtime — cannot start server"),
+    );
     let discovered = plugin_loader.discover().await.unwrap_or_default();
     tracing::info!("Loaded {} plugins", discovered.len());
 

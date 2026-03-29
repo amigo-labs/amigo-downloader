@@ -230,8 +230,10 @@ pub async fn fetch_player_js_url(
     let re2 = regex::Regex::new(r#""jsUrl"\s*:\s*"([^"]+)""#)
         .map_err(|e| ExtractorError::Other(e.to_string()))?;
 
-    if let Some(caps) = re2.captures(&html) {
-        let js_path = caps.get(1).unwrap().as_str();
+    if let Some(caps) = re2.captures(&html)
+        && let Some(js_match) = caps.get(1)
+    {
+        let js_path = js_match.as_str();
         if js_path.starts_with("http") {
             return Ok(js_path.to_string());
         }
