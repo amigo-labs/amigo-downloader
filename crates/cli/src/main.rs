@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+use console::style;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use tokio::sync::watch;
 use tracing::debug;
@@ -14,6 +15,18 @@ use amigo_core::protocol::http::{DownloadProgress, HttpDownloader};
 use amigo_core::queue::QueueStatus;
 use amigo_core::storage::Storage;
 use amigo_extractors::youtube;
+
+/// Output mode for terminal display.
+#[derive(Debug, Clone, Copy, PartialEq, ValueEnum, Default)]
+enum OutputMode {
+    /// Rich TUI: colors, icons, progress bars, mascot (default)
+    #[default]
+    Fancy,
+    /// Plain text, no colors or icons — good for logs
+    Plain,
+    /// JSON output only — for piping to other programs
+    Json,
+}
 
 #[derive(Parser)]
 #[command(name = "amigo-dl", about = "amigo-dl — fast, modular download manager")]
@@ -32,6 +45,14 @@ struct Cli {
     /// Enable verbose/debug logging
     #[arg(short, long)]
     verbose: bool,
+
+    /// Output mode: fancy (default), plain, or json
+    #[arg(long, value_enum, default_value_t = OutputMode::Fancy)]
+    mode: OutputMode,
+
+    /// Disable colors (alias for --mode=plain)
+    #[arg(long)]
+    no_color: bool,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -145,6 +166,201 @@ enum UpdateAction {
         yes: bool,
     },
 }
+
+// ─── TUI: Mascot, banner, styled output ─────────────────────────────
+
+/// ASCII art mascot — the "Orb Bot" from the Web UI, terminal edition.
+const MASCOT: &str = r#"
+    ┌──────┐
+   ╔╡ ◉  ◉ ╞╗
+   ║└──┬┬──┘║
+   ╚═╗ ╘╛ ╔═╝
+     ╠════╬╗
+    ╔╝ ▓▓ ╚╗
+    ║ ████ ║
+    ╚╤═══╤╝
+     │   │
+    ═╧═ ═╧═"#;
+
+/// Print the startup banner with mascot and version.
+fn print_banner(mode: OutputMode) {
+    if mode != OutputMode::Fancy {
+        return;
+    }
+    let term = console::Term::stderr();
+    if term.size().1 < 50 {
+        // Too narrow for mascot
+        eprintln!(
+            "{} {} {}",
+            style("⚡").cyan(),
+            style("amigo-dl").bold().cyan(),
+            style(format!("v{}", amigo_core::updater::CURRENT_VERSION)).dim()
+        );
+        return;
+    }
+    for line in MASCOT.lines() {
+        eprintln!("{}", style(line).cyan());
+    }
+    eprintln!();
+    eprintln!(
+        "  {} {} {}",
+        style("⚡").bold().yellow(),
+        style("amigo-dl").bold().cyan(),
+        style(format!("v{}", amigo_core::updater::CURRENT_VERSION)).dim()
+    );
+    eprintln!(
+        "  {}",
+        style("Fast, modular download manager").dim()
+    );
+    eprintln!();
+}
+
+/// TUI output helper — respects output mode.
+struct Tui {
+    mode: OutputMode,
+}
+
+#[allow(dead_code)]
+impl Tui {
+    fn new(mode: OutputMode) -> Self {
+        Self { mode }
+    }
+
+    /// Print a success message.
+    fn success(&self, msg: &str) {
+        match self.mode {
+            OutputMode::Fancy => eprintln!("  {} {}", style("✔").green().bold(), style(msg).green()),
+            OutputMode::Plain => println!("OK: {msg}"),
+            OutputMode::Json => {} // JSON mode uses structured output
+        }
+    }
+
+    /// Print an error message.
+    fn error(&self, msg: &str) {
+        match self.mode {
+            OutputMode::Fancy => eprintln!("  {} {}", style("✖").red().bold(), style(msg).red()),
+            OutputMode::Plain => eprintln!("ERROR: {msg}"),
+            OutputMode::Json => {} // caller handles JSON
+        }
+    }
+
+    /// Print an info message.
+    fn info(&self, msg: &str) {
+        match self.mode {
+            OutputMode::Fancy => eprintln!("  {} {}", style("ℹ").blue(), msg),
+            OutputMode::Plain => println!("{msg}"),
+            OutputMode::Json => {}
+        }
+    }
+
+    /// Print a warning message.
+    fn warn(&self, msg: &str) {
+        match self.mode {
+            OutputMode::Fancy => eprintln!("  {} {}", style("⚠").yellow(), style(msg).yellow()),
+            OutputMode::Plain => eprintln!("WARN: {msg}"),
+            OutputMode::Json => {}
+        }
+    }
+
+    /// Print a step in a process.
+    fn step(&self, icon: &str, msg: &str) {
+        match self.mode {
+            OutputMode::Fancy => eprintln!("  {} {}", style(icon).cyan(), msg),
+            OutputMode::Plain => println!("  {msg}"),
+            OutputMode::Json => {}
+        }
+    }
+
+    /// Print a header/section title.
+    fn header(&self, msg: &str) {
+        match self.mode {
+            OutputMode::Fancy => eprintln!("\n  {}", style(msg).bold().underlined()),
+            OutputMode::Plain => println!("\n{msg}"),
+            OutputMode::Json => {}
+        }
+    }
+
+    /// Output JSON (only in JSON mode).
+    fn json(&self, value: &serde_json::Value) {
+        if self.mode == OutputMode::Json {
+            println!("{}", serde_json::to_string(value).unwrap_or_default());
+        }
+    }
+
+    /// Output pretty JSON (only in JSON mode).
+    fn json_pretty(&self, value: &serde_json::Value) {
+        if self.mode == OutputMode::Json {
+            println!("{}", serde_json::to_string_pretty(value).unwrap_or_default());
+        }
+    }
+
+    /// Create a progress bar style for the current mode.
+    fn progress_style(&self) -> ProgressStyle {
+        match self.mode {
+            OutputMode::Fancy => ProgressStyle::with_template(
+                "  {spinner:.cyan} [{bar:35.cyan/dim}] {bytes}/{total_bytes} {wide_msg}"
+            )
+            .unwrap()
+            .progress_chars("━╸─")
+            .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", "✔"]),
+            OutputMode::Plain => ProgressStyle::with_template(
+                "  [{bar:30}] {bytes}/{total_bytes} {msg}"
+            )
+            .unwrap()
+            .progress_chars("#>-"),
+            OutputMode::Json => ProgressStyle::with_template("")
+                .unwrap(),
+        }
+    }
+
+    /// Format a download completion message.
+    fn download_complete(&self, filename: &str, size: u64, speed: &str) {
+        match self.mode {
+            OutputMode::Fancy => {
+                eprintln!(
+                    "  {} {} {} {}",
+                    style("✔").green().bold(),
+                    style(filename).bold(),
+                    style(format_bytes(size)).dim(),
+                    style(format!("@ {speed}")).dim()
+                );
+            }
+            OutputMode::Plain => println!("DONE: {filename} ({}) @ {speed}", format_bytes(size)),
+            OutputMode::Json => {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "event": "complete",
+                        "filename": filename,
+                        "size": size,
+                        "speed": speed,
+                    })
+                );
+            }
+        }
+    }
+
+    /// Print download start info.
+    fn download_start(&self, url: &str, protocol: &str) {
+        match self.mode {
+            OutputMode::Fancy => {
+                let icon = match protocol {
+                    "youtube" => "▶",
+                    "hls" => "📡",
+                    "dash" => "📡",
+                    _ => "⬇",
+                };
+                eprintln!("  {} {} {}", style(icon).cyan(), style(protocol.to_uppercase()).bold().cyan(), style(url).dim());
+            }
+            OutputMode::Plain => println!("[{protocol}] {url}"),
+            OutputMode::Json => {
+                println!("{}", serde_json::json!({"event": "start", "url": url, "protocol": protocol}));
+            }
+        }
+    }
+}
+
+// ─── End TUI ─────────────────────────────────────────────────────────
 
 fn init_coordinator() -> anyhow::Result<Arc<Coordinator>> {
     let config = Config::load_auto();
@@ -286,7 +502,15 @@ async fn direct_download(
     output_dir: &str,
     chunks_override: u32,
     pb: &ProgressBar,
+    tui: &Tui,
 ) -> anyhow::Result<()> {
+    let proto_name = match detect_protocol(url) {
+        DownloadProtocol::YouTube => "youtube",
+        DownloadProtocol::Hls => "hls",
+        DownloadProtocol::Dash => "dash",
+        DownloadProtocol::Http => "http",
+    };
+    tui.download_start(url, proto_name);
     let resolved = resolve_url(user_agent, url, pb).await?;
 
     let dest = PathBuf::from(output_dir).join(&resolved.filename);
@@ -396,7 +620,29 @@ async fn direct_download(
 
     let bytes = download_handle.await??;
     pb.set_position(bytes);
-    pb.finish_with_message(format!("{} — {} done", filename, format_bytes(bytes)));
+
+    let final_speed = {
+        let p = progress_rx.borrow().clone();
+        if p.speed_bytes_per_sec > 0 {
+            format!("{}/s", format_bytes(p.speed_bytes_per_sec))
+        } else {
+            "done".to_string()
+        }
+    };
+
+    match tui.mode {
+        OutputMode::Fancy => {
+            pb.finish_and_clear();
+            tui.download_complete(&filename, bytes, &final_speed);
+        }
+        OutputMode::Plain => {
+            pb.finish_with_message(format!("{} — {} done", filename, format_bytes(bytes)));
+        }
+        OutputMode::Json => {
+            pb.finish_and_clear();
+            tui.download_complete(&filename, bytes, &final_speed);
+        }
+    }
 
     // Clean up temp dir if empty
     let temp_dir = PathBuf::from(output_dir).join(".amigo-tmp");
@@ -406,7 +652,12 @@ async fn direct_download(
 }
 
 /// Run direct downloads for one or more URLs with progress bars.
-async fn run_direct_downloads(urls: &[String], output: &str, chunks: u32) -> anyhow::Result<()> {
+async fn run_direct_downloads(
+    urls: &[String],
+    output: &str,
+    chunks: u32,
+    tui: &Tui,
+) -> anyhow::Result<()> {
     if urls.is_empty() {
         anyhow::bail!("No URLs provided. Usage: amigo-dl <URL> [URL...]");
     }
@@ -415,18 +666,36 @@ async fn run_direct_downloads(urls: &[String], output: &str, chunks: u32) -> any
     let user_agent = config.http.user_agent.clone();
 
     let multi = MultiProgress::new();
-    let style = ProgressStyle::with_template(
-        "{spinner:.green} [{bar:40.cyan/dim}] {bytes}/{total_bytes} {msg}",
-    )?
-    .progress_chars("━╸─");
+    let pb_style = tui.progress_style();
+
+    tui.info(&format!(
+        "Downloading {} URL{} to {}",
+        urls.len(),
+        if urls.len() > 1 { "s" } else { "" },
+        output,
+    ));
 
     for url in urls {
         // Check if a plugin from the registry could handle this URL
-        check_plugin_suggestion(url).await;
+        check_plugin_suggestion(url, tui).await;
 
-        let pb = multi.add(ProgressBar::new(0));
-        pb.set_style(style.clone());
-        direct_download(&user_agent, url, output, chunks, &pb).await?;
+        let pb = if tui.mode == OutputMode::Json {
+            ProgressBar::hidden()
+        } else {
+            multi.add(ProgressBar::new(0))
+        };
+        pb.set_style(pb_style.clone());
+        pb.enable_steady_tick(std::time::Duration::from_millis(80));
+        direct_download(&user_agent, url, output, chunks, &pb, tui).await?;
+    }
+
+    if tui.mode == OutputMode::Fancy {
+        eprintln!();
+        tui.success(&format!(
+            "All {} download{} complete!",
+            urls.len(),
+            if urls.len() > 1 { "s" } else { "" }
+        ));
     }
 
     Ok(())
@@ -434,7 +703,7 @@ async fn run_direct_downloads(urls: &[String], output: &str, chunks: u32) -> any
 
 /// Check the plugin registry for a plugin that can handle this URL.
 /// Uses local cached index (instant), falls back to remote fetch if no cache.
-async fn check_plugin_suggestion(url: &str) {
+async fn check_plugin_suggestion(url: &str, tui: &Tui) {
     // Skip URLs we already handle natively
     if youtube::is_youtube_url(url) || hls::is_hls_url(url) || dash::is_dash_url(url) {
         return;
@@ -456,14 +725,11 @@ async fn check_plugin_suggestion(url: &str) {
     };
 
     if let Some(plugin) = amigo_plugin_runtime::registry::suggest_plugin_for_url(&index, url) {
-        eprintln!(
-            "{}",
-            amigo_core::i18n::t_fmt(
-                "plugin.install_hint",
-                &[("name", &plugin.name), ("id", &plugin.id)]
-            )
+        let hint = amigo_core::i18n::t_fmt(
+            "plugin.install_hint",
+            &[("name", &plugin.name), ("id", &plugin.id)]
         );
-        eprintln!();
+        tui.warn(&hint);
     }
 }
 
@@ -500,12 +766,22 @@ async fn main() -> anyhow::Result<()> {
     let lang = amigo_core::i18n::detect_system_lang();
     amigo_core::i18n::init(&lang, std::path::Path::new("locales"));
 
+    // Resolve output mode (--no-color overrides to plain)
+    let mode = if cli.no_color || std::env::var("NO_COLOR").is_ok() {
+        OutputMode::Plain
+    } else {
+        cli.mode
+    };
+
+    let tui = Tui::new(mode);
+
     // Bare URLs without subcommand → direct download
     if cli.command.is_none() {
         if cli.urls.is_empty() {
             Cli::parse_from(["amigo-dl", "--help"]);
         }
-        return run_direct_downloads(&cli.urls, &cli.output, cli.chunks).await;
+        print_banner(mode);
+        return run_direct_downloads(&cli.urls, &cli.output, cli.chunks, &tui).await;
     }
 
     match cli.command.unwrap() {
@@ -514,7 +790,8 @@ async fn main() -> anyhow::Result<()> {
             output,
             chunks,
         } => {
-            run_direct_downloads(&urls, &output, chunks).await?;
+            print_banner(mode);
+            run_direct_downloads(&urls, &output, chunks, &tui).await?;
         }
 
         Commands::Add { url, nzb, dlc } => {
@@ -588,23 +865,56 @@ async fn main() -> anyhow::Result<()> {
             let coord = init_coordinator()?;
             let downloads = coord.storage().list_downloads().await?;
             if downloads.is_empty() {
-                println!("No active downloads.");
+                match mode {
+                    OutputMode::Json => tui.json(&serde_json::json!({"downloads": []})),
+                    _ => tui.info("No active downloads."),
+                }
             } else {
-                for d in &downloads {
-                    let pct = d.filesize.map(|s| {
-                        if s > 0 {
-                            d.bytes_downloaded * 100 / s
-                        } else {
-                            0
+                match mode {
+                    OutputMode::Json => {
+                        let list: Vec<_> = downloads.iter().map(|d| serde_json::json!({
+                            "id": d.id,
+                            "status": d.status,
+                            "url": d.url,
+                            "filename": d.filename,
+                            "filesize": d.filesize,
+                            "bytes_downloaded": d.bytes_downloaded,
+                        })).collect();
+                        tui.json(&serde_json::json!({"downloads": list}));
+                    }
+                    OutputMode::Fancy => {
+                        tui.header("Downloads");
+                        for d in &downloads {
+                            let pct = d.filesize.map(|s| if s > 0 { d.bytes_downloaded * 100 / s } else { 0 });
+                            let status_icon = match d.status.as_str() {
+                                "downloading" => style("⬇").cyan(),
+                                "completed" => style("✔").green(),
+                                "failed" => style("✖").red(),
+                                "paused" => style("⏸").yellow(),
+                                "queued" => style("⏳").dim(),
+                                _ => style("?").dim(),
+                            };
+                            eprintln!(
+                                "  {} {} {} {}",
+                                status_icon,
+                                style(d.filename.as_deref().unwrap_or(&d.url)).bold(),
+                                style(&d.id[..8]).dim(),
+                                pct.map(|p| format!("{}%", p)).unwrap_or_default(),
+                            );
                         }
-                    });
-                    println!(
-                        "[{}] {} — {} {}",
-                        d.status,
-                        d.filename.as_deref().unwrap_or(&d.url),
-                        d.id,
-                        pct.map(|p| format!("{p}%")).unwrap_or_default()
-                    );
+                    }
+                    OutputMode::Plain => {
+                        for d in &downloads {
+                            let pct = d.filesize.map(|s| if s > 0 { d.bytes_downloaded * 100 / s } else { 0 });
+                            println!(
+                                "[{}] {} — {} {}",
+                                d.status,
+                                d.filename.as_deref().unwrap_or(&d.url),
+                                d.id,
+                                pct.map(|p| format!("{p}%")).unwrap_or_default()
+                            );
+                        }
+                    }
                 }
             }
         }
@@ -612,19 +922,31 @@ async fn main() -> anyhow::Result<()> {
         Commands::Pause { id } => {
             let coord = init_coordinator()?;
             coord.pause(&id).await?;
-            println!("Paused: {id}");
+            match mode {
+                OutputMode::Json => tui.json(&serde_json::json!({"action": "paused", "id": id})),
+                OutputMode::Fancy => tui.step("⏸", &format!("Paused: {}", style(&id[..8]).dim())),
+                OutputMode::Plain => println!("Paused: {id}"),
+            }
         }
 
         Commands::Resume { id } => {
             let coord = init_coordinator()?;
             coord.resume(&id).await?;
-            println!("Resumed: {id}");
+            match mode {
+                OutputMode::Json => tui.json(&serde_json::json!({"action": "resumed", "id": id})),
+                OutputMode::Fancy => tui.step("▶", &format!("Resumed: {}", style(&id[..8]).dim())),
+                OutputMode::Plain => println!("Resumed: {id}"),
+            }
         }
 
         Commands::Cancel { id } => {
             let coord = init_coordinator()?;
             coord.cancel(&id).await?;
-            println!("Cancelled: {id}");
+            match mode {
+                OutputMode::Json => tui.json(&serde_json::json!({"action": "cancelled", "id": id})),
+                OutputMode::Fancy => tui.step("🗑", &format!("Cancelled: {}", style(&id[..8]).dim())),
+                OutputMode::Plain => println!("Cancelled: {id}"),
+            }
         }
 
         Commands::Queue => {
@@ -634,15 +956,36 @@ async fn main() -> anyhow::Result<()> {
                 .list_downloads_by_status(QueueStatus::Queued)
                 .await?;
             if queued.is_empty() {
-                println!("Queue is empty.");
+                match mode {
+                    OutputMode::Json => tui.json(&serde_json::json!({"queue": []})),
+                    _ => tui.info("Queue is empty."),
+                }
             } else {
-                for (i, d) in queued.iter().enumerate() {
-                    println!(
-                        "{}. {} — {}",
-                        i + 1,
-                        d.filename.as_deref().unwrap_or(&d.url),
-                        d.id
-                    );
+                match mode {
+                    OutputMode::Json => {
+                        let list: Vec<_> = queued.iter().map(|d| serde_json::json!({
+                            "id": d.id,
+                            "url": d.url,
+                            "filename": d.filename,
+                        })).collect();
+                        tui.json(&serde_json::json!({"queue": list}));
+                    }
+                    OutputMode::Fancy => {
+                        tui.header("Queue");
+                        for (i, d) in queued.iter().enumerate() {
+                            eprintln!(
+                                "  {} {} {}",
+                                style(format!("{}.", i + 1)).dim(),
+                                style(d.filename.as_deref().unwrap_or(&d.url)).bold(),
+                                style(&d.id[..8]).dim(),
+                            );
+                        }
+                    }
+                    OutputMode::Plain => {
+                        for (i, d) in queued.iter().enumerate() {
+                            println!("{}. {} — {}", i + 1, d.filename.as_deref().unwrap_or(&d.url), d.id);
+                        }
+                    }
                 }
             }
         }
@@ -658,17 +1001,44 @@ async fn main() -> anyhow::Result<()> {
                 .await?;
             let failed = coord.storage().count_by_status(QueueStatus::Failed).await?;
 
-            println!("amigo-dl v{}", amigo_core::updater::CURRENT_VERSION);
-            println!(
-                "Active: {active}  Queued: {queued}  Completed: {completed}  Failed: {failed}"
-            );
-            println!("Speed: {} KB/s", speed / 1024);
+            match mode {
+                OutputMode::Json => {
+                    tui.json(&serde_json::json!({
+                        "version": amigo_core::updater::CURRENT_VERSION,
+                        "active": active,
+                        "queued": queued,
+                        "completed": completed,
+                        "failed": failed,
+                        "speed_kbps": speed / 1024,
+                    }));
+                }
+                OutputMode::Fancy => {
+                    print_banner(mode);
+                    tui.step("📊", &format!(
+                        "Active: {}  Queued: {}  Completed: {}  Failed: {}",
+                        style(active).cyan().bold(),
+                        style(queued).yellow(),
+                        style(completed).green(),
+                        if failed > 0 { style(failed).red().bold().to_string() } else { style(failed).dim().to_string() },
+                    ));
+                    tui.step("🚀", &format!("Speed: {}", style(format!("{}/s", format_bytes(speed))).bold()));
+                }
+                OutputMode::Plain => {
+                    println!("amigo-dl v{}", amigo_core::updater::CURRENT_VERSION);
+                    println!("Active: {active}  Queued: {queued}  Completed: {completed}  Failed: {failed}");
+                    println!("Speed: {} KB/s", speed / 1024);
+                }
+            }
         }
 
         Commands::Speed => {
             let coord = init_coordinator()?;
             let speed = coord.total_speed().await;
-            println!("{} KB/s", speed / 1024);
+            match mode {
+                OutputMode::Json => tui.json(&serde_json::json!({"speed_bytes_per_sec": speed})),
+                OutputMode::Fancy => tui.step("🚀", &format!("{}", style(format!("{}/s", format_bytes(speed))).bold())),
+                OutputMode::Plain => println!("{} KB/s", speed / 1024),
+            }
         }
 
         Commands::Config { action } => {
@@ -896,9 +1266,9 @@ async fn main() -> anyhow::Result<()> {
 
         Commands::Serve { port, bind } => {
             let addr = format!("{bind}:{port}");
-            println!("Starting amigo-server on {addr}...");
-            println!("For the full server with plugins and web UI, use the `amigo-server` binary.");
-            println!("This lite-mode serves only the REST API.");
+            print_banner(mode);
+            tui.step("🌐", &format!("Starting server on {}", style(&addr).bold().cyan()));
+            tui.info("Lite mode — REST API only. Use `amigo-server` for full Web UI.");
 
             let coord = init_coordinator()?;
             let listener = tokio::net::TcpListener::bind(&addr).await?;
@@ -909,7 +1279,7 @@ async fn main() -> anyhow::Result<()> {
                     axum::Json(serde_json::json!({"status": "ok", "version": env!("CARGO_PKG_VERSION"), "mode": "cli"}))
                 }));
 
-            println!("Listening on {addr}");
+            tui.success(&format!("Listening on {addr}"));
             axum::serve(listener, app).await?;
         }
     }

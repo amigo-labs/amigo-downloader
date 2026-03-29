@@ -47,6 +47,7 @@ tower-http = { version = "0.6", features = ["cors", "fs"] }
 # CLI
 clap = { version = "4", features = ["derive"] }
 indicatif = "0.17"
+console = "0.15"
 
 # UUID
 uuid = { version = "1", features = ["v4", "serde"] }
@@ -73,6 +74,10 @@ rquickjs = { version = "0.9", features = ["bindgen", "parallel"] }
 # HLS/DASH manifest parsing
 m3u8-rs = "6"
 dash-mpd = "0.17"
+
+# HTML parsing
+scraper = "0.22"
+url = "2"
 
 # Internal crates
 amigo-core = { path = "crates/core" }

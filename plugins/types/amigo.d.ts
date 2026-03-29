@@ -28,6 +28,11 @@ interface AmigoPlugin {
     description?: string;
     /** Plugin author name. */
     author?: string;
+    /** Plugin type hint for matching priority.
+     *  "multi-hoster" = highest priority (Real-Debrid etc.),
+     *  "hoster" = default (site-specific),
+     *  "generic" = fallback (generic-http etc.). */
+    pluginType?: PluginTypeHint;
 
     // ── Optional functions ──
 
@@ -55,9 +60,15 @@ interface DownloadPackage {
     downloads: DownloadInfo[];
 }
 
+/** Download protocol hint — tells the engine how to handle the URL. */
+type DownloadProtocol = "http" | "hls" | "dash";
+
+/** Plugin type — determines matching priority and behavior. */
+type PluginTypeHint = "multi-hoster" | "hoster" | "generic";
+
 /** A single downloadable file within a package. */
 interface DownloadInfo {
-    /** Direct download URL. */
+    /** Direct download URL (or HLS/DASH manifest URL if protocol is set). */
     url: string;
     /** Suggested filename, or null to let the engine detect from URL/headers. */
     filename: string | null;
@@ -75,6 +86,8 @@ interface DownloadInfo {
     wait_seconds: number | null;
     /** Alternative mirror URLs for failover. */
     mirrors: string[];
+    /** Protocol hint: "http" (default), "hls" (m3u8 manifest), or "dash" (MPD manifest). */
+    protocol?: DownloadProtocol;
 }
 
 /** HTTP response returned by amigo.httpGet/httpPost. */
@@ -145,6 +158,12 @@ declare const amigo: {
     httpHead(url: string, opts?: HttpRequestOptions): HeadResponse;
     /** HTTP GET + parse body as JSON — returns response with `data` field. */
     httpGetJson(url: string, opts?: HttpRequestOptions): HttpJsonResponse;
+    /** HTTP POST with form-encoded body (application/x-www-form-urlencoded). */
+    httpPostForm(url: string, fields: Record<string, string>, opts?: HttpRequestOptions): HttpResponse;
+    /** HTTP GET returning binary content as base64-encoded string. */
+    httpGetBinary(url: string, opts?: HttpRequestOptions): string;
+    /** Follow all redirects for a URL and return the final URL. */
+    httpFollowRedirects(url: string, opts?: HttpRequestOptions): string;
 
     // ── Cookies ──
 
@@ -169,6 +188,8 @@ declare const amigo: {
     htmlQueryText(html: string, selector: string): string | null;
     /** Get an attribute value from the first element matching a CSS selector. */
     htmlQueryAttr(html: string, selector: string, attr: string): string | null;
+    /** Get an attribute value from ALL elements matching a CSS selector. */
+    htmlQueryAllAttrs(html: string, selector: string, attr: string): string[];
     /** Search meta tags by name or property, with fallback chain.
      *  Checks both `name` and `property` attributes (supports OpenGraph). */
     htmlSearchMeta(html: string, names: string | string[]): string | null;

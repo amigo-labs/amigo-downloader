@@ -12,6 +12,19 @@ pub struct DownloadPackage {
     pub downloads: Vec<DownloadInfo>,
 }
 
+/// Download protocol hint — tells the engine how to download the URL.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum DownloadProtocol {
+    /// Direct HTTP/HTTPS download (default).
+    #[default]
+    Http,
+    /// HLS manifest URL — engine will parse m3u8 and download segments.
+    Hls,
+    /// DASH manifest URL — engine will parse MPD and download segments.
+    Dash,
+}
+
 /// A single downloadable file within a package.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DownloadInfo {
@@ -24,6 +37,9 @@ pub struct DownloadInfo {
     pub cookies: Option<std::collections::HashMap<String, String>>,
     pub wait_seconds: Option<u64>,
     pub mirrors: Vec<String>,
+    /// Protocol hint for the download engine. Defaults to "http".
+    #[serde(default)]
+    pub protocol: DownloadProtocol,
 }
 
 /// Online check result.
@@ -32,6 +48,19 @@ pub enum OnlineStatus {
     Online,
     Offline,
     Unknown,
+}
+
+/// Plugin type — determines matching priority and behavior.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Default)]
+#[serde(rename_all = "kebab-case")]
+pub enum PluginType {
+    /// Multi-hoster service (Real-Debrid, Premiumize, etc.) — highest priority when configured.
+    MultiHoster,
+    /// Site-specific extractor or hoster plugin.
+    #[default]
+    Hoster,
+    /// Generic fallback plugin (e.g. generic-http, generic-media).
+    Generic,
 }
 
 /// Metadata about a loaded plugin.
@@ -45,6 +74,9 @@ pub struct PluginMeta {
     pub enabled: bool,
     pub description: Option<String>,
     pub author: Option<String>,
+    /// Plugin type — determines matching priority.
+    #[serde(default)]
+    pub plugin_type: PluginType,
 }
 
 /// HTTP response returned to plugins.

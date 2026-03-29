@@ -318,6 +318,7 @@ mod tests {
             enabled: true,
             description: None,
             author: None,
+            plugin_type: crate::types::PluginType::default(),
         }];
 
         let updates = check_plugin_updates(&index, &installed);
@@ -354,6 +355,7 @@ mod tests {
             enabled: true,
             description: None,
             author: None,
+            plugin_type: crate::types::PluginType::default(),
         }];
 
         let updates = check_plugin_updates(&index, &installed);

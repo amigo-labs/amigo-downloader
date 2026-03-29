@@ -619,6 +619,95 @@ impl HostApi {
         }
         result
     }
+
+    // --- New Host-API extensions for plugin strategy ---
+
+    /// HTTP POST with form-encoded body (application/x-www-form-urlencoded).
+    pub async fn http_post_form(
+        &self,
+        url: &str,
+        fields: &HashMap<String, String>,
+        headers: Option<HashMap<String, String>>,
+    ) -> Result<(u16, String, HashMap<String, String>), String> {
+        self.check_request_limit().await?;
+        debug!("Plugin http_post_form: {url}");
+
+        let mut req = self.http_client.post(url).form(fields);
+        if let Some(hdrs) = headers {
+            for (k, v) in hdrs {
+                req = req.header(&k, &v);
+            }
+        }
+
+        let resp = req.send().await.map_err(|e| e.to_string())?;
+        let status = resp.status().as_u16();
+        let resp_headers: HashMap<String, String> = resp
+            .headers()
+            .iter()
+            .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
+            .collect();
+        let body = resp.text().await.map_err(|e| e.to_string())?;
+
+        Ok((status, body, resp_headers))
+    }
+
+    /// HTTP GET returning binary content as base64-encoded string.
+    pub async fn http_get_binary(
+        &self,
+        url: &str,
+        headers: Option<HashMap<String, String>>,
+    ) -> Result<String, String> {
+        self.check_request_limit().await?;
+        debug!("Plugin http_get_binary: {url}");
+
+        let mut req = self.http_client.get(url);
+        if let Some(hdrs) = headers {
+            for (k, v) in hdrs {
+                req = req.header(&k, &v);
+            }
+        }
+
+        let resp = req.send().await.map_err(|e| e.to_string())?;
+        let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+        Ok(base64_encode_bytes(&bytes))
+    }
+
+    /// Follow all redirects for a URL and return the final URL.
+    pub async fn http_follow_redirects(
+        &self,
+        url: &str,
+        headers: Option<HashMap<String, String>>,
+    ) -> Result<String, String> {
+        self.check_request_limit().await?;
+        debug!("Plugin http_follow_redirects: {url}");
+
+        let mut req = self.http_client.head(url);
+        if let Some(hdrs) = headers {
+            for (k, v) in hdrs {
+                req = req.header(&k, &v);
+            }
+        }
+
+        let resp = req.send().await.map_err(|e| e.to_string())?;
+        Ok(resp.url().to_string())
+    }
+
+    /// Get an attribute value from ALL elements matching a CSS selector.
+    pub fn html_query_all_attrs(
+        &self,
+        html: &str,
+        selector: &str,
+        attr: &str,
+    ) -> Result<Vec<String>, String> {
+        use scraper::{Html, Selector};
+        let doc = Html::parse_document(html);
+        let sel =
+            Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
+        Ok(doc
+            .select(&sel)
+            .filter_map(|el| el.value().attr(attr).map(|s| s.to_string()))
+            .collect())
+    }
 }
 
 fn parse_iso8601_duration(input: &str) -> Option<f64> {
@@ -674,6 +763,25 @@ const JS_SHIM: &str = r#"
         var resp = a.httpGet(url, opts);
         resp.data = JSON.parse(resp.body);
         return resp;
+    };
+
+    // HTTP extensions
+    a.httpPostForm = function(url, fields, opts) {
+        var hdr = (opts && opts.headers) ? JSON.stringify(opts.headers) : null;
+        return JSON.parse(a.__rawHttpPostForm(url, JSON.stringify(fields), hdr));
+    };
+    a.httpGetBinary = function(url, opts) {
+        var hdr = (opts && opts.headers) ? JSON.stringify(opts.headers) : null;
+        return a.__rawHttpGetBinary(url, hdr);
+    };
+    a.httpFollowRedirects = function(url, opts) {
+        var hdr = (opts && opts.headers) ? JSON.stringify(opts.headers) : null;
+        return a.__rawHttpFollowRedirects(url, hdr);
+    };
+
+    // HTML: batch attribute extraction
+    a.htmlQueryAllAttrs = function(html, selector, attr) {
+        return JSON.parse(a.__rawHtmlQueryAllAttrs(html, selector, attr));
     };
 
     // URL: parse returns object
@@ -1317,6 +1425,111 @@ pub fn register_host_api(
             Function::new(ctx.clone(), move |title: String, message: String| {
                 h.notify(&pid, &title, &message);
             }),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    // --- New HTTP extensions ---
+    let h = host.clone();
+    amigo
+        .set(
+            "__rawHttpPostForm",
+            Function::new(
+                ctx.clone(),
+                move |url: String,
+                      fields_json: String,
+                      headers_json: Option<String>|
+                      -> rquickjs::Result<String> {
+                    let h = h.clone();
+                    let fields: HashMap<String, String> = serde_json::from_str(&fields_json)
+                        .map_err(|e| {
+                            rquickjs::Error::new_from_js_message(
+                                "string",
+                                "Error",
+                                &format!("Invalid fields JSON: {e}"),
+                            )
+                        })?;
+                    let headers: Option<HashMap<String, String>> = headers_json
+                        .as_deref()
+                        .and_then(|s| serde_json::from_str(s).ok());
+                    let rt = tokio::runtime::Handle::current();
+                    let result = tokio::task::block_in_place(|| {
+                        rt.block_on(async { h.http_post_form(&url, &fields, headers).await })
+                    });
+                    match result {
+                        Ok((status, body, resp_headers)) => {
+                            let resp = serde_json::json!({
+                                "status": status,
+                                "body": body,
+                                "headers": resp_headers,
+                            });
+                            Ok(resp.to_string())
+                        }
+                        Err(e) => Err(rquickjs::Error::new_from_js_message("string", "Error", &e)),
+                    }
+                },
+            ),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let h = host.clone();
+    amigo
+        .set(
+            "__rawHttpGetBinary",
+            Function::new(
+                ctx.clone(),
+                move |url: String, headers_json: Option<String>| -> rquickjs::Result<String> {
+                    let h = h.clone();
+                    let headers: Option<HashMap<String, String>> = headers_json
+                        .as_deref()
+                        .and_then(|s| serde_json::from_str(s).ok());
+                    let rt = tokio::runtime::Handle::current();
+                    let result = tokio::task::block_in_place(|| {
+                        rt.block_on(async { h.http_get_binary(&url, headers).await })
+                    });
+                    result
+                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
+                },
+            ),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let h = host.clone();
+    amigo
+        .set(
+            "__rawHttpFollowRedirects",
+            Function::new(
+                ctx.clone(),
+                move |url: String, headers_json: Option<String>| -> rquickjs::Result<String> {
+                    let h = h.clone();
+                    let headers: Option<HashMap<String, String>> = headers_json
+                        .as_deref()
+                        .and_then(|s| serde_json::from_str(s).ok());
+                    let rt = tokio::runtime::Handle::current();
+                    let result = tokio::task::block_in_place(|| {
+                        rt.block_on(async { h.http_follow_redirects(&url, headers).await })
+                    });
+                    result
+                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
+                },
+            ),
+        )
+        .map_err(|e| crate::Error::Execution(e.to_string()))?;
+
+    let h = host.clone();
+    amigo
+        .set(
+            "__rawHtmlQueryAllAttrs",
+            Function::new(
+                ctx.clone(),
+                move |html: String,
+                      selector: String,
+                      attr: String|
+                      -> rquickjs::Result<String> {
+                    h.html_query_all_attrs(&html, &selector, &attr)
+                        .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()))
+                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
+                },
+            ),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
