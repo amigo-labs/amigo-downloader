@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { theme, layout, accent, currentPage, downloads, stats, pendingCaptcha, features, type Page, type CaptchaChallenge } from "./lib/stores";
+  import { theme, layout, accent, currentPage, downloads, stats, pendingCaptcha, features, updateDownloadProgress, updateDownloadStatus, type Page, type CaptchaChallenge } from "./lib/stores";
   import { addDownload, getDownloads, getStats, getFeatures, connectWebSocket, formatSpeed } from "./lib/api";
   import { addToast } from "./lib/toast";
   import Downloads from "./pages/Downloads.svelte";
@@ -65,23 +65,39 @@
 
     // Fetch initial data
     loadData();
-    const interval = setInterval(loadData, 2000);
+    // Reduced polling — WebSocket is the primary update channel
+    const interval = setInterval(loadData, 10000);
 
     // WebSocket for live updates
     connectWebSocket((msg) => {
+      if (msg.type === "progress") {
+        // Update download progress in-place without full re-fetch
+        const p = msg.data?.progress as { bytes_downloaded?: number; total_bytes?: number; speed_bytes_per_sec?: number } | undefined;
+        if (p) {
+          updateDownloadProgress(
+            msg.id,
+            p.bytes_downloaded ?? 0,
+            p.speed_bytes_per_sec ?? 0,
+            p.total_bytes ?? undefined,
+          );
+        }
+        return; // Don't re-fetch for progress events
+      }
+
       if (msg.type === "completed") {
+        updateDownloadStatus(msg.id, "completed");
         addToast("success", "Download complete", msg.data?.filename as string || msg.id);
       } else if (msg.type === "failed") {
+        updateDownloadStatus(msg.id, "failed");
         addToast("error", "Download failed", msg.data?.error as string || msg.id);
       } else if (msg.type === "captcha_challenge") {
-        // Show captcha dialog
         pendingCaptcha.set(msg.data as unknown as CaptchaChallenge);
       } else if (msg.type === "captcha_solved" || msg.type === "captcha_timeout") {
         pendingCaptcha.set(null);
       } else if (msg.type === "plugin_notification") {
         addToast("info", msg.data?.title as string || "Plugin", msg.data?.message as string);
       }
-      // Refresh data on any event
+      // Re-fetch for state-changing events (added, completed, failed, status_changed)
       loadData();
     });
 

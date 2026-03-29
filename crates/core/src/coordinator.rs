@@ -283,6 +283,22 @@ impl Coordinator {
             );
         }
 
+        // Spawn a task to forward progress from watch channel to broadcast events
+        {
+            let mut progress_rx = progress_rx.clone();
+            let event_tx = self.event_tx.clone();
+            let id = id.to_string();
+            tokio::spawn(async move {
+                while progress_rx.changed().await.is_ok() {
+                    let p = progress_rx.borrow().clone();
+                    let _ = event_tx.send(DownloadEvent::Progress {
+                        id: id.clone(),
+                        progress: p,
+                    });
+                }
+            });
+        }
+
         // Spawn the download task with retry support
         let storage = self.storage.clone();
         let event_tx = self.event_tx.clone();
