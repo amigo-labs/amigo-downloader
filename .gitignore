@@ -1,6 +1,5 @@
 # Rust
 /target/
-Cargo.lock
 
 # Node
 web-ui/node_modules/
