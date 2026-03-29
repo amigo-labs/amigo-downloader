@@ -49,6 +49,16 @@
     "error.generic": "Fehler: {message}",
     "error.file_not_found": "Datei nicht gefunden: {path}",
 
+    "usenet.servers": "Usenet-Server",
+    "usenet.servers.empty": "Keine Usenet-Server konfiguriert. Füge einen hinzu, um von Usenet herunterzuladen.",
+    "usenet.servers.add": "Server hinzufügen",
+    "usenet.servers.deleted": "Server entfernt",
+    "usenet.downloads": "Usenet-Downloads",
+    "usenet.downloads.empty": "Keine Usenet-Downloads. Importiere eine NZB-Datei oder konfiguriere einen Überwachungsordner.",
+    "usenet.downloads.import": "NZB importieren",
+    "usenet.watch_dir.set": "Überwachungsordner gesetzt",
+    "usenet.watch_dir.disabled": "Überwachungsordner deaktiviert",
+
     "confirm.yes": "Ja",
     "confirm.no": "Nein"
 }

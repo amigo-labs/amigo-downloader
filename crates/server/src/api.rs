@@ -43,9 +43,12 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/history", get(get_history))
         // Usenet endpoints
         .route("/api/v1/downloads/nzb", post(upload_nzb))
+        .route("/api/v1/downloads/usenet", get(list_usenet_downloads))
         .route("/api/v1/usenet/servers", get(list_usenet_servers))
         .route("/api/v1/usenet/servers", post(add_usenet_server))
         .route("/api/v1/usenet/servers/{id}", delete(delete_usenet_server))
+        .route("/api/v1/usenet/watch-dir", get(get_nzb_watch_dir))
+        .route("/api/v1/usenet/watch-dir", post(set_nzb_watch_dir))
         // Plugin endpoints
         .route("/api/v1/plugins", get(list_plugins))
         .route("/api/v1/plugins/{id}", patch(update_plugin))
@@ -377,7 +380,6 @@ struct NzbUploadRequest {
 }
 
 #[derive(Deserialize)]
-#[allow(dead_code)]
 struct AddUsenetServerRequest {
     name: String,
     host: String,
@@ -400,12 +402,21 @@ struct UsenetServerResponse {
     priority: u32,
 }
 
+#[derive(Deserialize)]
+struct SetWatchDirRequest {
+    path: String,
+}
+
+#[derive(Serialize)]
+struct WatchDirResponse {
+    path: String,
+}
+
 async fn upload_nzb(
     State(state): State<AppState>,
     Json(req): Json<NzbUploadRequest>,
 ) -> Result<(StatusCode, Json<AddResponse>), (StatusCode, Json<ErrorResponse>)> {
-    // Parse NZB to validate it
-    amigo_core::protocol::usenet::nzb::parse_nzb(&req.nzb_data).map_err(|e| {
+    let nzb = amigo_core::protocol::usenet::nzb::parse_nzb(&req.nzb_data).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
@@ -414,13 +425,23 @@ async fn upload_nzb(
         )
     })?;
 
-    // Add as a download with usenet protocol
+    let file_count = nzb.files.len();
+    let total_bytes: u64 = nzb.files.iter().map(|f| f.total_bytes()).sum();
+    let first_name = nzb
+        .files
+        .first()
+        .map(|f| f.filename())
+        .unwrap_or_else(|| "nzb-import".into());
+
     match state
         .coordinator
-        .add_download("nzb://upload", Some("nzb-import".into()))
+        .add_download("nzb://upload", Some(first_name))
         .await
     {
-        Ok(id) => Ok((StatusCode::CREATED, Json(AddResponse { id }))),
+        Ok(id) => {
+            tracing::info!("NZB imported: {id} ({file_count} files, {total_bytes} bytes)");
+            Ok((StatusCode::CREATED, Json(AddResponse { id })))
+        }
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(ErrorResponse {
@@ -430,33 +451,163 @@ async fn upload_nzb(
     }
 }
 
-async fn list_usenet_servers() -> Json<Vec<UsenetServerResponse>> {
-    // TODO: Load from config/database
-    Json(Vec::new())
+async fn list_usenet_downloads(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<DownloadResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    let rows = state
+        .coordinator
+        .storage()
+        .list_downloads_by_protocol("usenet")
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+
+    let downloads = rows.into_iter().map(row_to_response).collect();
+    Ok(Json(downloads))
+}
+
+async fn list_usenet_servers(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<UsenetServerResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    let rows = state
+        .coordinator
+        .storage()
+        .list_usenet_servers()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+
+    let servers = rows
+        .into_iter()
+        .map(|r| UsenetServerResponse {
+            id: r.id,
+            name: r.name,
+            host: r.host,
+            port: r.port,
+            ssl: r.ssl,
+            connections: r.connections,
+            priority: r.priority,
+        })
+        .collect();
+    Ok(Json(servers))
 }
 
 async fn add_usenet_server(
-    Json(_req): Json<AddUsenetServerRequest>,
+    State(state): State<AppState>,
+    Json(req): Json<AddUsenetServerRequest>,
 ) -> Result<(StatusCode, Json<UsenetServerResponse>), (StatusCode, Json<ErrorResponse>)> {
-    // TODO: Persist to config/database
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse {
-            error: "Not yet implemented".into(),
+    let id = uuid::Uuid::new_v4().to_string();
+    let row = amigo_core::storage::UsenetServerRow {
+        id: id.clone(),
+        name: req.name.clone(),
+        host: req.host.clone(),
+        port: req.port,
+        ssl: req.ssl,
+        username: req.username,
+        password: req.password,
+        connections: req.connections,
+        priority: req.priority,
+        created_at: String::new(),
+    };
+
+    state
+        .coordinator
+        .storage()
+        .insert_usenet_server(&row)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+
+    Ok((
+        StatusCode::CREATED,
+        Json(UsenetServerResponse {
+            id,
+            name: req.name,
+            host: req.host,
+            port: req.port,
+            ssl: req.ssl,
+            connections: req.connections,
+            priority: req.priority,
         }),
     ))
 }
 
 async fn delete_usenet_server(
-    Path(_id): Path<String>,
+    State(state): State<AppState>,
+    Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    // TODO: Remove from config/database
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse {
-            error: "Not yet implemented".into(),
-        }),
-    ))
+    state
+        .coordinator
+        .storage()
+        .delete_usenet_server(&id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn get_nzb_watch_dir(
+    State(state): State<AppState>,
+) -> Result<Json<WatchDirResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let path = state
+        .coordinator
+        .storage()
+        .get_update_state("nzb_watch_dir")
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?
+        .unwrap_or_default();
+    Ok(Json(WatchDirResponse { path }))
+}
+
+async fn set_nzb_watch_dir(
+    State(state): State<AppState>,
+    Json(req): Json<SetWatchDirRequest>,
+) -> Result<Json<WatchDirResponse>, (StatusCode, Json<ErrorResponse>)> {
+    state
+        .coordinator
+        .storage()
+        .set_update_state("nzb_watch_dir", &req.path)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
+    Ok(Json(WatchDirResponse { path: req.path }))
 }
 
 // --- Captcha handlers ---

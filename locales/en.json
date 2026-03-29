@@ -49,6 +49,16 @@
     "error.generic": "Error: {message}",
     "error.file_not_found": "File not found: {path}",
 
+    "usenet.servers": "Usenet Servers",
+    "usenet.servers.empty": "No Usenet servers configured. Add a server to start downloading from Usenet.",
+    "usenet.servers.add": "Add Server",
+    "usenet.servers.deleted": "Server removed",
+    "usenet.downloads": "Usenet Downloads",
+    "usenet.downloads.empty": "No Usenet downloads. Import an NZB file or configure a watch folder.",
+    "usenet.downloads.import": "Import NZB",
+    "usenet.watch_dir.set": "Watch folder set",
+    "usenet.watch_dir.disabled": "Watch folder disabled",
+
     "confirm.yes": "Yes",
     "confirm.no": "No"
 }

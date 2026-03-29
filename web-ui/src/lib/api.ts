@@ -205,6 +205,51 @@ export function connectWebSocket(
 }
 
 // ========================================
+// USENET
+// ========================================
+
+export async function getUsenetServers() {
+  const res = await fetch(`${API_BASE}/usenet/servers`);
+  return res.json();
+}
+
+export async function addUsenetServer(server: {
+  name: string; host: string; port: number; ssl: boolean;
+  username: string; password: string; connections: number; priority: number;
+}) {
+  const res = await fetch(`${API_BASE}/usenet/servers`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(server),
+  });
+  if (!res.ok) throw new Error((await res.json()).error);
+  return res.json();
+}
+
+export async function deleteUsenetServer(id: string) {
+  return fetch(`${API_BASE}/usenet/servers/${id}`, { method: "DELETE" });
+}
+
+export async function getUsenetDownloads() {
+  const res = await fetch(`${API_BASE}/downloads/usenet`);
+  return res.json();
+}
+
+export async function getNzbWatchDir(): Promise<{ path: string }> {
+  const res = await fetch(`${API_BASE}/usenet/watch-dir`);
+  return res.json();
+}
+
+export async function setNzbWatchDir(path: string) {
+  const res = await fetch(`${API_BASE}/usenet/watch-dir`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ path }),
+  });
+  return res.json();
+}
+
+// ========================================
 // HELPERS
 // ========================================
 

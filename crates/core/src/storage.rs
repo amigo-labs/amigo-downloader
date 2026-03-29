@@ -85,8 +85,22 @@ CREATE TABLE IF NOT EXISTS update_state (
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+CREATE TABLE IF NOT EXISTS usenet_servers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    host TEXT NOT NULL,
+    port INTEGER NOT NULL DEFAULT 563,
+    ssl INTEGER NOT NULL DEFAULT 1,
+    username TEXT NOT NULL DEFAULT '',
+    password TEXT NOT NULL DEFAULT '',
+    connections INTEGER NOT NULL DEFAULT 10,
+    priority INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_downloads_package ON downloads(package_id);
+CREATE INDEX IF NOT EXISTS idx_downloads_protocol ON downloads(protocol);
 CREATE INDEX IF NOT EXISTS idx_chunks_download ON chunks(download_id);
 CREATE INDEX IF NOT EXISTS idx_history_completed ON history(completed_at);
 "#;
@@ -110,6 +124,20 @@ pub struct DownloadRow {
     pub created_at: String,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UsenetServerRow {
+    pub id: String,
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+    pub ssl: bool,
+    pub username: String,
+    pub password: String,
+    pub connections: u32,
+    pub priority: u32,
+    pub created_at: String,
 }
 
 #[derive(Clone)]
@@ -307,6 +335,70 @@ impl Storage {
         )?;
         Ok(())
     }
+
+    // --- Usenet servers ---
+
+    pub async fn list_usenet_servers(&self) -> Result<Vec<UsenetServerRow>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare(
+            "SELECT id, name, host, port, ssl, username, password, connections, priority, created_at
+             FROM usenet_servers ORDER BY priority ASC, name ASC",
+        )?;
+        let rows = stmt.query_map([], row_to_usenet_server)?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    pub async fn insert_usenet_server(&self, row: &UsenetServerRow) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "INSERT INTO usenet_servers (id, name, host, port, ssl, username, password, connections, priority)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                row.id, row.name, row.host, row.port as i64, row.ssl as i64,
+                row.username, row.password, row.connections as i64, row.priority as i64,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub async fn delete_usenet_server(&self, id: &str) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "DELETE FROM usenet_servers WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+        Ok(())
+    }
+
+    pub async fn list_downloads_by_protocol(
+        &self,
+        protocol: &str,
+    ) -> Result<Vec<DownloadRow>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare(
+            "SELECT id, url, protocol, filename, filesize, status, priority, package_id, plugin_id,
+                    download_dir, bytes_downloaded, speed_current, error_message, retry_count,
+                    created_at, started_at, completed_at
+             FROM downloads WHERE protocol = ?1 ORDER BY created_at DESC",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![protocol], row_to_download)?;
+        Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+}
+
+fn row_to_usenet_server(row: &rusqlite::Row<'_>) -> rusqlite::Result<UsenetServerRow> {
+    Ok(UsenetServerRow {
+        id: row.get(0)?,
+        name: row.get(1)?,
+        host: row.get(2)?,
+        port: row.get::<_, i64>(3)? as u16,
+        ssl: row.get::<_, i64>(4)? != 0,
+        username: row.get(5)?,
+        password: row.get(6)?,
+        connections: row.get::<_, i64>(7)? as u32,
+        priority: row.get::<_, i64>(8)? as u32,
+        created_at: row.get(9)?,
+    })
 }
 
 fn row_to_download(row: &rusqlite::Row<'_>) -> rusqlite::Result<DownloadRow> {

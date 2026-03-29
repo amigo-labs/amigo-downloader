@@ -5,6 +5,8 @@
   import { addToast } from "./lib/toast";
   import Downloads from "./pages/Downloads.svelte";
   import Queue from "./pages/Queue.svelte";
+  import UsenetDownloads from "./pages/UsenetDownloads.svelte";
+  import UsenetServers from "./pages/UsenetServers.svelte";
   import Plugins from "./pages/Plugins.svelte";
   import History from "./pages/History.svelte";
   import Settings from "./pages/Settings.svelte";
@@ -36,6 +38,8 @@
   const navItems: { id: Page; label: string; icon: string }[] = [
     { id: "downloads", label: "Downloads", icon: "arrow-down" },
     { id: "queue", label: "Queue", icon: "list" },
+    { id: "usenet-downloads", label: "Usenet", icon: "newspaper" },
+    { id: "usenet-servers", label: "Servers", icon: "server" },
     { id: "plugins", label: "Plugins", icon: "puzzle" },
     { id: "history", label: "History", icon: "clock" },
     { id: "settings", label: "Settings", icon: "gear" },
@@ -273,6 +277,10 @@
             <Downloads />
           {:else if $currentPage === "queue"}
             <Queue />
+          {:else if $currentPage === "usenet-downloads"}
+            <UsenetDownloads />
+          {:else if $currentPage === "usenet-servers"}
+            <UsenetServers />
           {:else if $currentPage === "plugins"}
             <Plugins />
           {:else if $currentPage === "history"}
@@ -314,6 +322,12 @@
       <path d="M12 4v16m0 0l-6-6m6 6l6-6" />
     {:else if name === "list"}
       <path d="M4 6h16M4 12h16M4 18h16" />
+    {:else if name === "newspaper"}
+      <path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2zM7 7h10M7 11h4m-4 4h10" />
+    {:else if name === "server"}
+      <path d="M5 4h14a2 2 0 012 2v2a2 2 0 01-2 2H5a2 2 0 01-2-2V6a2 2 0 012-2zm0 8h14a2 2 0 012 2v2a2 2 0 01-2 2H5a2 2 0 01-2-2v-2a2 2 0 012-2z" />
+      <circle cx="7" cy="7" r="1" fill="currentColor" />
+      <circle cx="7" cy="15" r="1" fill="currentColor" />
     {:else if name === "puzzle"}
       <path d="M11 4a2 2 0 114 0v1a1 1 0 001 1h3a2 2 0 012 2v3a1 1 0 01-1 1 2 2 0 100 4 1 1 0 011 1v3a2 2 0 01-2 2h-3a1 1 0 01-1-1 2 2 0 10-4 0 1 1 0 01-1 1H7a2 2 0 01-2-2v-3a1 1 0 011-1 2 2 0 100-4 1 1 0 01-1-1V7a2 2 0 012-2h3a1 1 0 001-1V4z" />
     {:else if name === "clock"}

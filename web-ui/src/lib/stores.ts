@@ -72,7 +72,7 @@ export const accent = createAccentStore();
 // NAVIGATION
 // ========================================
 
-export type Page = "downloads" | "queue" | "plugins" | "history" | "settings";
+export type Page = "downloads" | "queue" | "usenet-downloads" | "usenet-servers" | "plugins" | "history" | "settings";
 export const currentPage = writable<Page>("downloads");
 
 // ========================================
@@ -133,3 +133,20 @@ export interface CaptchaChallenge {
 }
 
 export const pendingCaptcha = writable<CaptchaChallenge | null>(null);
+
+// ========================================
+// USENET
+// ========================================
+
+export interface UsenetServer {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  ssl: boolean;
+  connections: number;
+  priority: number;
+}
+
+export const usenetServers = writable<UsenetServer[]>([]);
+export const usenetDownloads = writable<Download[]>([]);
