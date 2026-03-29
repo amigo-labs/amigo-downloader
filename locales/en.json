@@ -71,6 +71,11 @@
     "features.enabled": "Feature enabled",
     "features.disabled": "Feature disabled",
 
+    "postprocess.updated": "Post-processing settings updated",
+    "postprocess.par2_repair": "PAR2 Verify & Repair",
+    "postprocess.selective_par2": "Selective PAR2",
+    "postprocess.sequential": "Sequential Mode (low-power)",
+
     "confirm.yes": "Yes",
     "confirm.no": "No"
 }

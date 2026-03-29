@@ -107,6 +107,19 @@ pub struct UsenetProcessingConfig {
     pub auto_unrar: bool,
     pub delete_archives_after_extract: bool,
     pub delete_par2_after_repair: bool,
+    /// Selective PAR2: only download recovery volumes when repair is needed.
+    /// When false, all PAR2 files (including .vol*.par2) are downloaded upfront.
+    #[serde(default = "default_true_fn")]
+    pub selective_par2: bool,
+    /// Run PAR2 verify/repair and archive extraction sequentially (one after another).
+    /// Enable on low-power devices (Raspberry Pi) to reduce CPU/memory pressure.
+    /// When false, PAR2 and extraction run in parallel where possible.
+    #[serde(default)]
+    pub sequential_postprocess: bool,
+}
+
+fn default_true_fn() -> bool {
+    true
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -155,6 +168,8 @@ impl Default for UsenetProcessingConfig {
             auto_unrar: true,
             delete_archives_after_extract: true,
             delete_par2_after_repair: true,
+            selective_par2: true,
+            sequential_postprocess: false,
         }
     }
 }

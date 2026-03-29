@@ -1,4 +1,5 @@
 mod api;
+mod background;
 mod clicknload;
 mod feedback;
 mod nzbget_api;
@@ -135,9 +136,12 @@ async fn main() -> anyhow::Result<()> {
         .merge(ws::ws_router(state.clone()))
         .merge(update_api::update_router(state.clone()))
         .merge(nzbget_api::nzbget_router(state.clone()))
-        .merge(feedback::feedback_router(state, feedback_limiter))
+        .merge(feedback::feedback_router(state.clone(), feedback_limiter))
         .merge(static_files::static_router())
         .layer(CorsLayer::permissive());
+
+    // Start background tasks (NZB watch folder, RSS poller)
+    background::spawn_background_tasks(coordinator.clone(), state.http_client.clone());
 
     // Start Click'n'Load listener on port 9666 in background
     let cnl_coordinator = coordinator.clone();

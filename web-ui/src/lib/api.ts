@@ -250,6 +250,33 @@ export async function setNzbWatchDir(path: string) {
 }
 
 // ========================================
+// USENET PROCESSING CONFIG
+// ========================================
+
+export interface UsenetProcessing {
+  par2_repair: boolean;
+  auto_unrar: boolean;
+  delete_archives_after_extract: boolean;
+  delete_par2_after_repair: boolean;
+  selective_par2: boolean;
+  sequential_postprocess: boolean;
+}
+
+export async function getUsenetProcessing(): Promise<UsenetProcessing> {
+  const res = await fetch(`${API_BASE}/usenet/processing`);
+  return res.json();
+}
+
+export async function updateUsenetProcessing(config: UsenetProcessing) {
+  const res = await fetch(`${API_BASE}/usenet/processing`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(config),
+  });
+  return res.json();
+}
+
+// ========================================
 // FEATURE FLAGS
 // ========================================
 

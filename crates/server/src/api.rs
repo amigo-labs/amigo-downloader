@@ -51,6 +51,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/usenet/servers/{id}", delete(delete_usenet_server))
         .route("/api/v1/usenet/watch-dir", get(get_nzb_watch_dir))
         .route("/api/v1/usenet/watch-dir", post(set_nzb_watch_dir))
+        // Usenet processing config
+        .route("/api/v1/usenet/processing", get(get_usenet_processing))
+        .route("/api/v1/usenet/processing", patch(update_usenet_processing))
         // Feature flags
         .route("/api/v1/features", get(get_features))
         .route("/api/v1/features", patch(update_features))
@@ -676,6 +679,50 @@ async fn set_nzb_watch_dir(
             )
         })?;
     Ok(Json(WatchDirResponse { path: req.path }))
+}
+
+// --- Usenet processing config ---
+
+#[derive(Serialize, Deserialize)]
+struct UsenetProcessingResponse {
+    par2_repair: bool,
+    auto_unrar: bool,
+    delete_archives_after_extract: bool,
+    delete_par2_after_repair: bool,
+    selective_par2: bool,
+    sequential_postprocess: bool,
+}
+
+async fn get_usenet_processing(State(state): State<AppState>) -> Json<UsenetProcessingResponse> {
+    let c = &state.coordinator.config().usenet;
+    Json(UsenetProcessingResponse {
+        par2_repair: c.par2_repair,
+        auto_unrar: c.auto_unrar,
+        delete_archives_after_extract: c.delete_archives_after_extract,
+        delete_par2_after_repair: c.delete_par2_after_repair,
+        selective_par2: c.selective_par2,
+        sequential_postprocess: c.sequential_postprocess,
+    })
+}
+
+async fn update_usenet_processing(
+    State(state): State<AppState>,
+    Json(req): Json<UsenetProcessingResponse>,
+) -> Result<Json<UsenetProcessingResponse>, (StatusCode, Json<ErrorResponse>)> {
+    // Persist to update_state (read on next pipeline run)
+    let val = serde_json::to_string(&req).unwrap_or_default();
+    state
+        .coordinator
+        .storage()
+        .set_update_state("usenet_processing", &val)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse { error: e.to_string() }),
+            )
+        })?;
+    Ok(Json(req))
 }
 
 // --- Feature flags ---

@@ -159,6 +159,7 @@ dependencies = [
  "hex",
  "hmac",
  "mime_guess",
+ "regex",
  "reqwest",
  "rust-embed",
  "serde",

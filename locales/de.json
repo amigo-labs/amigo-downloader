@@ -71,6 +71,11 @@
     "features.enabled": "Feature aktiviert",
     "features.disabled": "Feature deaktiviert",
 
+    "postprocess.updated": "Nachbearbeitungs-Einstellungen aktualisiert",
+    "postprocess.par2_repair": "PAR2 Prüfung & Reparatur",
+    "postprocess.selective_par2": "Selektives PAR2",
+    "postprocess.sequential": "Sequenzieller Modus (energiesparend)",
+
     "confirm.yes": "Ja",
     "confirm.no": "Nein"
 }
