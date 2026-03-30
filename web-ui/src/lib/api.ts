@@ -3,80 +3,72 @@
 const API_BASE = "/api/v1";
 
 // ========================================
+// UNIFIED REQUEST HELPER
+// ========================================
+
+export class ApiError extends Error {
+  constructor(
+    public status: number,
+    public body: { error?: string },
+  ) {
+    super(body?.error || `HTTP ${status}`);
+    this.name = "ApiError";
+  }
+}
+
+async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
+  const opts: RequestInit = { method };
+  if (body !== undefined) {
+    opts.headers = { "Content-Type": "application/json" };
+    opts.body = JSON.stringify(body);
+  }
+  const res = await fetch(`${API_BASE}${path}`, opts);
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({}));
+    throw new ApiError(res.status, errorBody);
+  }
+  if (res.status === 204) return undefined as T;
+  return res.json();
+}
+
+// ========================================
 // REST API
 // ========================================
 
-export async function getStatus() {
-  const res = await fetch(`${API_BASE}/status`);
-  return res.json();
+export const getStatus = () => api<{ status: string; version: string }>("GET", "/status");
+export const getStats = () => api<{ active_downloads: number; speed_bytes_per_sec: number; queued: number; completed: number }>("GET", "/stats");
+export const getDownloads = () => api<Download[]>("GET", "/downloads");
+export const addDownload = (url: string, filename?: string) => api<{ id: string }>("POST", "/downloads", { url, filename });
+export const addBatch = (urls: string[]) => api<{ ids: string[] }>("POST", "/downloads/batch", { urls });
+export const pauseDownload = (id: string) => api<void>("PATCH", `/downloads/${id}`, { action: "pause" });
+export const resumeDownload = (id: string) => api<void>("PATCH", `/downloads/${id}`, { action: "resume" });
+export const deleteDownload = (id: string) => api<void>("DELETE", `/downloads/${id}`);
+export const getQueue = () => api<Download[]>("GET", "/queue");
+export const getHistory = () => api<Download[]>("GET", "/history");
+export const getPlugins = () => api<Plugin[]>("GET", "/plugins");
+export const checkUpdates = () => api<unknown>("GET", "/updates/check");
+export const getSystemInfo = () => api<unknown>("GET", "/system-info");
+
+export interface Download {
+  id: string;
+  url: string;
+  protocol: string;
+  filename: string | null;
+  filesize: number | null;
+  status: string;
+  priority: number;
+  bytes_downloaded: number;
+  speed: number;
+  error: string | null;
+  created_at: string;
 }
 
-export async function getStats() {
-  const res = await fetch(`${API_BASE}/stats`);
-  return res.json();
-}
-
-export async function getDownloads() {
-  const res = await fetch(`${API_BASE}/downloads`);
-  return res.json();
-}
-
-export async function addDownload(url: string, filename?: string) {
-  const res = await fetch(`${API_BASE}/downloads`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url, filename }),
-  });
-  return res.json();
-}
-
-export async function addBatch(urls: string[]) {
-  const res = await fetch(`${API_BASE}/downloads/batch`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ urls }),
-  });
-  return res.json();
-}
-
-export async function pauseDownload(id: string) {
-  return fetch(`${API_BASE}/downloads/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "pause" }),
-  });
-}
-
-export async function resumeDownload(id: string) {
-  return fetch(`${API_BASE}/downloads/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action: "resume" }),
-  });
-}
-
-export async function deleteDownload(id: string) {
-  return fetch(`${API_BASE}/downloads/${id}`, { method: "DELETE" });
-}
-
-export async function getQueue() {
-  const res = await fetch(`${API_BASE}/queue`);
-  return res.json();
-}
-
-export async function getHistory() {
-  const res = await fetch(`${API_BASE}/history`);
-  return res.json();
-}
-
-export async function getPlugins() {
-  const res = await fetch(`${API_BASE}/plugins`);
-  return res.json();
-}
-
-export async function checkUpdates() {
-  const res = await fetch(`${API_BASE}/updates/check`);
-  return res.json();
+interface Plugin {
+  id: string;
+  name: string;
+  version: string;
+  url_pattern: string;
+  enabled: boolean;
 }
 
 export async function importDlc(file: File) {
@@ -86,90 +78,37 @@ export async function importDlc(file: File) {
     method: "POST",
     body: formData,
   });
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => ({})));
   return res.json();
 }
 
-export async function uploadNzb(nzbData: string) {
-  const res = await fetch(`${API_BASE}/downloads/nzb`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ nzb_data: nzbData }),
-  });
-  return res.json();
-}
+export const uploadNzb = (nzbData: string) => api<{ id: string }>("POST", "/downloads/nzb", { nzb_data: nzbData });
 
-export async function getSystemInfo() {
-  const res = await fetch(`${API_BASE}/system-info`);
-  return res.json();
-}
-
-export async function submitFeedback(data: {
+export const submitFeedback = (data: {
   type: "bug" | "feature" | "crash";
   title: string;
   description: string;
   include_system_info?: boolean;
   error_context?: { download_id?: string; error_message?: string; url?: string };
-}) {
-  const res = await fetch(`${API_BASE}/feedback`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(data),
-  });
-  return res.json();
-}
+}) => api<unknown>("POST", "/feedback", data);
 
 // ========================================
 // CAPTCHA
 // ========================================
 
-export async function getPendingCaptchas() {
-  const res = await fetch(`${API_BASE}/captcha/pending`);
-  return res.json();
-}
-
-export async function solveCaptcha(id: string, answer: string) {
-  return fetch(`${API_BASE}/captcha/${id}/solve`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ answer }),
-  });
-}
-
-export async function cancelCaptcha(id: string) {
-  return fetch(`${API_BASE}/captcha/${id}/cancel`, { method: "POST" });
-}
+export const getPendingCaptchas = () => api<unknown[]>("GET", "/captcha/pending");
+export const solveCaptcha = (id: string, answer: string) => api<void>("POST", `/captcha/${id}/solve`, { answer });
+export const cancelCaptcha = (id: string) => api<void>("POST", `/captcha/${id}/cancel`);
 
 // ========================================
 // WEBHOOKS
 // ========================================
 
-export async function getWebhooks() {
-  const res = await fetch(`${API_BASE}/webhooks`);
-  return res.json();
-}
-
-export async function createWebhook(webhook: {
-  name: string;
-  url: string;
-  secret?: string;
-  events: string[];
-}) {
-  const res = await fetch(`${API_BASE}/webhooks`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(webhook),
-  });
-  return res.json();
-}
-
-export async function deleteWebhook(id: string) {
-  return fetch(`${API_BASE}/webhooks/${id}`, { method: "DELETE" });
-}
-
-export async function testWebhook(id: string) {
-  const res = await fetch(`${API_BASE}/webhooks/${id}/test`, { method: "POST" });
-  return res.json();
-}
+export const getWebhooks = () => api<any[]>("GET", "/webhooks");
+export const createWebhook = (webhook: { name: string; url: string; secret?: string; events: string[] }) =>
+  api<unknown>("POST", "/webhooks", webhook);
+export const deleteWebhook = (id: string) => api<void>("DELETE", `/webhooks/${id}`);
+export const testWebhook = (id: string) => api<{ status: number }>("POST", `/webhooks/${id}/test`);
 
 // ========================================
 // WEBSOCKET
@@ -184,70 +123,50 @@ export type WsMessage = {
 export function connectWebSocket(
   onMessage: (msg: WsMessage) => void
 ): WebSocket {
-  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-  const ws = new WebSocket(`${protocol}//${window.location.host}${API_BASE}/ws`);
+  let reconnectDelay = 1000;
 
-  ws.onmessage = (event) => {
-    try {
-      const msg = JSON.parse(event.data) as WsMessage;
-      onMessage(msg);
-    } catch {
-      // ignore parse errors
-    }
-  };
+  function connect(): WebSocket {
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const ws = new WebSocket(`${protocol}//${window.location.host}${API_BASE}/ws`);
 
-  ws.onclose = () => {
-    // Auto-reconnect after 3s
-    setTimeout(() => connectWebSocket(onMessage), 3000);
-  };
+    ws.onopen = () => {
+      reconnectDelay = 1000; // Reset backoff on successful connect
+    };
 
-  return ws;
+    ws.onmessage = (event) => {
+      try {
+        const msg = JSON.parse(event.data) as WsMessage;
+        onMessage(msg);
+      } catch {
+        // ignore parse errors
+      }
+    };
+
+    ws.onclose = () => {
+      // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
+      setTimeout(() => connect(), reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, 30000);
+    };
+
+    return ws;
+  }
+
+  return connect();
 }
 
 // ========================================
 // USENET
 // ========================================
 
-export async function getUsenetServers() {
-  const res = await fetch(`${API_BASE}/usenet/servers`);
-  return res.json();
-}
-
-export async function addUsenetServer(server: {
+export const getUsenetServers = () => api<any[]>("GET", "/usenet/servers");
+export const addUsenetServer = (server: {
   name: string; host: string; port: number; ssl: boolean;
   username: string; password: string; connections: number; priority: number;
-}) {
-  const res = await fetch(`${API_BASE}/usenet/servers`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(server),
-  });
-  if (!res.ok) throw new Error((await res.json()).error);
-  return res.json();
-}
-
-export async function deleteUsenetServer(id: string) {
-  return fetch(`${API_BASE}/usenet/servers/${id}`, { method: "DELETE" });
-}
-
-export async function getUsenetDownloads() {
-  const res = await fetch(`${API_BASE}/downloads/usenet`);
-  return res.json();
-}
-
-export async function getNzbWatchDir(): Promise<{ path: string }> {
-  const res = await fetch(`${API_BASE}/usenet/watch-dir`);
-  return res.json();
-}
-
-export async function setNzbWatchDir(path: string) {
-  const res = await fetch(`${API_BASE}/usenet/watch-dir`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path }),
-  });
-  return res.json();
-}
+}) => api<unknown>("POST", "/usenet/servers", server);
+export const deleteUsenetServer = (id: string) => api<void>("DELETE", `/usenet/servers/${id}`);
+export const getUsenetDownloads = () => api<Download[]>("GET", "/downloads/usenet");
+export const getNzbWatchDir = () => api<{ path: string }>("GET", "/usenet/watch-dir");
+export const setNzbWatchDir = (path: string) => api<{ path: string }>("POST", "/usenet/watch-dir", { path });
 
 // ========================================
 // UNIFIED CONFIG
@@ -291,44 +210,17 @@ export interface AppConfig {
   [key: string]: unknown;
 }
 
-export async function getConfig(): Promise<AppConfig> {
-  const res = await fetch(`${API_BASE}/config`);
-  return res.json();
-}
-
-export async function putConfig(config: AppConfig): Promise<AppConfig> {
-  const res = await fetch(`${API_BASE}/config`, {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(config),
-  });
-  return res.json();
-}
+export const getConfig = () => api<AppConfig>("GET", "/config");
+export const putConfig = (config: AppConfig) => api<AppConfig>("PUT", "/config", config);
 
 // ========================================
 // RSS FEEDS
 // ========================================
 
-export async function getRssFeeds() {
-  const res = await fetch(`${API_BASE}/rss`);
-  return res.json();
-}
-
-export async function addRssFeed(feed: {
-  name: string; url: string; category: string; interval_minutes: number;
-}) {
-  const res = await fetch(`${API_BASE}/rss`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(feed),
-  });
-  if (!res.ok) throw new Error((await res.json()).error);
-  return res.json();
-}
-
-export async function deleteRssFeed(id: string) {
-  return fetch(`${API_BASE}/rss/${id}`, { method: "DELETE" });
-}
+export const getRssFeeds = () => api<any[]>("GET", "/rss");
+export const addRssFeed = (feed: { name: string; url: string; category: string; interval_minutes: number }) =>
+  api<unknown>("POST", "/rss", feed);
+export const deleteRssFeed = (id: string) => api<void>("DELETE", `/rss/${id}`);
 
 // ========================================
 // HELPERS

@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { theme, layout, accent, currentPage, downloads, stats, pendingCaptcha, features, updateDownloadProgress, updateDownloadStatus, type Page, type CaptchaChallenge } from "./lib/stores";
-  import { addDownload, getDownloads, getStats, getFeatures, connectWebSocket, formatSpeed } from "./lib/api";
+  import { addDownload, getDownloads, getStats, getConfig, connectWebSocket, formatSpeed } from "./lib/api";
   import { addToast } from "./lib/toast";
   import Downloads from "./pages/Downloads.svelte";
   import Queue from "./pages/Queue.svelte";
@@ -139,10 +139,10 @@
 
   async function loadData() {
     try {
-      const [dl, st, feat] = await Promise.all([getDownloads(), getStats(), getFeatures()]);
+      const [dl, st, cfg] = await Promise.all([getDownloads(), getStats(), getConfig()]);
       downloads.set(dl);
       stats.set(st);
-      features.set(feat);
+      if (cfg?.features) features.set(cfg.features);
 
       // Track speed history (last 30 samples)
       speedHistory = [...speedHistory.slice(-29), st.speed_bytes_per_sec];
