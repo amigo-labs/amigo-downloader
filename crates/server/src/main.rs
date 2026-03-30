@@ -95,19 +95,9 @@ async fn main() -> anyhow::Result<()> {
     let discovered = plugin_loader.discover().await.unwrap_or_default();
     tracing::info!("Loaded {} plugins", discovered.len());
 
-    // Wire URL resolvers: plugins first, then native extractors, then raw URL fallback
+    // Wire URL resolvers: plugins handle all URL resolution (YouTube, generic-http, etc.)
     let plugin_resolver = resolver::PluginUrlResolver::new(plugin_loader.clone());
-    let extractor_resolver = resolver::ExtractorUrlResolver::new(
-        vec![
-            std::sync::Arc::new(amigo_extractors::youtube::YoutubeExtractor),
-            std::sync::Arc::new(amigo_extractors::GenericExtractor),
-        ],
-        http_client.clone(),
-    );
-    coordinator.set_resolvers(vec![
-        std::sync::Arc::new(plugin_resolver),
-        std::sync::Arc::new(extractor_resolver),
-    ]);
+    coordinator.set_resolvers(vec![std::sync::Arc::new(plugin_resolver)]);
 
     let coordinator = std::sync::Arc::new(coordinator);
 

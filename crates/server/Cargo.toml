@@ -11,7 +11,6 @@ path = "src/main.rs"
 [dependencies]
 amigo-core = { workspace = true }
 amigo-plugin-runtime = { workspace = true }
-amigo-extractors = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
