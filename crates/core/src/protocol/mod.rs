@@ -30,6 +30,10 @@ pub struct DownloadJob {
     pub filename: Option<String>,
     /// Extra headers (e.g. Referer, Authorization from plugin resolution).
     pub headers: HashMap<String, String>,
+    /// HTTP-specific: max parallel chunks (0 = auto).
+    pub max_chunks: u32,
+    /// HTTP-specific: user agent string.
+    pub user_agent: String,
 }
 
 /// Unified trait for all protocol backends.

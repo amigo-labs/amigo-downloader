@@ -371,6 +371,61 @@ fn parse_content_disposition_filename(header: &str) -> Option<String> {
     None
 }
 
+#[async_trait::async_trait]
+impl super::ProtocolBackend for HttpDownloader {
+    fn protocol(&self) -> super::Protocol {
+        super::Protocol::Http
+    }
+
+    async fn download(
+        &self,
+        job: &super::DownloadJob,
+        progress_tx: watch::Sender<DownloadProgress>,
+        cancel_rx: tokio::sync::oneshot::Receiver<()>,
+    ) -> Result<(u64, std::path::PathBuf), crate::Error> {
+        let head = self.head(&job.url).await?;
+
+        let fname = job
+            .filename
+            .clone()
+            .or(head.filename.clone())
+            .unwrap_or_else(|| {
+                job.url
+                    .rsplit('/')
+                    .next()
+                    .and_then(|s| s.split('?').next())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("download")
+                    .to_string()
+            });
+
+        let dest = job.download_dir.join(&fname);
+        tokio::fs::create_dir_all(&job.download_dir).await?;
+        tokio::fs::create_dir_all(&job.temp_dir).await?;
+
+        let use_chunked = head.accepts_ranges
+            && head.content_length.is_some_and(|s| s > 1024 * 1024)
+            && job.max_chunks > 1;
+
+        if use_chunked {
+            let total = head.content_length.unwrap();
+            let chunks = job.max_chunks.min((total / (512 * 1024)).max(1) as u32);
+            let chunk_dir = job.temp_dir.join(&fname);
+            tokio::fs::create_dir_all(&chunk_dir).await?;
+
+            tokio::select! {
+                result = self.download_chunked(&job.url, &dest, &chunk_dir, total, chunks, progress_tx) => result.map(|bytes| (bytes, dest)),
+                _ = cancel_rx => Err(crate::Error::Other("Download cancelled".into())),
+            }
+        } else {
+            tokio::select! {
+                result = self.download_single(&job.url, &dest, progress_tx) => result.map(|bytes| (bytes, dest)),
+                _ = cancel_rx => Err(crate::Error::Other("Download cancelled".into())),
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

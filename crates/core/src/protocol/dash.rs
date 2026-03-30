@@ -333,3 +333,32 @@ pub fn is_dash_url(url: &str) -> bool {
     let path = url.split('?').next().unwrap_or(url);
     path.ends_with(".mpd")
 }
+
+#[async_trait::async_trait]
+impl super::ProtocolBackend for DashDownloader {
+    fn protocol(&self) -> super::Protocol {
+        super::Protocol::Dash
+    }
+
+    async fn download(
+        &self,
+        job: &super::DownloadJob,
+        progress_tx: watch::Sender<DownloadProgress>,
+        cancel_rx: tokio::sync::oneshot::Receiver<()>,
+    ) -> Result<(u64, std::path::PathBuf), crate::Error> {
+        let fname = job
+            .filename
+            .clone()
+            .unwrap_or_else(|| {
+                job.url.rsplit('/').next().unwrap_or("stream").to_string()
+                    .replace(".mpd", ".mp4")
+            });
+        let dest = job.download_dir.join(&fname);
+        tokio::fs::create_dir_all(&job.download_dir).await?;
+
+        tokio::select! {
+            result = self.download(&job.url, &dest, progress_tx) => result.map(|bytes| (bytes, dest)),
+            _ = cancel_rx => Err(crate::Error::Other("Download cancelled".into())),
+        }
+    }
+}
