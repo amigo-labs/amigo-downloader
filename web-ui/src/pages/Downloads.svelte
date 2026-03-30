@@ -7,11 +7,21 @@
 
   let filter = $state<string>("all");
 
+  const statusOrder: Record<string, number> = {
+    downloading: 0,
+    paused: 1,
+    queued: 2,
+    completed: 3,
+    failed: 4,
+  };
+
   let filtered = $derived(
-    $downloads.filter((d) => {
-      if (filter === "all") return true;
-      return d.status === filter;
-    })
+    $downloads
+      .filter((d) => {
+        if (filter === "all") return true;
+        return d.status === filter;
+      })
+      .sort((a, b) => (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99))
   );
 </script>
 

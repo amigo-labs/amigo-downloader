@@ -4,9 +4,7 @@
   import { addDownload, getDownloads, getStats, getConfig, connectWebSocket, formatSpeed } from "./lib/api";
   import { addToast } from "./lib/toast";
   import Downloads from "./pages/Downloads.svelte";
-  import Queue from "./pages/Queue.svelte";
   import UsenetDownloads from "./pages/UsenetDownloads.svelte";
-  import UsenetServers from "./pages/UsenetServers.svelte";
   import RssFeeds from "./pages/RssFeeds.svelte";
   import Plugins from "./pages/Plugins.svelte";
   import History from "./pages/History.svelte";
@@ -38,9 +36,7 @@
 
   const allNavItems: { id: Page; label: string; icon: string; feature?: string }[] = [
     { id: "downloads", label: "Downloads", icon: "arrow-down" },
-    { id: "queue", label: "Queue", icon: "list" },
-    { id: "usenet-downloads", label: "Usenet", icon: "newspaper" },
-    { id: "usenet-servers", label: "Servers", icon: "server" },
+    { id: "usenet-downloads", label: "Usenet", icon: "newspaper", feature: "usenet" },
     { id: "rss", label: "RSS Feeds", icon: "rss", feature: "rss_feeds" },
     { id: "plugins", label: "Plugins", icon: "puzzle" },
     { id: "history", label: "History", icon: "clock" },
@@ -184,7 +180,7 @@
 <div class="flex h-screen overflow-hidden">
   <!-- Sidebar -->
   <aside
-    class="fixed inset-y-0 left-0 z-50 w-64 transform transition-transform duration-200 md:relative md:translate-x-0"
+    class="fixed inset-y-0 left-0 z-50 w-52 transform transition-transform duration-200 md:relative md:translate-x-0"
     class:translate-x-0={sidebarOpen}
     class:-translate-x-full={!sidebarOpen}
     style="background: var(--sidebar-bg)"
@@ -302,12 +298,8 @@
         <div class="page-enter">
           {#if $currentPage === "downloads"}
             <Downloads />
-          {:else if $currentPage === "queue"}
-            <Queue />
           {:else if $currentPage === "usenet-downloads"}
             <UsenetDownloads />
-          {:else if $currentPage === "usenet-servers"}
-            <UsenetServers />
           {:else if $currentPage === "rss"}
             <RssFeeds />
           {:else if $currentPage === "plugins"}

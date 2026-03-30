@@ -204,6 +204,7 @@ export interface AppConfig {
     max_delay_secs: number;
   };
   features: {
+    usenet: boolean;
     rss_feeds: boolean;
     server_stats: boolean;
   };

@@ -6,6 +6,7 @@
 
   import SettingsFeatures from "../components/settings/SettingsFeatures.svelte";
   import SettingsUsenet from "../components/settings/SettingsUsenet.svelte";
+  import SettingsUsenetServers from "../components/settings/SettingsUsenetServers.svelte";
   import SettingsAppearance from "../components/settings/SettingsAppearance.svelte";
   import SettingsDownloads from "../components/settings/SettingsDownloads.svelte";
   import SettingsWebhooks from "../components/settings/SettingsWebhooks.svelte";
@@ -37,7 +38,10 @@
 {#if config}
 <div class="max-w-2xl space-y-8">
   <SettingsFeatures {config} onsave={saveConfig} />
-  <SettingsUsenet {config} onsave={saveConfig} />
+  {#if config.features.usenet}
+    <SettingsUsenetServers />
+    <SettingsUsenet {config} onsave={saveConfig} />
+  {/if}
   <SettingsAppearance />
   <SettingsDownloads {config} onsave={saveConfig} />
   <SettingsWebhooks bind:webhooks />

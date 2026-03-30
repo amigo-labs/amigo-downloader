@@ -72,9 +72,9 @@ export const accent = createAccentStore();
 // NAVIGATION
 // ========================================
 
-export type Page = "downloads" | "queue" | "usenet-downloads" | "usenet-servers" | "rss" | "plugins" | "history" | "settings";
+export type Page = "downloads" | "usenet-downloads" | "rss" | "plugins" | "history" | "settings";
 
-const validPages: Page[] = ["downloads", "queue", "usenet-downloads", "usenet-servers", "rss", "plugins", "history", "settings"];
+const validPages: Page[] = ["downloads", "usenet-downloads", "rss", "plugins", "history", "settings"];
 
 function pageFromHash(): Page {
   const hash = typeof location !== "undefined" ? location.hash.slice(1) : "";
@@ -194,11 +194,13 @@ export const usenetDownloads = writable<Download[]>([]);
 // ========================================
 
 export interface Features {
+  usenet: boolean;
   rss_feeds: boolean;
   server_stats: boolean;
 }
 
 export const features = writable<Features>({
+  usenet: false,
   rss_feeds: false,
   server_stats: false,
 });

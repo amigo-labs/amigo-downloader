@@ -9,12 +9,15 @@ use tracing::{debug, info, warn};
 
 /// Start all background tasks.
 pub fn spawn_background_tasks(coordinator: Arc<Coordinator>, http_client: reqwest::Client) {
-    // NZB watch folder — check every 10 seconds
+    // NZB watch folder — check every 10 seconds (only when usenet feature enabled)
     let coord = coordinator.clone();
     tokio::spawn(async move {
         let mut ticker = interval(Duration::from_secs(10));
         loop {
             ticker.tick().await;
+            if !coord.config().await.features.usenet {
+                continue;
+            }
             if let Err(e) = check_nzb_watch_folder(&coord).await {
                 debug!("NZB watch folder check: {e}");
             }

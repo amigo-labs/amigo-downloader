@@ -466,6 +466,15 @@ async fn upload_nzb(
     State(state): State<AppState>,
     Json(req): Json<NzbUploadRequest>,
 ) -> Result<(StatusCode, Json<AddResponse>), (StatusCode, Json<ErrorResponse>)> {
+    if !state.coordinator.config().await.features.usenet {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                error: "Usenet feature is disabled".into(),
+            }),
+        ));
+    }
+
     let nzb = amigo_core::protocol::usenet::nzb::parse_nzb(&req.nzb_data).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
@@ -523,6 +532,10 @@ async fn upload_nzb(
 async fn list_usenet_downloads(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<DownloadResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    if !state.coordinator.config().await.features.usenet {
+        return Ok(Json(Vec::new()));
+    }
+
     let rows = state
         .coordinator
         .storage()
@@ -544,6 +557,10 @@ async fn list_usenet_downloads(
 async fn list_usenet_servers(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<UsenetServerResponse>>, (StatusCode, Json<ErrorResponse>)> {
+    if !state.coordinator.config().await.features.usenet {
+        return Ok(Json(Vec::new()));
+    }
+
     let rows = state
         .coordinator
         .storage()
@@ -577,6 +594,15 @@ async fn add_usenet_server(
     State(state): State<AppState>,
     Json(req): Json<AddUsenetServerRequest>,
 ) -> Result<(StatusCode, Json<UsenetServerResponse>), (StatusCode, Json<ErrorResponse>)> {
+    if !state.coordinator.config().await.features.usenet {
+        return Err((
+            StatusCode::CONFLICT,
+            Json(ErrorResponse {
+                error: "Usenet feature is disabled".into(),
+            }),
+        ));
+    }
+
     let id = uuid::Uuid::new_v4().to_string();
     let row = amigo_core::storage::UsenetServerRow {
         id: id.clone(),

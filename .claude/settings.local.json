@@ -26,7 +26,11 @@
       "Read(//c/tmp/**)",
       "Bash(curl -sL \"https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/yt_dlp/extractor/youtube/jsc/provider.py\" -o /tmp/yt_jsc_provider.py)",
       "Bash(curl -sL \"https://raw.githubusercontent.com/yt-dlp/yt-dlp/master/yt_dlp/extractor/youtube/jsc/_builtin/ejs.py\" -o /tmp/yt_ejs.py)",
-      "Bash(git:*)"
+      "Bash(git:*)",
+      "Bash(find /d/github/amigo-downloader -type f \\\\\\(-name *.rs -o -name *.ts -o -name *.tsx \\\\\\))",
+      "Bash(ls -la /d/github/VibeVideo/frontend/src/components/*.tsx)",
+      "Bash(npx svelte-check:*)",
+      "Bash(npm ci:*)"
     ]
   }
 }
