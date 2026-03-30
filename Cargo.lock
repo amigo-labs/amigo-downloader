@@ -51,7 +51,6 @@ name = "amigo-cli"
 version = "0.1.0"
 dependencies = [
  "amigo-core",
- "amigo-extractors",
  "amigo-plugin-runtime",
  "anyhow",
  "axum",
@@ -64,6 +63,7 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "uuid",
 ]
 
 [[package]]

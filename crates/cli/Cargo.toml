@@ -10,8 +10,8 @@ path = "src/main.rs"
 
 [dependencies]
 amigo-core = { workspace = true }
-amigo-extractors = { workspace = true }
 amigo-plugin-runtime = { workspace = true }
+uuid = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }
 anyhow = { workspace = true }
