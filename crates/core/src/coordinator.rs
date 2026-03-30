@@ -354,6 +354,7 @@ impl Coordinator {
 
                     let job = crate::protocol::DownloadJob {
                         url: url.to_string(),
+                        download_id: download_id.to_string(),
                         download_dir: download_dir.clone(),
                         temp_dir: temp_dir.clone(),
                         filename: row_filename.clone(),

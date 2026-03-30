@@ -25,6 +25,7 @@ pub enum Protocol {
 #[derive(Debug, Clone)]
 pub struct DownloadJob {
     pub url: String,
+    pub download_id: String,
     pub download_dir: PathBuf,
     pub temp_dir: PathBuf,
     pub filename: Option<String>,

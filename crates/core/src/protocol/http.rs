@@ -310,18 +310,41 @@ async fn download_chunk(
     chunk_index: u32,
     progress: &[std::sync::atomic::AtomicU64],
 ) -> Result<(), crate::Error> {
-    debug!("Chunk {chunk_index}: bytes {start}-{end}");
+    // Resume: check if temp file exists with partial data
+    let existing_bytes = if chunk_path.exists() {
+        tokio::fs::metadata(chunk_path).await?.len()
+    } else {
+        0
+    };
+
+    let expected_size = end - start + 1;
+    if existing_bytes >= expected_size {
+        debug!("Chunk {chunk_index}: already complete ({existing_bytes} bytes), skipping");
+        progress[chunk_index as usize].store(existing_bytes, std::sync::atomic::Ordering::Relaxed);
+        return Ok(());
+    }
+
+    let actual_start = start + existing_bytes;
+    debug!("Chunk {chunk_index}: bytes {actual_start}-{end} (resuming from {existing_bytes})");
 
     let resp = client
         .get(url)
-        .header(RANGE, format!("bytes={start}-{end}"))
+        .header(RANGE, format!("bytes={actual_start}-{end}"))
         .send()
         .await?
         .error_for_status()?;
 
-    let mut file = tokio::fs::File::create(chunk_path).await?;
+    let mut file = if existing_bytes > 0 {
+        tokio::fs::OpenOptions::new()
+            .append(true)
+            .open(chunk_path)
+            .await?
+    } else {
+        tokio::fs::File::create(chunk_path).await?
+    };
+
     let mut stream = resp.bytes_stream();
-    let mut chunk_downloaded: u64 = 0;
+    let mut chunk_downloaded = existing_bytes;
 
     while let Some(data) = stream.next().await {
         let data = data.map_err(crate::Error::Http)?;
