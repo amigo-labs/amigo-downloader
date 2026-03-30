@@ -10,6 +10,8 @@
   import SettingsAppearance from "../components/settings/SettingsAppearance.svelte";
   import SettingsDownloads from "../components/settings/SettingsDownloads.svelte";
   import SettingsWebhooks from "../components/settings/SettingsWebhooks.svelte";
+  import SettingsRssFeeds from "../components/settings/SettingsRssFeeds.svelte";
+  import SkeletonCard from "../components/SkeletonCard.svelte";
 
   let config = $state<AppConfig | null>(null);
   let webhooks = $state<any[]>([]);
@@ -41,6 +43,9 @@
   {#if config.features.usenet}
     <SettingsUsenetServers />
     <SettingsUsenet {config} onsave={saveConfig} />
+    {#if config.features.rss_feeds}
+      <SettingsRssFeeds />
+    {/if}
   {/if}
   <SettingsAppearance />
   <SettingsDownloads {config} onsave={saveConfig} />
@@ -48,14 +53,14 @@
 
   <!-- About -->
   <section>
-    <h3 class="text-lg font-bold mb-4">About</h3>
-    <div class="rounded-xl p-5" style="background: var(--surface-2-color); border: 1px solid var(--border-color)">
+    <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">About</h3>
+    <div class="rounded-xl p-5" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
       <div class="flex items-center gap-4">
-        <div class="pixel-logo text-3xl" style="font-family: 'Press Start 2P'; color: var(--accent-color)">a</div>
+        <img src="/amigo-logo.png" alt="amigo-downloader" width="40" height="40" class="rounded-lg" />
         <div>
-          <p class="font-bold">amigo-downloader</p>
-          <p class="text-sm" style="color: var(--text-secondary-color)">v0.1.0 — Fast, modular download manager</p>
-          <p class="text-xs mt-1" style="color: var(--text-secondary-color)">
+          <p class="font-bold" style="color: var(--text-primary)">amigo-downloader</p>
+          <p class="text-sm" style="color: var(--text-secondary)">v0.1.0 — Fast, modular download manager</p>
+          <p class="text-xs mt-1" style="font-family: 'Share Tech Mono', monospace; color: var(--text-secondary)">
             github.com/amigo-labs/amigo-downloader
           </p>
         </div>
@@ -64,7 +69,5 @@
   </section>
 </div>
 {:else}
-<div class="flex items-center justify-center h-32">
-  <p class="text-sm" style="color: var(--text-secondary-color)">Loading settings...</p>
-</div>
+<SkeletonCard count={3} />
 {/if}

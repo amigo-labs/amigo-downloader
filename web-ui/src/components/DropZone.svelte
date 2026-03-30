@@ -1,7 +1,6 @@
 <script lang="ts">
   import { addDownload, addBatch, importDlc, uploadNzb } from "../lib/api";
   import { addToast } from "../lib/toast";
-  import Mascot from "./Mascot.svelte";
 
   let dragging = $state(false);
   let dragCounter = $state(0);
@@ -30,7 +29,6 @@
     dragging = false;
     dragCounter = 0;
 
-    // Check for files
     const files = e.dataTransfer?.files;
     if (files && files.length > 0) {
       for (const file of files) {
@@ -44,7 +42,6 @@
             await uploadNzb(text);
             addToast("success", "NZB imported", file.name);
           } else {
-            // Treat as text with URLs
             const text = await file.text();
             const urls = text.split("\n").map((u) => u.trim()).filter((u) => u.startsWith("http"));
             if (urls.length > 0) {
@@ -59,7 +56,6 @@
       return;
     }
 
-    // Check for dropped text/URLs
     const text = e.dataTransfer?.getData("text/plain");
     if (text) {
       const urls = text.split("\n").map((u) => u.trim()).filter((u) => u.startsWith("http"));
@@ -84,12 +80,12 @@
 {#if dragging}
   <div class="fixed inset-0 z-[200] flex items-center justify-center drop-overlay">
     <div
-      class="rounded-3xl border-4 border-dashed p-16 flex flex-col items-center gap-4 drop-bounce"
-      style="border-color: var(--accent-color); background: color-mix(in srgb, var(--surface-color) 95%, transparent)"
+      class="rounded-3xl border-2 border-dashed p-16 flex flex-col items-center gap-4 drop-bounce"
+      style="border-color: var(--neon-primary); background: var(--bg-surface)"
     >
-      <Mascot size={96} animate={true} />
-      <p class="text-xl font-bold" style="color: var(--accent-color)">Drop it like it's hot!</p>
-      <p class="text-sm" style="color: var(--text-secondary-color)">URLs, NZB, DLC, or text files</p>
+      <img src="/amigo-logo.png" alt="" width="64" height="64" class="rounded-lg opacity-60" />
+      <p class="text-xl font-bold" style="color: var(--neon-primary)">Drop it like it's hot!</p>
+      <p class="text-sm" style="color: var(--text-secondary)">URLs, NZB, DLC, or text files</p>
     </div>
   </div>
 {/if}
@@ -101,13 +97,12 @@
   }
 
   @keyframes scale-in {
-    from { opacity: 0; transform: scale(0.9); }
+    from { opacity: 0; transform: scale(0.95); }
     to { opacity: 1; transform: scale(1); }
   }
 
   .drop-overlay {
-    backdrop-filter: blur(8px);
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(0, 0, 0, 0.6);
     animation: fade-in 0.2s ease-out;
   }
 

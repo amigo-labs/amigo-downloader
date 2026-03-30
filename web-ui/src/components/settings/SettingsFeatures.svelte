@@ -10,8 +10,8 @@
 </script>
 
 <section>
-  <h3 class="text-lg font-bold mb-4">Features</h3>
-  <div class="rounded-xl p-5 space-y-4" style="background: var(--surface-2-color); border: 1px solid var(--border-color)">
+  <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">Features</h3>
+  <div class="rounded-xl p-5 space-y-4" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
     {#each [
       { key: "usenet" as const, label: "Usenet", desc: "Enable Usenet mode (NZB import, NNTP servers, watch folder)" },
       { key: "rss_feeds" as const, label: "RSS Feeds", desc: "Monitor RSS/Atom feeds for automatic NZB import" },
@@ -19,17 +19,21 @@
     ] as opt (opt.key)}
       <div class="flex items-center justify-between">
         <div>
-          <p class="text-sm font-semibold">{opt.label}</p>
-          <p class="text-xs" style="color: var(--text-secondary-color)">{opt.desc}</p>
+          <p class="text-sm font-semibold" style="color: var(--text-primary)">{opt.label}</p>
+          <p class="text-xs" style="color: var(--text-secondary)">{opt.desc}</p>
         </div>
+        <!-- Toggle switch with a11y (audit H4) -->
         <button
+          role="switch"
+          aria-checked={config.features[opt.key]}
+          aria-label={opt.label}
           onclick={() => toggle(opt.key)}
-          class="w-12 h-6 rounded-full relative transition-colors"
-          style="background: {config.features[opt.key] ? 'var(--accent-color)' : 'var(--surface-3-color)'}"
+          class="w-12 h-6 rounded-full relative transition-colors shrink-0 ml-4"
+          style="background: {config.features[opt.key] ? 'var(--neon-primary)' : 'var(--bg-surface-2)'}"
         >
           <span
-            class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all shadow"
-            style="left: {config.features[opt.key] ? '1.625rem' : '0.125rem'}"
+            class="absolute top-0.5 w-5 h-5 rounded-full transition-all shadow"
+            style="background: var(--bg-deep); left: {config.features[opt.key] ? '1.625rem' : '0.125rem'}"
           ></span>
         </button>
       </div>

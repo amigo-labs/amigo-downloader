@@ -1,18 +1,20 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { getPlugins, checkUpdates } from "../lib/api";
+  import SkeletonCard from "../components/SkeletonCard.svelte";
 
   let plugins = $state<any[]>([]);
   let updateInfo = $state<any>(null);
+  let loading = $state(true);
 
   onMount(async () => {
     try {
       plugins = await getPlugins();
     } catch { /* offline */ }
-
     try {
       updateInfo = await checkUpdates();
     } catch { /* offline */ }
+    loading = false;
   });
 </script>
 
@@ -21,17 +23,17 @@
   {#if updateInfo?.core?.update_available}
     <div
       class="rounded-xl p-4 flex items-center justify-between"
-      style="background: color-mix(in srgb, var(--accent-color) 10%, transparent); border: 1px solid color-mix(in srgb, var(--accent-color) 30%, transparent)"
+      style="background: color-mix(in srgb, var(--neon-primary) 6%, transparent); border: 1px solid color-mix(in srgb, var(--neon-primary) 15%, transparent)"
     >
       <div>
-        <p class="font-semibold text-sm">Core Update Available</p>
-        <p class="text-xs" style="color: var(--text-secondary-color)">
+        <p class="font-semibold text-sm" style="color: var(--text-primary)">Core Update Available</p>
+        <p class="text-xs" style="font-family: 'Share Tech Mono', monospace; color: var(--text-secondary)">
           v{updateInfo.core.current_version} &rarr; v{updateInfo.core.latest_version}
         </p>
       </div>
       <button
-        class="px-4 py-2 rounded-lg text-sm font-semibold text-white"
-        style="background: var(--accent-color)"
+        class="px-4 py-2 rounded-lg text-sm font-semibold"
+        style="background: var(--neon-primary); color: var(--bg-deep)"
       >
         Update
       </button>
@@ -40,33 +42,37 @@
 
   <!-- Installed Plugins -->
   <section>
-    <h3 class="text-lg font-bold mb-4">Installed Plugins</h3>
-    {#if plugins.length === 0}
-      <p class="text-sm" style="color: var(--text-secondary-color)">No plugins loaded.</p>
+    <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">Installed Plugins</h3>
+    {#if loading}
+      <div class="grid gap-3 sm:grid-cols-2">
+        <SkeletonCard count={2} />
+      </div>
+    {:else if plugins.length === 0}
+      <p class="text-sm" style="color: var(--text-secondary)">No plugins loaded.</p>
     {:else}
       <div class="grid gap-3 sm:grid-cols-2">
         {#each plugins as plugin}
           <div
-            class="rounded-xl p-4 transition-all"
-            style="background: var(--surface-2-color); border: 1px solid var(--border-color)"
+            class="rounded-xl p-4"
+            style="background: var(--bg-surface); border: 1px solid var(--border-color)"
           >
             <div class="flex items-start justify-between">
               <div>
-                <h4 class="font-semibold">{plugin.name}</h4>
-                <p class="text-xs font-mono" style="color: var(--text-secondary-color)">
+                <h4 class="font-semibold text-sm" style="color: var(--text-primary)">{plugin.name}</h4>
+                <p class="text-xs" style="font-family: 'Share Tech Mono', monospace; color: var(--text-secondary)">
                   v{plugin.version}
                 </p>
               </div>
               <span
-                class="px-2 py-0.5 rounded-full text-xs font-semibold"
+                class="px-2 py-0.5 rounded-full text-[10px] font-semibold"
                 style={plugin.enabled
-                  ? "background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success)"
-                  : "background: var(--surface-3-color); color: var(--text-secondary-color)"}
+                  ? "background: color-mix(in srgb, var(--neon-success) 10%, transparent); color: var(--neon-success)"
+                  : "background: var(--bg-surface-2); color: var(--text-secondary)"}
               >
                 {plugin.enabled ? "Active" : "Disabled"}
               </span>
             </div>
-            <p class="text-xs mt-2 font-mono truncate" style="color: var(--text-secondary-color)">
+            <p class="text-xs mt-2 truncate" style="font-family: 'Share Tech Mono', monospace; color: var(--text-secondary)">
               {plugin.url_pattern}
             </p>
           </div>
@@ -77,13 +83,13 @@
 
   <!-- Marketplace -->
   <section>
-    <h3 class="text-lg font-bold mb-4">Plugin Marketplace</h3>
+    <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">Plugin Marketplace</h3>
     <div
       class="rounded-xl p-8 flex flex-col items-center justify-center"
-      style="background: var(--surface-2-color); border: 1px dashed var(--border-color)"
+      style="background: var(--bg-surface); border: 1px dashed var(--border-color)"
     >
-      <div class="pixel-logo text-2xl mb-3" style="font-family: 'Press Start 2P'; color: var(--accent-color)">?</div>
-      <p class="text-sm" style="color: var(--text-secondary-color)">
+      <img src="/amigo-logo.png" alt="" width="40" height="40" class="rounded-lg opacity-30 mb-3" />
+      <p class="text-sm" style="color: var(--text-secondary)">
         Plugin marketplace coming soon.
       </p>
     </div>

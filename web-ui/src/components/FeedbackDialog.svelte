@@ -1,11 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { addToast } from "../lib/toast";
+  import { crashReport } from "../lib/stores";
+  import Icon from "./Icon.svelte";
 
-  let { onclose, prefill }: {
-    onclose: () => void;
-    prefill?: { error_context?: { download_id?: string; error_message?: string } };
-  } = $props();
+  let { onclose }: { onclose: () => void } = $props();
 
   let systemInfo = $state<any>(null);
   let autoReported = $state(false);
@@ -19,24 +18,24 @@
       systemInfo = await res.json();
     } catch { /* offline */ }
 
-    // Auto-report crash if error_context and token configured
-    if (prefill?.error_context && systemInfo?.feedback_enabled) {
+    // Auto-report crash if error_context provided via store (audit M5)
+    if ($crashReport && systemInfo?.feedback_enabled) {
       autoReportCrash();
     }
   });
 
   async function autoReportCrash() {
-    if (!prefill?.error_context) return;
+    if (!$crashReport) return;
     try {
       const res = await fetch("/api/v1/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           type: "crash",
-          title: prefill.error_context.error_message || "Download failed",
+          title: $crashReport.error_message || "Download failed",
           description: "Automatically reported crash.",
           include_system_info: true,
-          error_context: prefill.error_context,
+          error_context: $crashReport,
         }),
       });
       if (res.ok) {
@@ -69,70 +68,72 @@
   }
 </script>
 
-<svelte:window onkeydown={(e) => e.key === "Escape" && onclose()} />
-
 <div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-  <div class="fixed inset-0 bg-black/60 backdrop-blur-sm" onclick={onclose}></div>
+  <div class="fixed inset-0 bg-black/70" onclick={onclose}></div>
 
   <div
+    role="dialog"
+    aria-modal="true"
+    aria-labelledby="feedback-title"
     class="relative z-10 w-full max-w-sm rounded-2xl shadow-2xl p-6"
-    style="background: var(--surface-color); border: 1px solid var(--border-color)"
+    style="background: var(--bg-surface); border: 1px solid var(--border-color)"
   >
     <div class="flex items-center justify-between mb-5">
-      <h2 class="text-lg font-bold">Feedback</h2>
-      <button onclick={onclose} class="p-1 rounded-lg" style="color: var(--text-secondary-color)">
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-          <path d="M6 18L18 6M6 6l12 12" />
-        </svg>
+      <h2 id="feedback-title" class="text-lg font-bold" style="color: var(--text-primary)">Feedback</h2>
+      <button
+        onclick={onclose}
+        class="p-1.5 rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center"
+        style="color: var(--text-secondary)"
+        aria-label="Close dialog"
+      >
+        <Icon name="x" size={18} />
       </button>
     </div>
 
     {#if autoReported}
-      <div class="rounded-xl p-3 mb-4 text-center" style="background: color-mix(in srgb, var(--color-warning) 10%, transparent)">
-        <p class="text-xs font-semibold" style="color: var(--color-warning)">Crash auto-reported</p>
+      <div class="rounded-xl p-3 mb-4 text-center" style="background: color-mix(in srgb, var(--neon-warning) 8%, transparent)">
+        <p class="text-xs font-semibold" style="color: var(--neon-warning)">Crash auto-reported</p>
         {#if resultUrl}
-          <a href={resultUrl} target="_blank" rel="noopener" class="text-xs underline" style="color: var(--accent-color)">View issue &rarr;</a>
+          <a href={resultUrl} target="_blank" rel="noopener" class="text-xs underline" style="color: var(--neon-primary)">View issue &rarr;</a>
         {/if}
       </div>
     {/if}
 
-    <!-- Report a Bug → GitHub -->
     <a
       href={bugUrl()}
       target="_blank"
       rel="noopener"
-      class="flex items-center gap-3 rounded-xl p-4 mb-3 transition-all interactive"
-      style="background: var(--surface-2-color); border: 1px solid var(--border-color)"
+      class="flex items-center gap-3 rounded-xl p-4 mb-3 transition-colors"
+      style="background: var(--bg-surface-2); border: 1px solid var(--border-color)"
     >
-      <div class="w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0" style="background: color-mix(in srgb, var(--color-error) 15%, transparent); color: var(--color-error)">
-        &#128027;
+      <div class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style="background: color-mix(in srgb, var(--neon-accent) 8%, transparent); color: var(--neon-accent)">
+        <Icon name="flag" size={20} />
       </div>
       <div class="flex-1">
-        <p class="font-semibold text-sm">Report a Bug</p>
-        <p class="text-xs" style="color: var(--text-secondary-color)">Opens GitHub with pre-filled template</p>
+        <p class="font-semibold text-sm" style="color: var(--text-primary)">Report a Bug</p>
+        <p class="text-xs" style="color: var(--text-secondary)">Opens GitHub with pre-filled template</p>
       </div>
-      <span style="color: var(--text-secondary-color)">&rarr;</span>
+      <Icon name="external" size={14} class="text-[var(--text-secondary)]" />
     </a>
 
-    <!-- Request a Feature → GitHub -->
     <a
       href={featureUrl()}
       target="_blank"
       rel="noopener"
-      class="flex items-center gap-3 rounded-xl p-4 mb-4 transition-all interactive"
-      style="background: var(--surface-2-color); border: 1px solid var(--border-color)"
+      class="flex items-center gap-3 rounded-xl p-4 mb-4 transition-colors"
+      style="background: var(--bg-surface-2); border: 1px solid var(--border-color)"
     >
-      <div class="w-10 h-10 rounded-lg flex items-center justify-center text-lg shrink-0" style="background: color-mix(in srgb, var(--color-success) 15%, transparent); color: var(--color-success)">
-        &#128161;
+      <div class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style="background: color-mix(in srgb, var(--neon-success) 8%, transparent); color: var(--neon-success)">
+        <Icon name="plus" size={20} />
       </div>
       <div class="flex-1">
-        <p class="font-semibold text-sm">Request a Feature</p>
-        <p class="text-xs" style="color: var(--text-secondary-color)">Opens GitHub with pre-filled template</p>
+        <p class="font-semibold text-sm" style="color: var(--text-primary)">Request a Feature</p>
+        <p class="text-xs" style="color: var(--text-secondary)">Opens GitHub with pre-filled template</p>
       </div>
-      <span style="color: var(--text-secondary-color)">&rarr;</span>
+      <Icon name="external" size={14} class="text-[var(--text-secondary)]" />
     </a>
 
-    <p class="text-[10px] text-center" style="color: var(--text-secondary-color)">
+    <p class="text-[10px] text-center" style="color: var(--text-secondary)">
       {#if systemInfo?.feedback_enabled}
         Crashes are automatically reported.
       {:else}

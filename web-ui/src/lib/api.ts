@@ -1,4 +1,5 @@
 // REST + WebSocket client for amigo-downloader API
+import type { Download } from "./stores";
 
 const API_BASE = "/api/v1";
 
@@ -49,19 +50,8 @@ export const getPlugins = () => api<Plugin[]>("GET", "/plugins");
 export const checkUpdates = () => api<unknown>("GET", "/updates/check");
 export const getSystemInfo = () => api<unknown>("GET", "/system-info");
 
-export interface Download {
-  id: string;
-  url: string;
-  protocol: string;
-  filename: string | null;
-  filesize: number | null;
-  status: string;
-  priority: number;
-  bytes_downloaded: number;
-  speed: number;
-  error: string | null;
-  created_at: string;
-}
+// Re-export Download from stores (single source of truth — audit M6)
+export type { Download } from "./stores";
 
 interface Plugin {
   id: string;

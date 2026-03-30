@@ -1,7 +1,10 @@
 <script lang="ts">
   // Mini speed graph — last 30 data points
-  let { values = [], width = 120, height = 32, color = "var(--accent-color)" }:
+  // Fix H8: unique gradient ID per instance
+  let { values = [], width = 120, height = 32, color = "var(--neon-primary)" }:
     { values?: number[]; width?: number; height?: number; color?: string } = $props();
+
+  const gradientId = `spark-fill-${crypto.randomUUID().slice(0, 8)}`;
 
   let points = $derived(() => {
     if (values.length === 0) return "";
@@ -24,16 +27,15 @@
 </script>
 
 <svg {width} {height} class="overflow-visible">
-  <!-- Gradient fill under the line -->
   <defs>
-    <linearGradient id="spark-fill" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color={color} stop-opacity="0.3" />
+    <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color={color} stop-opacity="0.2" />
       <stop offset="100%" stop-color={color} stop-opacity="0" />
     </linearGradient>
   </defs>
 
   {#if values.length > 1}
-    <polygon points={fillPoints()} fill="url(#spark-fill)" />
+    <polygon points={fillPoints()} fill="url(#{gradientId})" />
     <polyline
       points={points()}
       fill="none"
@@ -42,7 +44,6 @@
       stroke-linecap="round"
       stroke-linejoin="round"
     />
-    <!-- Current value dot -->
     {@const max = Math.max(...values, 1)}
     {@const lastVal = values[values.length - 1]}
     {@const lastX = (values.length - 1) * (width / Math.max(values.length - 1, 1))}

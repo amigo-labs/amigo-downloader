@@ -10,8 +10,8 @@
 </script>
 
 <section>
-  <h3 class="text-lg font-bold mb-4">Usenet Post-Processing</h3>
-  <div class="rounded-xl p-5 space-y-4" style="background: var(--surface-2-color); border: 1px solid var(--border-color)">
+  <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">Usenet Post-Processing</h3>
+  <div class="rounded-xl p-5 space-y-4" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
     {#each [
       { key: "par2_repair", label: "PAR2 Verify & Repair", desc: "Check file integrity and repair damaged files using PAR2 recovery data" },
       { key: "selective_par2", label: "Selective PAR2", desc: "Only download recovery volumes when repair is needed. Saves bandwidth." },
@@ -22,17 +22,20 @@
     ] as opt (opt.key)}
       <div class="flex items-center justify-between">
         <div>
-          <p class="text-sm font-semibold">{opt.label}</p>
-          <p class="text-xs" style="color: var(--text-secondary-color)">{opt.desc}</p>
+          <p class="text-sm font-semibold" style="color: var(--text-primary)">{opt.label}</p>
+          <p class="text-xs" style="color: var(--text-secondary)">{opt.desc}</p>
         </div>
         <button
+          role="switch"
+          aria-checked={(config.usenet as any)[opt.key]}
+          aria-label={opt.label}
           onclick={() => toggle(opt.key)}
           class="w-12 h-6 rounded-full relative transition-colors shrink-0 ml-4"
-          style="background: {(config.usenet as any)[opt.key] ? 'var(--accent-color)' : 'var(--surface-3-color)'}"
+          style="background: {(config.usenet as any)[opt.key] ? 'var(--neon-primary)' : 'var(--bg-surface-2)'}"
         >
           <span
-            class="absolute top-0.5 w-5 h-5 rounded-full bg-white transition-all shadow"
-            style="left: {(config.usenet as any)[opt.key] ? '1.625rem' : '0.125rem'}"
+            class="absolute top-0.5 w-5 h-5 rounded-full transition-all shadow"
+            style="background: var(--bg-deep); left: {(config.usenet as any)[opt.key] ? '1.625rem' : '0.125rem'}"
           ></span>
         </button>
       </div>
