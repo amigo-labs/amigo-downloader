@@ -11,13 +11,15 @@ use uuid::Uuid;
 use crate::bandwidth::BandwidthLimiter;
 use crate::config::Config;
 use crate::postprocess;
-use crate::protocol::Protocol;
+use crate::protocol::{Protocol, ResolvedDownload, UrlResolver};
 use crate::protocol::http::{DownloadProgress, HttpDownloader};
+use crate::protocol::hls::HlsDownloader;
+use crate::protocol::dash::DashDownloader;
 use crate::protocol::usenet::nntp::NntpServerConfig;
 use crate::protocol::usenet::UsenetConfig;
 use crate::protocol::usenet::UsenetDownloader;
 use crate::queue::QueueStatus;
-use crate::retry::RetryPolicy;
+use crate::retry::{RetryOutcome, RetryPolicy, retry_with_policy};
 use crate::storage::{DownloadRow, Storage};
 
 /// Events broadcast to subscribers (WebSocket clients, webhooks, etc.)
@@ -79,12 +81,13 @@ struct ActiveDownload {
 }
 
 pub struct Coordinator {
-    config: Config,
+    config: Arc<Mutex<Config>>,
     storage: Storage,
     bandwidth: BandwidthLimiter,
-    retry_policy: RetryPolicy,
+    retry_policy: Arc<Mutex<RetryPolicy>>,
     active: Arc<Mutex<HashMap<String, ActiveDownload>>>,
     event_tx: broadcast::Sender<DownloadEvent>,
+    resolvers: Vec<Arc<dyn UrlResolver>>,
 }
 
 impl Coordinator {
@@ -92,14 +95,23 @@ impl Coordinator {
         let bandwidth = BandwidthLimiter::new(config.bandwidth.clone());
         let (event_tx, _) = broadcast::channel(256);
 
+        let retry_policy = RetryPolicy::from(config.retry.clone());
+
         Self {
-            config,
+            config: Arc::new(Mutex::new(config)),
             storage,
             bandwidth,
-            retry_policy: RetryPolicy::default(),
+            retry_policy: Arc::new(Mutex::new(retry_policy)),
             active: Arc::new(Mutex::new(HashMap::new())),
             event_tx,
+            resolvers: Vec::new(),
         }
+    }
+
+    /// Register URL resolvers (plugins, extractors). Called after construction.
+    /// Resolvers are tried in order; first match wins.
+    pub fn set_resolvers(&mut self, resolvers: Vec<Arc<dyn UrlResolver>>) {
+        self.resolvers = resolvers;
     }
 
     /// Get a reference to the bandwidth limiter.
@@ -122,9 +134,16 @@ impl Coordinator {
         &self.storage
     }
 
-    /// Get a reference to config.
-    pub fn config(&self) -> &Config {
-        &self.config
+    /// Get a snapshot of the current config.
+    pub async fn config(&self) -> Config {
+        self.config.lock().await.clone()
+    }
+
+    /// Update the config at runtime and propagate to subsystems.
+    pub async fn update_config(&self, new_config: Config) {
+        self.bandwidth.update_config(new_config.bandwidth.clone()).await;
+        *self.retry_policy.lock().await = RetryPolicy::from(new_config.retry.clone());
+        *self.config.lock().await = new_config;
     }
 
     /// Add a new download and start it if slots are available.
@@ -155,7 +174,17 @@ impl Coordinator {
         }
 
         let id = Uuid::new_v4().to_string();
-        let protocol = detect_protocol(url);
+
+        // Try URL resolution: plugins → extractors → raw URL fallback
+        let resolved = self.resolve_url(url).await;
+        let (download_url, resolved_filename, protocol) = match &resolved {
+            Some(r) => (
+                r.url.clone(),
+                r.filename.clone().or(filename.clone()),
+                r.protocol.clone(),
+            ),
+            None => (url.to_string(), filename.clone(), detect_protocol(url)),
+        };
 
         // Determine download directory (category-based subdirectory if set)
         let base_dir = self.storage.download_dir.to_string_lossy().to_string();
@@ -166,10 +195,10 @@ impl Coordinator {
 
         let row = DownloadRow {
             id: id.clone(),
-            url: url.to_string(),
+            url: download_url,
             protocol: protocol.as_str().to_string(),
-            filename,
-            filesize: None,
+            filename: resolved_filename,
+            filesize: resolved.as_ref().and_then(|r| r.filesize),
             status: QueueStatus::Queued.as_str().to_string(),
             priority,
             package_id: category.clone(),
@@ -205,7 +234,7 @@ impl Coordinator {
             active.len() as u32
         };
 
-        if active_count >= self.config.max_concurrent_downloads {
+        if active_count >= self.config.lock().await.max_concurrent_downloads {
             return Ok(());
         }
 
@@ -254,6 +283,22 @@ impl Coordinator {
             );
         }
 
+        // Spawn a task to forward progress from watch channel to broadcast events
+        {
+            let mut progress_rx = progress_rx.clone();
+            let event_tx = self.event_tx.clone();
+            let id = id.to_string();
+            tokio::spawn(async move {
+                while progress_rx.changed().await.is_ok() {
+                    let p = progress_rx.borrow().clone();
+                    let _ = event_tx.send(DownloadEvent::Progress {
+                        id: id.clone(),
+                        progress: p,
+                    });
+                }
+            });
+        }
+
         // Spawn the download task with retry support
         let storage = self.storage.clone();
         let event_tx = self.event_tx.clone();
@@ -262,36 +307,19 @@ impl Coordinator {
         let protocol = row.protocol.clone();
         let download_dir = PathBuf::from(row.download_dir.as_deref().unwrap_or("downloads"));
         let temp_dir = self.storage.temp_dir.clone();
-        let user_agent = self.config.http.user_agent.clone();
-        let max_chunks = self.config.http.max_chunks_per_download;
+        let config = self.config.lock().await.clone();
+        let user_agent = config.http.user_agent.clone();
+        let max_chunks = config.http.max_chunks_per_download;
         let active = self.active.clone();
-        let max_retries = self.retry_policy.max_retries;
-        let retry_policy = RetryPolicy {
-            max_retries: self.retry_policy.max_retries,
-            base_delay: self.retry_policy.base_delay,
-            max_delay: self.retry_policy.max_delay,
-        };
+        let retry_policy = self.retry_policy.lock().await.clone();
         let bandwidth = self.bandwidth.clone();
-        let pp_config = self.config.postprocessing.clone();
-        let _usenet_config = self.config.usenet.clone();
+        let pp_config = config.postprocessing.clone();
 
         tokio::spawn(async move {
-            let mut last_error = String::new();
             let mut original_progress_tx = Some(progress_tx);
             let mut original_cancel_rx = Some(cancel_rx);
 
-            for attempt in 0..=max_retries {
-                if attempt > 0 {
-                    let delay = retry_policy.delay_for_attempt(attempt - 1);
-                    warn!(
-                        "Retrying download {download_id} (attempt {attempt}/{max_retries}) after {delay:?}"
-                    );
-                    let _ = storage
-                        .update_download_error(&download_id, &last_error, attempt)
-                        .await;
-                    tokio::time::sleep(delay).await;
-                }
-
+            let result = retry_with_policy(&retry_policy, |attempt| {
                 // Use the original progress_tx/cancel_rx on first attempt, create new ones for retries
                 let ptx = original_progress_tx.take().unwrap_or_else(|| {
                     let (tx, _rx) = watch::channel(DownloadProgress {
@@ -307,85 +335,107 @@ impl Coordinator {
                     rx
                 });
 
-                let result = if protocol == "usenet" {
-                    // Usenet download — load server configs from DB, download via NNTP
-                    run_usenet_download(
-                        &storage,
-                        &download_id,
-                        &download_dir,
-                        row.filename.as_deref(),
-                        ptx,
-                    )
-                    .await
-                } else {
-                    // HTTP/HLS/DASH download
-                    let http = HttpDownloader::new(&user_agent);
-                    run_http_download(
-                        &http,
-                        &bandwidth,
-                        &url,
-                        &download_dir,
-                        &temp_dir,
-                        row.filename.as_deref(),
-                        max_chunks,
-                        ptx,
-                        crx,
-                    )
-                    .await
-                };
+                let storage = &storage;
+                let download_id = &download_id;
+                let protocol = &protocol;
+                let url = &url;
+                let download_dir = &download_dir;
+                let temp_dir = &temp_dir;
+                let user_agent = &user_agent;
+                let bandwidth = &bandwidth;
+                let row_filename = &row.filename;
 
-                match result {
-                    Ok((bytes, actual_path)) => {
+                async move {
+                    if attempt > 0 {
                         let _ = storage
-                            .update_download_progress(&download_id, bytes, 0)
+                            .update_download_error(download_id, "retrying", attempt)
                             .await;
-
-                        // Run post-processing
-                        if protocol == "usenet" {
-                            // Full Usenet pipeline: PAR2 verify/repair → extract → cleanup
-                            let dir = actual_path.parent().unwrap_or(&actual_path);
-                            if let Err(e) = postprocess::run_usenet_pipeline(dir, &pp_config).await
-                            {
-                                warn!("Usenet post-processing failed for {download_id}: {e}");
-                            }
-                        } else if let Err(e) =
-                            postprocess::run_pipeline(&actual_path, &pp_config).await
-                        {
-                            warn!("Post-processing failed for {download_id}: {e}");
-                        }
-
-                        let _ = storage
-                            .update_download_status(&download_id, QueueStatus::Completed)
-                            .await;
-                        let _ = event_tx.send(DownloadEvent::Completed {
-                            id: download_id.clone(),
-                        });
-                        info!("Download completed: {download_id}");
-                        active.lock().await.remove(&download_id);
-                        return;
                     }
-                    Err(e) => {
-                        last_error = e.to_string();
-                        if last_error.contains("cancelled") {
-                            break;
+
+                    let job = crate::protocol::DownloadJob {
+                        url: url.to_string(),
+                        download_id: download_id.to_string(),
+                        download_dir: download_dir.clone(),
+                        temp_dir: temp_dir.clone(),
+                        filename: row_filename.clone(),
+                        headers: std::collections::HashMap::new(),
+                        max_chunks,
+                        user_agent: user_agent.to_string(),
+                    };
+
+                    let result = if protocol == "usenet" {
+                        // Usenet is special: needs Storage for server configs + NZB data
+                        run_usenet_download(
+                            storage,
+                            download_id,
+                            download_dir,
+                            row_filename.as_deref(),
+                            ptx,
+                        )
+                        .await
+                    } else {
+                        // HTTP, HLS, DASH — use ProtocolBackend trait dispatch
+                        let backend: Box<dyn crate::protocol::ProtocolBackend> = match protocol.as_str() {
+                            "hls" => Box::new(HlsDownloader::new(user_agent, 8)),
+                            "dash" => Box::new(DashDownloader::new(user_agent, 8)),
+                            _ => Box::new(HttpDownloader::new(user_agent, bandwidth.clone())),
+                        };
+                        backend.download(&job, ptx, crx).await
+                    };
+
+                    match result {
+                        Ok(value) => RetryOutcome::Success(value),
+                        Err(e) if e.to_string().contains("cancelled") => RetryOutcome::Abort(e),
+                        Err(e) => {
+                            warn!("Download attempt failed: {download_id} — {e}");
+                            RetryOutcome::Retry(e)
                         }
-                        warn!("Download attempt failed: {download_id} — {last_error}");
                     }
                 }
-            }
+            })
+            .await;
 
-            // All retries exhausted
-            error!("Download failed after {max_retries} retries: {download_id} — {last_error}");
-            let _ = storage
-                .update_download_status(&download_id, QueueStatus::Failed)
-                .await;
-            let _ = storage
-                .update_download_error(&download_id, &last_error, max_retries)
-                .await;
-            let _ = event_tx.send(DownloadEvent::Failed {
-                id: download_id.clone(),
-                error: last_error,
-            });
+            match result {
+                Ok((bytes, actual_path)) => {
+                    let _ = storage
+                        .update_download_progress(&download_id, bytes, 0)
+                        .await;
+
+                    // Run post-processing
+                    if protocol == "usenet" {
+                        let dir = actual_path.parent().unwrap_or(&actual_path);
+                        if let Err(e) = postprocess::run_usenet_pipeline(dir, &pp_config).await {
+                            warn!("Usenet post-processing failed for {download_id}: {e}");
+                        }
+                    } else if let Err(e) =
+                        postprocess::run_pipeline(&actual_path, &pp_config).await
+                    {
+                        warn!("Post-processing failed for {download_id}: {e}");
+                    }
+
+                    let _ = storage
+                        .update_download_status(&download_id, QueueStatus::Completed)
+                        .await;
+                    let _ = event_tx.send(DownloadEvent::Completed {
+                        id: download_id.clone(),
+                    });
+                    info!("Download completed: {download_id}");
+                }
+                Err(e) => {
+                    let error_msg = e.to_string();
+                    error!("Download failed: {download_id} — {error_msg}");
+                    let _ = storage
+                        .update_download_status(&download_id, QueueStatus::Failed)
+                        .await;
+                    let _ = storage
+                        .update_download_error(&download_id, &error_msg, retry_policy.max_retries)
+                        .await;
+                    let _ = event_tx.send(DownloadEvent::Failed {
+                        id: download_id.clone(),
+                        error: error_msg,
+                    });
+                }
+            }
 
             active.lock().await.remove(&download_id);
         });
@@ -480,63 +530,22 @@ impl Coordinator {
 
         Ok(count)
     }
-}
 
-/// Run a single HTTP download to completion.
-#[allow(clippy::too_many_arguments)]
-async fn run_http_download(
-    http: &HttpDownloader,
-    _bandwidth: &BandwidthLimiter,
-    url: &str,
-    download_dir: &PathBuf,
-    temp_dir: &PathBuf,
-    filename: Option<&str>,
-    max_chunks: u32,
-    progress_tx: watch::Sender<DownloadProgress>,
-    cancel_rx: tokio::sync::oneshot::Receiver<()>,
-) -> Result<(u64, PathBuf), crate::Error> {
-    // Get file info
-    let head = http.head(url).await?;
-
-    // Determine filename
-    let fname = filename
-        .map(String::from)
-        .or(head.filename.clone())
-        .unwrap_or_else(|| filename_from_url(url));
-
-    let dest = download_dir.join(&fname);
-    tokio::fs::create_dir_all(download_dir).await?;
-    tokio::fs::create_dir_all(temp_dir).await?;
-
-    // Choose strategy and race against cancellation
-    let use_chunked = head.accepts_ranges
-        && head.content_length.is_some_and(|s| s > 1024 * 1024)
-        && max_chunks > 1;
-
-    if use_chunked {
-        let total = head.content_length.unwrap();
-        let chunks = max_chunks.min((total / (512 * 1024)).max(1) as u32);
-        info!("Using {chunks} chunks for {fname} ({total} bytes)");
-
-        let chunk_dir = temp_dir.join(&fname);
-        tokio::fs::create_dir_all(&chunk_dir).await?;
-
-        tokio::select! {
-            result = http.download_chunked(url, &dest, &chunk_dir, total, chunks, progress_tx) => result.map(|bytes| (bytes, dest)),
-            _ = cancel_rx => {
-                info!("Download cancelled: {url}");
-                Err(crate::Error::Other("Download cancelled".into()))
+    /// Try each registered URL resolver in order. Returns None if no resolver matches.
+    async fn resolve_url(&self, url: &str) -> Option<ResolvedDownload> {
+        for resolver in &self.resolvers {
+            match resolver.resolve(url).await {
+                Some(resolved) => {
+                    info!(
+                        "URL resolved: {url} → {} (protocol: {:?})",
+                        resolved.url, resolved.protocol
+                    );
+                    return Some(resolved);
+                }
+                None => continue,
             }
         }
-    } else {
-        info!("Using single-stream download for {fname}");
-        tokio::select! {
-            result = http.download_single(url, &dest, progress_tx) => result.map(|bytes| (bytes, dest)),
-            _ = cancel_rx => {
-                info!("Download cancelled: {url}");
-                Err(crate::Error::Other("Download cancelled".into()))
-            }
-        }
+        None
     }
 }
 
@@ -643,15 +652,6 @@ fn detect_protocol(url: &str) -> Protocol {
     } else {
         Protocol::Http
     }
-}
-
-fn filename_from_url(url: &str) -> String {
-    url.rsplit('/')
-        .next()
-        .and_then(|s| s.split('?').next())
-        .filter(|s| !s.is_empty())
-        .unwrap_or("download")
-        .to_string()
 }
 
 impl Protocol {

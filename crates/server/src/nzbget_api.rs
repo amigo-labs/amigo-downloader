@@ -48,18 +48,21 @@ struct JsonRpcRequest {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct JsonRpcResponse {
     id: Value,
     result: Value,
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct JsonRpcError {
     id: Value,
     error: JsonRpcErrorDetail,
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct JsonRpcErrorDetail {
     code: i32,
     message: String,
@@ -71,13 +74,12 @@ fn check_basic_auth(headers: &HeaderMap) -> bool {
     // Accept all requests for now (configurable later via nzbget_username/password in config)
     // NZBGet embeds credentials in the URL: http://user:pass@host/jsonrpc
     // Axum receives them as HTTP Basic Auth header
-    if let Some(auth) = headers.get("authorization") {
-        if let Ok(auth_str) = auth.to_str() {
-            if auth_str.starts_with("Basic ") {
-                // Credentials present — accept any for now
-                return true;
-            }
-        }
+    if let Some(auth) = headers.get("authorization")
+        && let Ok(auth_str) = auth.to_str()
+        && auth_str.starts_with("Basic ")
+    {
+        // Credentials present — accept any for now
+        return true;
     }
     // Also accept requests without auth (for easier testing)
     true
@@ -109,7 +111,7 @@ async fn jsonrpc_handler(
         "listgroups" => handle_listgroups(&state.coordinator).await,
         "history" => handle_history(&state.coordinator).await,
         "editqueue" => handle_editqueue(&state.coordinator, &req.params).await,
-        "config" => handle_config(&state.coordinator),
+        "config" => handle_config(&state.coordinator).await,
         "postqueue" => Ok(json!([])),
         "listfiles" => Ok(json!([])),
         "log" => Ok(json!([])),
@@ -184,7 +186,7 @@ async fn handle_status(coordinator: &Arc<Coordinator>) -> RpcResult {
         "DownloadedSizeLo": 0,
         "DownloadedSizeHi": 0,
         "DownloadedSizeMB": 0,
-        "DownloadLimit": coordinator.config().bandwidth.global_limit,
+        "DownloadLimit": coordinator.config().await.bandwidth.global_limit,
         "AverageDownloadRate": speed,
         "DownloadRate": speed,
         "ThreadCount": active,
@@ -447,8 +449,8 @@ async fn handle_editqueue(coordinator: &Arc<Coordinator>, params: &[Value]) -> R
     Ok(json!(true))
 }
 
-fn handle_config(coordinator: &Arc<Coordinator>) -> RpcResult {
-    let config = coordinator.config();
+async fn handle_config(coordinator: &Arc<Coordinator>) -> RpcResult {
+    let config = coordinator.config().await;
     Ok(json!([
         {"Name": "MainDir", "Value": config.download_dir},
         {"Name": "DestDir", "Value": config.download_dir},

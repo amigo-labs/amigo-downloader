@@ -387,6 +387,98 @@ impl Storage {
         Ok(count)
     }
 
+    // --- Chunk persistence for resumable downloads ---
+
+    /// Save a chunk plan for a download (overwrites any existing chunks).
+    pub async fn save_chunks(
+        &self,
+        download_id: &str,
+        chunks: &[crate::chunk::Chunk],
+        temp_dir: &std::path::Path,
+    ) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "DELETE FROM chunks WHERE download_id = ?1",
+            rusqlite::params![download_id],
+        )?;
+        for chunk in chunks {
+            let temp_path = temp_dir.join(format!("chunk_{}", chunk.index));
+            db.execute(
+                "INSERT INTO chunks (id, download_id, chunk_index, start_byte, end_byte, bytes_downloaded, status, temp_path)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+                rusqlite::params![
+                    format!("{download_id}_chunk_{}", chunk.index),
+                    download_id,
+                    chunk.index,
+                    chunk.start_byte,
+                    chunk.end_byte,
+                    chunk.bytes_downloaded,
+                    format!("{:?}", chunk.status).to_lowercase(),
+                    temp_path.to_string_lossy(),
+                ],
+            )?;
+        }
+        Ok(())
+    }
+
+    /// Load saved chunks for a download. Returns empty vec if none.
+    pub async fn load_chunks(
+        &self,
+        download_id: &str,
+    ) -> Result<Vec<crate::chunk::Chunk>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare(
+            "SELECT chunk_index, start_byte, end_byte, bytes_downloaded, status
+             FROM chunks WHERE download_id = ?1 ORDER BY chunk_index",
+        )?;
+        let chunks = stmt
+            .query_map(rusqlite::params![download_id], |row| {
+                let status_str: String = row.get(4)?;
+                let status = match status_str.as_str() {
+                    "completed" => crate::chunk::ChunkStatus::Completed,
+                    "downloading" => crate::chunk::ChunkStatus::Pending, // Treat interrupted as pending
+                    "failed" => crate::chunk::ChunkStatus::Failed,
+                    _ => crate::chunk::ChunkStatus::Pending,
+                };
+                Ok(crate::chunk::Chunk {
+                    index: row.get(0)?,
+                    start_byte: row.get(1)?,
+                    end_byte: row.get(2)?,
+                    bytes_downloaded: row.get(3)?,
+                    status,
+                })
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(chunks)
+    }
+
+    /// Update a single chunk's progress.
+    pub async fn update_chunk_progress(
+        &self,
+        download_id: &str,
+        chunk_index: u32,
+        bytes_downloaded: u64,
+        status: &str,
+    ) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "UPDATE chunks SET bytes_downloaded = ?1, status = ?2
+             WHERE download_id = ?3 AND chunk_index = ?4",
+            rusqlite::params![bytes_downloaded, status, download_id, chunk_index],
+        )?;
+        Ok(())
+    }
+
+    /// Delete all chunks for a download (after successful reassembly).
+    pub async fn delete_chunks(&self, download_id: &str) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "DELETE FROM chunks WHERE download_id = ?1",
+            rusqlite::params![download_id],
+        )?;
+        Ok(())
+    }
+
     // --- Update state ---
 
     pub async fn get_update_state(&self, key: &str) -> Result<Option<String>, crate::Error> {

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use amigo_core::coordinator::Coordinator;
 use tokio::time::{Duration, interval};
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info, warn};
 
 /// Start all background tasks.
 pub fn spawn_background_tasks(coordinator: Arc<Coordinator>, http_client: reqwest::Client) {
@@ -105,7 +105,7 @@ async fn check_nzb_watch_folder(coordinator: &Arc<Coordinator>) -> Result<(), am
                             let dest = processed_dir.join(entry.file_name());
                             if let Err(e) = tokio::fs::rename(&path, &dest).await {
                                 // If rename fails (cross-device), copy + delete
-                                if let Ok(_) = tokio::fs::copy(&path, &dest).await {
+                                if tokio::fs::copy(&path, &dest).await.is_ok() {
                                     let _ = tokio::fs::remove_file(&path).await;
                                 } else {
                                     warn!("Failed to move processed NZB: {e}");
@@ -154,14 +154,13 @@ async fn poll_rss_feeds(
         }
 
         // Check if enough time has passed since last check
-        if let Some(ref last_check) = feed.last_check {
-            if let Ok(last) = chrono::NaiveDateTime::parse_from_str(last_check, "%Y-%m-%d %H:%M:%S")
-            {
-                let now = chrono::Utc::now().naive_utc();
-                let elapsed = now - last;
-                if elapsed.num_minutes() < feed.interval_minutes as i64 {
-                    continue;
-                }
+        if let Some(ref last_check) = feed.last_check
+            && let Ok(last) = chrono::NaiveDateTime::parse_from_str(last_check, "%Y-%m-%d %H:%M:%S")
+        {
+            let now = chrono::Utc::now().naive_utc();
+            let elapsed = now - last;
+            if elapsed.num_minutes() < feed.interval_minutes as i64 {
+                continue;
             }
         }
 

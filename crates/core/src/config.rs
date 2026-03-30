@@ -53,27 +53,41 @@ pub struct Config {
     pub feedback: FeedbackConfig,
     pub captcha: CaptchaConfig,
     #[serde(default)]
+    pub retry: RetryConfig,
+    #[serde(default)]
     pub webhooks: Vec<WebhookEndpoint>,
     #[serde(default)]
     pub features: FeatureFlags,
 }
 
-/// Optional feature toggles — disabled by default, user enables in Settings.
+/// Retry behavior for failed downloads.
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RetryConfig {
+    /// Maximum number of retry attempts before giving up.
+    pub max_retries: u32,
+    /// Initial delay before the first retry (seconds).
+    pub base_delay_secs: f64,
+    /// Maximum delay between retries (seconds). Exponential backoff is capped at this.
+    pub max_delay_secs: f64,
+}
+
+impl Default for RetryConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: 5,
+            base_delay_secs: 1.0,
+            max_delay_secs: 60.0,
+        }
+    }
+}
+
+/// Optional feature toggles — disabled by default, user enables in Settings.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FeatureFlags {
     /// RSS/Atom feed monitoring for automatic NZB import.
     pub rss_feeds: bool,
     /// Show per-server connection statistics in the Usenet UI.
     pub server_stats: bool,
-}
-
-impl Default for FeatureFlags {
-    fn default() -> Self {
-        Self {
-            rss_feeds: false,
-            server_stats: false,
-        }
-    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -144,6 +158,7 @@ impl Default for Config {
             update: UpdateConfig::default(),
             feedback: FeedbackConfig::default(),
             captcha: CaptchaConfig::default(),
+            retry: RetryConfig::default(),
             webhooks: Vec::new(),
             features: FeatureFlags::default(),
         }
@@ -217,6 +232,14 @@ impl Config {
         Ok(config)
     }
 
+    /// Resolve the config file path (first writable standard path).
+    pub fn resolve_path() -> std::path::PathBuf {
+        if let Ok(dir) = std::env::var("AMIGO_CONFIG_DIR") {
+            return std::path::PathBuf::from(dir).join("config.toml");
+        }
+        std::path::PathBuf::from("config.toml")
+    }
+
     /// Load config, trying standard paths in order:
     /// 1. $AMIGO_CONFIG_DIR/config.toml
     /// 2. ./config.toml
@@ -238,8 +261,38 @@ impl Config {
         Self::default()
     }
 
-    /// Save config to a TOML file.
+    /// Validate config values. Returns a list of problems (empty = valid).
+    pub fn validate(&self) -> Vec<String> {
+        let mut errors = Vec::new();
+
+        if self.max_concurrent_downloads == 0 {
+            errors.push("max_concurrent_downloads must be > 0".into());
+        }
+        if self.download_dir.is_empty() {
+            errors.push("download_dir must not be empty".into());
+        }
+        if self.http.max_chunks_per_download == 0 {
+            errors.push("http.max_chunks_per_download must be > 0".into());
+        }
+        if self.http.timeout_connect_secs == 0 {
+            errors.push("http.timeout_connect_secs must be > 0".into());
+        }
+        if self.retry.max_delay_secs < self.retry.base_delay_secs {
+            errors.push("retry.max_delay_secs must be >= retry.base_delay_secs".into());
+        }
+
+        errors
+    }
+
+    /// Save config to a TOML file. Validates before saving.
     pub fn save(&self, path: &Path) -> Result<(), crate::Error> {
+        let errors = self.validate();
+        if !errors.is_empty() {
+            return Err(crate::Error::Other(format!(
+                "Invalid config: {}",
+                errors.join("; ")
+            )));
+        }
         let content = toml::to_string_pretty(self)
             .map_err(|e| crate::Error::Other(format!("Failed to serialize config: {e}")))?;
 

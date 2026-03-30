@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { usenetServers, features } from "../lib/stores";
+  import { usenetServers, features, type UsenetServer } from "../lib/stores";
   import { getUsenetServers, addUsenetServer, deleteUsenetServer } from "../lib/api";
   import { addToast } from "../lib/toast";
 
@@ -51,12 +51,12 @@
         connections,
         priority,
       });
-      usenetServers.update((s) => [...s, server]);
-      addToast("Server added", "success");
+      usenetServers.update((s) => [...s, server as UsenetServer]);
+      addToast("success", "Server added");
       resetForm();
       showAddForm = false;
     } catch (e: any) {
-      addToast(e.message || "Failed to add server", "error");
+      addToast("error", e.message || "Failed to add server");
     } finally {
       saving = false;
     }
@@ -66,9 +66,9 @@
     try {
       await deleteUsenetServer(id);
       usenetServers.update((s) => s.filter((srv) => srv.id !== id));
-      addToast("Server removed", "success");
+      addToast("success", "Server removed");
     } catch {
-      addToast("Failed to remove server", "error");
+      addToast("error", "Failed to remove server");
     }
   }
 </script>

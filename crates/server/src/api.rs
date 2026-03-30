@@ -6,7 +6,7 @@ use axum::{
     Json, Router,
     extract::{Path, State},
     http::StatusCode,
-    routing::{delete, get, patch, post},
+    routing::{delete, get, patch, post, put},
 };
 use serde::{Deserialize, Serialize};
 
@@ -27,6 +27,7 @@ pub struct AppState {
     pub http_client: reqwest::Client,
     pub captcha_manager: Arc<CaptchaManager>,
     pub webhook_dispatcher: Arc<WebhookDispatcher>,
+    pub config_path: std::path::PathBuf,
 }
 
 pub fn router(state: AppState) -> Router {
@@ -51,12 +52,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/usenet/servers/{id}", delete(delete_usenet_server))
         .route("/api/v1/usenet/watch-dir", get(get_nzb_watch_dir))
         .route("/api/v1/usenet/watch-dir", post(set_nzb_watch_dir))
-        // Usenet processing config
-        .route("/api/v1/usenet/processing", get(get_usenet_processing))
-        .route("/api/v1/usenet/processing", patch(update_usenet_processing))
-        // Feature flags
-        .route("/api/v1/features", get(get_features))
-        .route("/api/v1/features", patch(update_features))
+        // Unified config endpoint
+        .route("/api/v1/config", get(get_config))
+        .route("/api/v1/config", put(put_config))
         // RSS feed endpoints (feature-gated in handlers)
         .route("/api/v1/rss", get(list_rss_feeds))
         .route("/api/v1/rss", post(add_rss_feed))
@@ -681,85 +679,31 @@ async fn set_nzb_watch_dir(
     Ok(Json(WatchDirResponse { path: req.path }))
 }
 
-// --- Usenet processing config ---
+// --- Unified config endpoint ---
 
-#[derive(Serialize, Deserialize)]
-struct UsenetProcessingResponse {
-    par2_repair: bool,
-    auto_unrar: bool,
-    delete_archives_after_extract: bool,
-    delete_par2_after_repair: bool,
-    selective_par2: bool,
-    sequential_postprocess: bool,
-}
-
-async fn get_usenet_processing(State(state): State<AppState>) -> Json<UsenetProcessingResponse> {
-    let c = &state.coordinator.config().usenet;
-    Json(UsenetProcessingResponse {
-        par2_repair: c.par2_repair,
-        auto_unrar: c.auto_unrar,
-        delete_archives_after_extract: c.delete_archives_after_extract,
-        delete_par2_after_repair: c.delete_par2_after_repair,
-        selective_par2: c.selective_par2,
-        sequential_postprocess: c.sequential_postprocess,
-    })
-}
-
-async fn update_usenet_processing(
+async fn get_config(
     State(state): State<AppState>,
-    Json(req): Json<UsenetProcessingResponse>,
-) -> Result<Json<UsenetProcessingResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Persist to update_state (read on next pipeline run)
-    let val = serde_json::to_string(&req).unwrap_or_default();
-    state
-        .coordinator
-        .storage()
-        .set_update_state("usenet_processing", &val)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse { error: e.to_string() }),
-            )
-        })?;
-    Ok(Json(req))
+) -> Json<amigo_core::config::Config> {
+    Json(state.coordinator.config().await)
 }
 
-// --- Feature flags ---
-
-#[derive(Serialize, Deserialize)]
-struct FeaturesResponse {
-    rss_feeds: bool,
-    server_stats: bool,
-}
-
-async fn get_features(State(state): State<AppState>) -> Json<FeaturesResponse> {
-    let f = &state.coordinator.config().features;
-    Json(FeaturesResponse {
-        rss_feeds: f.rss_feeds,
-        server_stats: f.server_stats,
-    })
-}
-
-async fn update_features(
+async fn put_config(
     State(state): State<AppState>,
-    Json(req): Json<FeaturesResponse>,
-) -> Result<Json<FeaturesResponse>, (StatusCode, Json<ErrorResponse>)> {
-    // Persist feature flags via update_state (config file would need reload)
-    let storage = state.coordinator.storage();
-    let val = serde_json::to_string(&req).unwrap_or_default();
-    storage
-        .set_update_state("feature_flags", &val)
-        .await
-        .map_err(|e| {
-            (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                Json(ErrorResponse {
-                    error: e.to_string(),
-                }),
-            )
-        })?;
-    Ok(Json(req))
+    Json(new_config): Json<amigo_core::config::Config>,
+) -> Result<Json<amigo_core::config::Config>, (StatusCode, Json<ErrorResponse>)> {
+    // Save to TOML file
+    new_config.save(&state.config_path).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse { error: e.to_string() }),
+        )
+    })?;
+
+    // Update runtime state (bandwidth limiter, retry policy, etc.)
+    state.coordinator.update_config(new_config.clone()).await;
+
+    tracing::info!("Config updated and saved to {:?}", state.config_path);
+    Ok(Json(new_config))
 }
 
 // --- RSS feed handlers (feature-gated) ---
@@ -793,7 +737,7 @@ fn default_rss_interval() -> u32 {
 async fn list_rss_feeds(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<RssFeedResponse>>, (StatusCode, Json<ErrorResponse>)> {
-    if !state.coordinator.config().features.rss_feeds {
+    if !state.coordinator.config().await.features.rss_feeds {
         return Ok(Json(Vec::new()));
     }
 
@@ -824,7 +768,7 @@ async fn add_rss_feed(
     State(state): State<AppState>,
     Json(req): Json<AddRssFeedRequest>,
 ) -> Result<(StatusCode, Json<RssFeedResponse>), (StatusCode, Json<ErrorResponse>)> {
-    if !state.coordinator.config().features.rss_feeds {
+    if !state.coordinator.config().await.features.rss_feeds {
         return Err((
             StatusCode::FORBIDDEN,
             Json(ErrorResponse {

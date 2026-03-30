@@ -73,7 +73,27 @@ export const accent = createAccentStore();
 // ========================================
 
 export type Page = "downloads" | "queue" | "usenet-downloads" | "usenet-servers" | "rss" | "plugins" | "history" | "settings";
-export const currentPage = writable<Page>("downloads");
+
+const validPages: Page[] = ["downloads", "queue", "usenet-downloads", "usenet-servers", "rss", "plugins", "history", "settings"];
+
+function pageFromHash(): Page {
+  const hash = typeof location !== "undefined" ? location.hash.slice(1) : "";
+  return validPages.includes(hash as Page) ? (hash as Page) : "downloads";
+}
+
+export const currentPage = writable<Page>(pageFromHash());
+
+// Sync URL hash ↔ page state
+if (typeof window !== "undefined") {
+  currentPage.subscribe((page) => {
+    if (location.hash !== `#${page}`) {
+      history.pushState({ page }, "", `#${page}`);
+    }
+  });
+  window.addEventListener("popstate", () => {
+    currentPage.set(pageFromHash());
+  });
+}
 
 // ========================================
 // DOWNLOADS DATA
@@ -94,6 +114,24 @@ export interface Download {
 }
 
 export const downloads = writable<Download[]>([]);
+
+/** Update a single download's progress in-place (from WebSocket events). */
+export function updateDownloadProgress(id: string, bytes_downloaded: number, speed: number, total_bytes?: number) {
+  downloads.update((list) =>
+    list.map((d) =>
+      d.id === id
+        ? { ...d, bytes_downloaded, speed, filesize: total_bytes ?? d.filesize }
+        : d
+    )
+  );
+}
+
+/** Mark a download's status (from WebSocket events). */
+export function updateDownloadStatus(id: string, status: string) {
+  downloads.update((list) =>
+    list.map((d) => (d.id === id ? { ...d, status } : d))
+  );
+}
 
 export const activeDownloads = derived(downloads, ($d) =>
   $d.filter((d) => d.status === "downloading")

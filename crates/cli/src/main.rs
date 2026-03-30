@@ -7,14 +7,18 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use tokio::sync::watch;
 use tracing::debug;
 
+use amigo_core::bandwidth::{BandwidthConfig, BandwidthLimiter};
 use amigo_core::config::Config;
 use amigo_core::coordinator::Coordinator;
-use amigo_core::protocol::dash::{self, DashDownloader};
-use amigo_core::protocol::hls::{self, HlsDownloader};
+use amigo_core::protocol::{DownloadJob, Protocol, ProtocolBackend};
+use amigo_core::protocol::dash::DashDownloader;
+use amigo_core::protocol::hls::HlsDownloader;
 use amigo_core::protocol::http::{DownloadProgress, HttpDownloader};
 use amigo_core::queue::QueueStatus;
 use amigo_core::storage::Storage;
-use amigo_extractors::youtube;
+use amigo_plugin_runtime::loader::PluginLoader;
+use amigo_plugin_runtime::sandbox::SandboxLimits;
+use amigo_plugin_runtime::types::DownloadProtocol;
 
 /// Output mode for terminal display.
 #[derive(Debug, Clone, Copy, PartialEq, ValueEnum, Default)]
@@ -398,105 +402,50 @@ fn filename_from_url(url: &str) -> String {
         .to_string()
 }
 
-/// Detected download protocol for a URL.
-enum DownloadProtocol {
-    Http,
-    Hls,
-    Dash,
-    YouTube,
-}
-
-fn detect_protocol(url: &str) -> DownloadProtocol {
-    if youtube::is_youtube_url(url) {
-        DownloadProtocol::YouTube
-    } else if hls::is_hls_url(url) {
-        DownloadProtocol::Hls
-    } else if dash::is_dash_url(url) {
-        DownloadProtocol::Dash
-    } else {
-        DownloadProtocol::Http
-    }
-}
-
-/// Resolve a URL — extracts the actual download URL and filename.
-/// For YouTube, this calls the innertube API. For plain URLs, uses HEAD.
-struct ResolvedUrl {
-    download_url: String,
-    filename: String,
-    filesize: Option<u64>,
-    accepts_ranges: bool,
-    protocol: DownloadProtocol,
-}
-
-async fn resolve_url(user_agent: &str, url: &str, pb: &ProgressBar) -> anyhow::Result<ResolvedUrl> {
-    let protocol = detect_protocol(url);
-
-    match protocol {
-        DownloadProtocol::YouTube => {
-            pb.set_message("Resolving YouTube video...");
-            let client = reqwest::Client::builder()
-                .user_agent(user_agent)
-                .cookie_store(true)
-                .build()?;
-            let video = youtube::resolve(&client, url)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-            pb.set_message(format!("{} [{}]", video.title, video.quality));
-
-            Ok(ResolvedUrl {
-                download_url: video.stream_url,
-                filename: video.filename,
-                filesize: video.filesize,
-                // YouTube throttles chunked downloads
-                accepts_ranges: false,
-                protocol: DownloadProtocol::Http, // resolved to direct HTTP URL
-            })
-        }
-        DownloadProtocol::Hls => {
-            pb.set_message("HLS stream detected");
-            let filename = filename_from_url(url)
-                .replace(".m3u8", ".ts")
-                .replace(".m3u", ".ts");
-            Ok(ResolvedUrl {
-                download_url: url.to_string(),
-                filename,
-                filesize: None,
-                accepts_ranges: false,
-                protocol: DownloadProtocol::Hls,
-            })
-        }
-        DownloadProtocol::Dash => {
-            pb.set_message("DASH stream detected");
-            let filename = filename_from_url(url).replace(".mpd", ".mp4");
-            Ok(ResolvedUrl {
-                download_url: url.to_string(),
-                filename,
-                filesize: None,
-                accepts_ranges: false,
-                protocol: DownloadProtocol::Dash,
-            })
-        }
-        DownloadProtocol::Http => {
-            let http = HttpDownloader::new(user_agent);
-            let head = http.head(url).await?;
-            let filename = head
-                .filename
-                .clone()
-                .unwrap_or_else(|| filename_from_url(url));
-
-            Ok(ResolvedUrl {
-                download_url: url.to_string(),
-                filename,
-                filesize: head.content_length,
-                accepts_ranges: head.accepts_ranges,
-                protocol: DownloadProtocol::Http,
-            })
+/// Resolve a URL through plugins, then fall back to HEAD for plain HTTP.
+async fn resolve_url(
+    plugin_loader: &PluginLoader,
+    user_agent: &str,
+    url: &str,
+    pb: &ProgressBar,
+) -> anyhow::Result<(String, String, Option<u64>, Protocol)> {
+    // Try plugin resolution first (YouTube, generic-http, etc.)
+    if let Some(meta) = plugin_loader.match_url(url).await {
+        pb.set_message(format!("Resolving via {}...", meta.name));
+        if let Ok(pkg) = plugin_loader.resolve(&meta.id, url).await
+            && let Some(info) = pkg.downloads.into_iter().next()
+        {
+            let protocol = match info.protocol {
+                DownloadProtocol::Hls => Protocol::Hls,
+                DownloadProtocol::Dash => Protocol::Dash,
+                DownloadProtocol::Http => Protocol::Http,
+            };
+            let filename = info.filename.unwrap_or_else(|| format!("{}.mp4", pkg.name));
+            return Ok((info.url, filename, info.filesize, protocol));
         }
     }
+
+    // Fall back to protocol detection + HEAD
+    let path = url.split('?').next().unwrap_or(url);
+    if path.ends_with(".m3u8") || path.ends_with(".m3u") {
+        let filename = filename_from_url(url).replace(".m3u8", ".ts").replace(".m3u", ".ts");
+        return Ok((url.to_string(), filename, None, Protocol::Hls));
+    }
+    if path.ends_with(".mpd") {
+        let filename = filename_from_url(url).replace(".mpd", ".mp4");
+        return Ok((url.to_string(), filename, None, Protocol::Dash));
+    }
+
+    // Plain HTTP — HEAD request for filename/size
+    let http = HttpDownloader::new(user_agent, BandwidthLimiter::new(BandwidthConfig::default()));
+    let head = http.head(url).await?;
+    let filename = head.filename.clone().unwrap_or_else(|| filename_from_url(url));
+    Ok((url.to_string(), filename, head.content_length, Protocol::Http))
 }
 
-/// Run a direct download for a single URL with terminal progress.
+/// Run a direct download using the ProtocolBackend trait (same path as server).
 async fn direct_download(
+    plugin_loader: &PluginLoader,
     user_agent: &str,
     url: &str,
     output_dir: &str,
@@ -504,23 +453,35 @@ async fn direct_download(
     pb: &ProgressBar,
     tui: &Tui,
 ) -> anyhow::Result<()> {
-    let proto_name = match detect_protocol(url) {
-        DownloadProtocol::YouTube => "youtube",
-        DownloadProtocol::Hls => "hls",
-        DownloadProtocol::Dash => "dash",
-        DownloadProtocol::Http => "http",
-    };
-    tui.download_start(url, proto_name);
-    let resolved = resolve_url(user_agent, url, pb).await?;
+    let (download_url, filename, filesize, protocol) =
+        resolve_url(plugin_loader, user_agent, url, pb).await?;
 
-    let dest = PathBuf::from(output_dir).join(&resolved.filename);
-    tokio::fs::create_dir_all(output_dir).await?;
-
-    pb.set_message(resolved.filename.clone());
-
-    if let Some(total) = resolved.filesize {
+    tui.download_start(url, protocol.as_str());
+    pb.set_message(filename.clone());
+    if let Some(total) = filesize {
         pb.set_length(total);
     }
+
+    let config = Config::load_auto();
+    let max_chunks = if chunks_override > 0 {
+        chunks_override
+    } else {
+        config.http.max_chunks_per_download
+    };
+
+    let job = DownloadJob {
+        url: download_url,
+        download_id: uuid::Uuid::new_v4().to_string(),
+        download_dir: PathBuf::from(output_dir),
+        temp_dir: PathBuf::from(output_dir).join(".amigo-tmp"),
+        filename: Some(filename.clone()),
+        headers: std::collections::HashMap::new(),
+        max_chunks,
+        user_agent: user_agent.to_string(),
+    };
+
+    tokio::fs::create_dir_all(output_dir).await?;
+    tokio::fs::create_dir_all(&job.temp_dir).await?;
 
     let (progress_tx, progress_rx) = watch::channel(DownloadProgress {
         bytes_downloaded: 0,
@@ -528,75 +489,24 @@ async fn direct_download(
         speed_bytes_per_sec: 0,
     });
 
-    let download_url = resolved.download_url;
-    let filename = resolved.filename;
-    let dest_clone = dest.clone();
-    let ua = user_agent.to_string();
+    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    let _ = cancel_tx; // Keep alive — drop only on ctrl-c
 
-    let download_handle = match resolved.protocol {
-        DownloadProtocol::Hls => {
-            debug!("Starting HLS download: {download_url}");
-            tokio::spawn(async move {
-                let hls = HlsDownloader::new(&ua, 8);
-                hls.download(&download_url, &dest_clone, progress_tx)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("{e}"))
-            })
-        }
-        DownloadProtocol::Dash => {
-            debug!("Starting DASH download: {download_url}");
-            tokio::spawn(async move {
-                let dash = DashDownloader::new(&ua, 8);
-                dash.download(&download_url, &dest_clone, progress_tx)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("{e}"))
-            })
-        }
-        DownloadProtocol::Http | DownloadProtocol::YouTube => {
-            // Decide chunk count
-            let max_chunks = if chunks_override > 0 {
-                chunks_override
-            } else {
-                Config::load_auto().http.max_chunks_per_download
-            };
-
-            let use_chunked = resolved.accepts_ranges
-                && resolved.filesize.is_some_and(|s| s > 1024 * 1024)
-                && max_chunks > 1;
-
-            let temp_dir = PathBuf::from(output_dir).join(".amigo-tmp");
-            tokio::fs::create_dir_all(&temp_dir).await?;
-
-            if use_chunked {
-                // Safe: use_chunked requires filesize.is_some_and(...)
-                let total = resolved.filesize.expect("use_chunked requires known filesize");
-                let num_chunks = max_chunks.min((total / (512 * 1024)).max(1) as u32);
-                let chunk_dir = temp_dir.join(&filename);
-                tokio::fs::create_dir_all(&chunk_dir).await?;
-
-                tokio::spawn(async move {
-                    let http = HttpDownloader::new(&ua);
-                    http.download_chunked(
-                        &download_url,
-                        &dest_clone,
-                        &chunk_dir,
-                        total,
-                        num_chunks,
-                        progress_tx,
-                    )
-                    .await
-                    .map_err(|e| anyhow::anyhow!("{e}"))
-                })
-            } else {
-                tokio::spawn(async move {
-                    let http = HttpDownloader::new(&ua);
-                    http.download_single(&download_url, &dest_clone, progress_tx)
-                        .await
-                        .map_err(|e| anyhow::anyhow!("{e}"))
-                })
-            }
-        }
+    // Use ProtocolBackend trait dispatch — same as server
+    let bw = BandwidthLimiter::new(config.bandwidth);
+    let backend: Box<dyn ProtocolBackend> = match protocol {
+        Protocol::Hls => Box::new(HlsDownloader::new(user_agent, 8)),
+        Protocol::Dash => Box::new(DashDownloader::new(user_agent, 8)),
+        _ => Box::new(HttpDownloader::new(user_agent, bw)),
     };
+
+    let download_handle = tokio::spawn(async move {
+        backend
+            .download(&job, progress_tx, cancel_rx)
+            .await
+            .map(|(bytes, _path)| bytes)
+            .map_err(|e| anyhow::anyhow!("{e}"))
+    });
 
     // Poll progress until download completes
     let filename_display = filename.clone();
@@ -666,6 +576,18 @@ async fn run_direct_downloads(
     let config = Config::load_auto();
     let user_agent = config.http.user_agent.clone();
 
+    // Load plugins — same resolver chain as the server
+    let plugin_loader = PluginLoader::new(PathBuf::from("plugins"), SandboxLimits::default())
+        .unwrap_or_else(|e| {
+            tracing::warn!("Failed to load plugin runtime: {e}");
+            PluginLoader::new(PathBuf::from("/etc/amigo/plugins"), SandboxLimits::default())
+                .expect("Failed to initialize plugin runtime")
+        });
+    let discovered = plugin_loader.discover().await.unwrap_or_default();
+    if !discovered.is_empty() {
+        debug!("Loaded {} plugins for URL resolution", discovered.len());
+    }
+
     let multi = MultiProgress::new();
     let pb_style = tui.progress_style();
 
@@ -677,9 +599,6 @@ async fn run_direct_downloads(
     ));
 
     for url in urls {
-        // Check if a plugin from the registry could handle this URL
-        check_plugin_suggestion(url, tui).await;
-
         let pb = if tui.mode == OutputMode::Json {
             ProgressBar::hidden()
         } else {
@@ -687,7 +606,7 @@ async fn run_direct_downloads(
         };
         pb.set_style(pb_style.clone());
         pb.enable_steady_tick(std::time::Duration::from_millis(80));
-        direct_download(&user_agent, url, output, chunks, &pb, tui).await?;
+        direct_download(&plugin_loader, &user_agent, url, output, chunks, &pb, tui).await?;
     }
 
     if tui.mode == OutputMode::Fancy {
@@ -700,38 +619,6 @@ async fn run_direct_downloads(
     }
 
     Ok(())
-}
-
-/// Check the plugin registry for a plugin that can handle this URL.
-/// Uses local cached index (instant), falls back to remote fetch if no cache.
-async fn check_plugin_suggestion(url: &str, tui: &Tui) {
-    // Skip URLs we already handle natively
-    if youtube::is_youtube_url(url) || hls::is_hls_url(url) || dash::is_dash_url(url) {
-        return;
-    }
-
-    let client = match reqwest::Client::builder()
-        .user_agent("amigo-downloader")
-        .timeout(std::time::Duration::from_secs(3))
-        .build()
-    {
-        Ok(c) => c,
-        Err(_) => return,
-    };
-
-    let config = amigo_plugin_runtime::registry::RegistryConfig::default();
-    let index = match amigo_plugin_runtime::registry::load_index(&client, &config).await {
-        Ok(idx) => idx,
-        Err(_) => return,
-    };
-
-    if let Some(plugin) = amigo_plugin_runtime::registry::suggest_plugin_for_url(&index, url) {
-        let hint = amigo_core::i18n::t_fmt(
-            "plugin.install_hint",
-            &[("name", &plugin.name), ("id", &plugin.id)]
-        );
-        tui.warn(&hint);
-    }
 }
 
 fn init_tracing(verbose: bool) {

@@ -137,7 +137,7 @@ type FeedbackState = (AppState, Arc<Mutex<RateLimiter>>);
 // --- Handlers ---
 
 async fn system_info(State((state, _)): State<FeedbackState>) -> Json<SystemInfoResponse> {
-    let config = state.coordinator.config();
+    let config = state.coordinator.config().await;
     let active = state.coordinator.active_count().await;
     let queued = state
         .coordinator
@@ -174,7 +174,7 @@ async fn submit_feedback(
     State((state, rate_limiter)): State<FeedbackState>,
     Json(req): Json<FeedbackRequest>,
 ) -> Result<(StatusCode, Json<FeedbackResponse>), (StatusCode, Json<ErrorResponse>)> {
-    let config = state.coordinator.config();
+    let config = state.coordinator.config().await;
 
     // Check if feedback is configured
     let token = if !config.feedback.github_token.is_empty() {

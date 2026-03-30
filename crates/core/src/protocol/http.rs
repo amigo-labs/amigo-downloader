@@ -10,6 +10,8 @@ use tokio::io::AsyncWriteExt;
 use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
+use crate::bandwidth::BandwidthLimiter;
+
 /// Progress update for a download.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DownloadProgress {
@@ -28,15 +30,16 @@ pub struct HeadInfo {
 
 pub struct HttpDownloader {
     client: reqwest::Client,
+    bandwidth: BandwidthLimiter,
 }
 
 impl HttpDownloader {
-    pub fn new(user_agent: &str) -> Self {
+    pub fn new(user_agent: &str, bandwidth: BandwidthLimiter) -> Self {
         let client = reqwest::Client::builder()
             .user_agent(user_agent)
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
-        Self { client }
+        Self { client, bandwidth }
     }
 
     /// Perform a HEAD request to get file info.
@@ -84,6 +87,7 @@ impl HttpDownloader {
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(crate::Error::Http)?;
+            self.bandwidth.acquire(chunk.len() as u64).await;
             file.write_all(&chunk).await?;
             downloaded += chunk.len() as u64;
             speed_bytes += chunk.len() as u64;
@@ -146,9 +150,10 @@ impl HttpDownloader {
             let client = self.client.clone();
             let url = url.to_string();
             let progress = chunk_progress.clone();
+            let bw = self.bandwidth.clone();
 
             let handle = tokio::spawn(async move {
-                download_chunk(&client, &url, &chunk_path, start, end, i, &progress).await
+                download_chunk(&client, &bw, &url, &chunk_path, start, end, i, &progress).await
             });
             handles.push(handle);
         }
@@ -268,6 +273,7 @@ impl HttpDownloader {
 
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(crate::Error::Http)?;
+            self.bandwidth.acquire(chunk.len() as u64).await;
             file.write_all(&chunk).await?;
             downloaded += chunk.len() as u64;
             speed_bytes += chunk.len() as u64;
@@ -293,8 +299,10 @@ impl HttpDownloader {
 }
 
 /// Download a single chunk (byte range) to a temp file.
+#[allow(clippy::too_many_arguments)]
 async fn download_chunk(
     client: &reqwest::Client,
+    bandwidth: &BandwidthLimiter,
     url: &str,
     chunk_path: &PathBuf,
     start: u64,
@@ -302,21 +310,45 @@ async fn download_chunk(
     chunk_index: u32,
     progress: &[std::sync::atomic::AtomicU64],
 ) -> Result<(), crate::Error> {
-    debug!("Chunk {chunk_index}: bytes {start}-{end}");
+    // Resume: check if temp file exists with partial data
+    let existing_bytes = if chunk_path.exists() {
+        tokio::fs::metadata(chunk_path).await?.len()
+    } else {
+        0
+    };
+
+    let expected_size = end - start + 1;
+    if existing_bytes >= expected_size {
+        debug!("Chunk {chunk_index}: already complete ({existing_bytes} bytes), skipping");
+        progress[chunk_index as usize].store(existing_bytes, std::sync::atomic::Ordering::Relaxed);
+        return Ok(());
+    }
+
+    let actual_start = start + existing_bytes;
+    debug!("Chunk {chunk_index}: bytes {actual_start}-{end} (resuming from {existing_bytes})");
 
     let resp = client
         .get(url)
-        .header(RANGE, format!("bytes={start}-{end}"))
+        .header(RANGE, format!("bytes={actual_start}-{end}"))
         .send()
         .await?
         .error_for_status()?;
 
-    let mut file = tokio::fs::File::create(chunk_path).await?;
+    let mut file = if existing_bytes > 0 {
+        tokio::fs::OpenOptions::new()
+            .append(true)
+            .open(chunk_path)
+            .await?
+    } else {
+        tokio::fs::File::create(chunk_path).await?
+    };
+
     let mut stream = resp.bytes_stream();
-    let mut chunk_downloaded: u64 = 0;
+    let mut chunk_downloaded = existing_bytes;
 
     while let Some(data) = stream.next().await {
         let data = data.map_err(crate::Error::Http)?;
+        bandwidth.acquire(data.len() as u64).await;
         file.write_all(&data).await?;
         chunk_downloaded += data.len() as u64;
         progress[chunk_index as usize]
@@ -360,6 +392,61 @@ fn parse_content_disposition_filename(header: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[async_trait::async_trait]
+impl super::ProtocolBackend for HttpDownloader {
+    fn protocol(&self) -> super::Protocol {
+        super::Protocol::Http
+    }
+
+    async fn download(
+        &self,
+        job: &super::DownloadJob,
+        progress_tx: watch::Sender<DownloadProgress>,
+        cancel_rx: tokio::sync::oneshot::Receiver<()>,
+    ) -> Result<(u64, std::path::PathBuf), crate::Error> {
+        let head = self.head(&job.url).await?;
+
+        let fname = job
+            .filename
+            .clone()
+            .or(head.filename.clone())
+            .unwrap_or_else(|| {
+                job.url
+                    .rsplit('/')
+                    .next()
+                    .and_then(|s| s.split('?').next())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("download")
+                    .to_string()
+            });
+
+        let dest = job.download_dir.join(&fname);
+        tokio::fs::create_dir_all(&job.download_dir).await?;
+        tokio::fs::create_dir_all(&job.temp_dir).await?;
+
+        let use_chunked = head.accepts_ranges
+            && head.content_length.is_some_and(|s| s > 1024 * 1024)
+            && job.max_chunks > 1;
+
+        if use_chunked {
+            let total = head.content_length.unwrap();
+            let chunks = job.max_chunks.min((total / (512 * 1024)).max(1) as u32);
+            let chunk_dir = job.temp_dir.join(&fname);
+            tokio::fs::create_dir_all(&chunk_dir).await?;
+
+            tokio::select! {
+                result = self.download_chunked(&job.url, &dest, &chunk_dir, total, chunks, progress_tx) => result.map(|bytes| (bytes, dest)),
+                _ = cancel_rx => Err(crate::Error::Other("Download cancelled".into())),
+            }
+        } else {
+            tokio::select! {
+                result = self.download_single(&job.url, &dest, progress_tx) => result.map(|bytes| (bytes, dest)),
+                _ = cancel_rx => Err(crate::Error::Other("Download cancelled".into())),
+            }
+        }
+    }
 }
 
 #[cfg(test)]
