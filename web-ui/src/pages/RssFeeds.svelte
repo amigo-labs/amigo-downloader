@@ -38,11 +38,11 @@
         interval_minutes: intervalMinutes,
       });
       feeds = [...feeds, feed];
-      addToast("RSS feed added", "success");
+      addToast("success", "RSS feed added");
       resetForm();
       showAddForm = false;
     } catch (e: any) {
-      addToast(e.message || "Failed to add feed", "error");
+      addToast("error", e.message || "Failed to add feed");
     } finally {
       saving = false;
     }
@@ -52,9 +52,9 @@
     try {
       await deleteRssFeed(id);
       feeds = feeds.filter((f) => f.id !== id);
-      addToast("Feed removed", "success");
+      addToast("success", "Feed removed");
     } catch {
-      addToast("Failed to remove feed", "error");
+      addToast("error", "Failed to remove feed");
     }
   }
 </script>

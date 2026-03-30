@@ -43,13 +43,13 @@
 
   async function handleNzbFile(file: File) {
     if (!file.name.endsWith(".nzb")) {
-      addToast("Only .nzb files are supported", "error");
+      addToast("error", "Only .nzb files are supported");
       return;
     }
     try {
       const text = await file.text();
       await uploadNzb(text);
-      addToast(`NZB imported: ${file.name}`, "success");
+      addToast("success", `NZB imported: ${file.name}`);
       const downloads = await getUsenetDownloads();
       usenetDownloads.set(downloads);
     } catch (e: any) {
@@ -88,9 +88,9 @@
     watchDirSaving = true;
     try {
       await setNzbWatchDir(watchDir.trim());
-      addToast(watchDir.trim() ? "Watch folder set" : "Watch folder disabled", "success");
+      addToast("success", watchDir.trim() ? "Watch folder set" : "Watch folder disabled");
     } catch {
-      addToast("Failed to save watch folder", "error");
+      addToast("error", "Failed to save watch folder");
     } finally {
       watchDirSaving = false;
     }
@@ -104,7 +104,7 @@
       const downloads = await getUsenetDownloads();
       usenetDownloads.set(downloads);
     } catch {
-      addToast("Action failed", "error");
+      addToast("error", "Action failed");
     }
   }
 </script>
