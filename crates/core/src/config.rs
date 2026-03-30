@@ -84,6 +84,8 @@ impl Default for RetryConfig {
 /// Optional feature toggles — disabled by default, user enables in Settings.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct FeatureFlags {
+    /// Enable Usenet mode (NZB import, NNTP servers, watch folder).
+    pub usenet: bool,
     /// RSS/Atom feed monitoring for automatic NZB import.
     pub rss_feeds: bool,
     /// Show per-server connection statistics in the Usenet UI.

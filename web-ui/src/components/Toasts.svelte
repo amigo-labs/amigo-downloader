@@ -1,49 +1,41 @@
 <script lang="ts">
   import { toasts, removeToast, type Toast } from "../lib/toast";
-
-  function iconFor(type: Toast["type"]) {
-    switch (type) {
-      case "success": return "checkmark";
-      case "error": return "x-circle";
-      case "info": return "info";
-      default: return "info";
-    }
-  }
+  import Icon from "./Icon.svelte";
 
   function colorFor(type: Toast["type"]) {
     switch (type) {
-      case "success": return "var(--color-success)";
-      case "error": return "var(--color-error)";
-      case "info": return "var(--accent-color)";
-      default: return "var(--accent-color)";
+      case "success": return "var(--neon-success)";
+      case "error": return "var(--neon-accent)";
+      case "info": return "var(--neon-primary)";
+      default: return "var(--neon-primary)";
     }
   }
 </script>
 
-<div class="fixed bottom-4 right-4 z-[100] flex flex-col gap-2 pointer-events-none max-w-sm">
+<!-- Scrollbar offset (audit L3) -->
+<div class="fixed bottom-4 z-[100] flex flex-col gap-2 pointer-events-none max-w-sm" style="right: calc(1rem + 8px)">
   {#each $toasts as toast (toast.id)}
     <div
-      class="toast-enter pointer-events-auto flex items-start gap-3 rounded-xl px-4 py-3 shadow-xl backdrop-blur-lg border"
-      style="background: color-mix(in srgb, var(--surface-color) 90%, transparent); border-color: var(--border-color)"
+      class="toast-enter pointer-events-auto flex items-start gap-3 rounded-xl px-4 py-3 shadow-xl border"
+      style="background: var(--bg-surface); border-color: var(--border-color)"
     >
-      <!-- Color bar -->
+      <!-- Color bar — neon accent, the 10% pop -->
       <div class="w-1 h-8 rounded-full shrink-0 mt-0.5" style="background: {colorFor(toast.type)}"></div>
 
       <div class="flex-1 min-w-0">
-        <p class="text-sm font-semibold">{toast.title}</p>
+        <p class="text-sm font-semibold" style="color: var(--text-primary)">{toast.title}</p>
         {#if toast.message}
-          <p class="text-xs mt-0.5 truncate" style="color: var(--text-secondary-color)">{toast.message}</p>
+          <p class="text-xs mt-0.5 truncate" style="color: var(--text-secondary)">{toast.message}</p>
         {/if}
       </div>
 
       <button
         onclick={() => removeToast(toast.id)}
-        class="shrink-0 p-0.5 rounded transition-colors"
-        style="color: var(--text-secondary-color)"
+        class="shrink-0 p-1 rounded min-w-[44px] min-h-[44px] flex items-center justify-center"
+        style="color: var(--text-secondary)"
+        aria-label="Dismiss notification"
       >
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
-          <path d="M6 18L18 6M6 6l12 12" />
-        </svg>
+        <Icon name="x" size={14} />
       </button>
     </div>
   {/each}

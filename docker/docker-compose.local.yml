@@ -1,0 +1,19 @@
+services:
+  amigo-downloader:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    image: amigo-downloader:local
+    container_name: amigo-downloader
+    ports:
+      - "1516:1516"
+      - "9666:9666"    # Click'n'Load
+    volumes:
+      - ./config:/config
+      - ./downloads:/downloads
+    environment:
+      - TZ=Europe/Berlin
+      - AMIGO_API_KEY=changeme
+      - AMIGO_MAX_DOWNLOADS=10
+      - AMIGO_BANDWIDTH_LIMIT=0
+    restart: unless-stopped

@@ -1,148 +1,204 @@
 @import "tailwindcss";
 
 /* ========================================
-   THEMING SYSTEM
-   CSS Custom Properties for full theme control
+   NEON THEME SYSTEM — Cyberpunk Arcade
+   60:30:10 Rule:
+     60% dark backgrounds (bg-deep, bg-surface)
+     30% secondary surfaces, text, borders
+     10% neon accents (CTAs, active states, progress)
    ======================================== */
 
 @theme {
-  --color-accent: var(--accent-color, #3b82f6);
-  --color-accent-hover: var(--accent-hover, #2563eb);
-  --color-surface: var(--surface-color, #ffffff);
-  --color-surface-2: var(--surface-2-color, #f3f4f6);
-  --color-surface-3: var(--surface-3-color, #e5e7eb);
-  --color-text: var(--text-color, #111827);
-  --color-text-secondary: var(--text-secondary-color, #6b7280);
-  --color-border: var(--border-color, #e5e7eb);
-  --color-success: #10b981;
-  --color-warning: #f59e0b;
-  --color-error: #ef4444;
+  --color-neon-primary: var(--neon-primary, #00D4FF);
+  --color-neon-success: var(--neon-success, #00FFD0);
+  --color-neon-accent: var(--neon-accent, #FF2D78);
+  --color-neon-warning: var(--neon-warning, #FFB800);
+  --color-bg-deep: var(--bg-deep, #06080f);
+  --color-bg-surface: var(--bg-surface, #0c0e18);
+  --color-bg-surface-2: var(--bg-surface-2, #12152a);
+  --color-text: var(--text-primary, #e8ecf4);
+  --color-text-secondary: var(--text-secondary, rgba(232, 236, 244, 0.5));
 }
 
+/* --- Dark Mode (Default) --- */
 :root {
-  /* Light mode defaults */
-  --accent-color: #3b82f6;
-  --accent-hover: #2563eb;
-  --surface-color: #ffffff;
-  --surface-2-color: #f8fafc;
-  --surface-3-color: #f1f5f9;
-  --text-color: #0f172a;
-  --text-secondary-color: #64748b;
-  --border-color: #e2e8f0;
-  --sidebar-bg: #0f172a;
-  --sidebar-text: #cbd5e1;
-  --sidebar-active: var(--accent-color);
+  --neon-primary: #00D4FF;
+  --neon-success: #00FFD0;
+  --neon-accent: #FF2D78;
+  --neon-warning: #FFB800;
+
+  --bg-deep: #06080f;
+  --bg-surface: #0c0e18;
+  --bg-surface-2: #12152a;
+  --text-primary: #e8ecf4;
+  --text-secondary: rgba(232, 236, 244, 0.5);
+  --border-color: rgba(255, 255, 255, 0.06);
+
+  /* Glass tokens — subtle, not overdone */
+  --glass-blur: 12px;
+  --glass-bg: rgba(0, 212, 255, 0.04);
+  --glass-border: rgba(0, 212, 255, 0.08);
+  --glass-shadow: 0 2px 12px rgba(0, 0, 0, 0.25);
 }
 
-:root.dark {
-  --surface-color: #0f172a;
-  --surface-2-color: #1e293b;
-  --surface-3-color: #334155;
-  --text-color: #f1f5f9;
-  --text-secondary-color: #94a3b8;
-  --border-color: #334155;
-  --sidebar-bg: #020617;
-  --sidebar-text: #94a3b8;
+/* --- "Lights On" Mode --- */
+:root.lights-on {
+  --bg-deep: #14162a;
+  --bg-surface: #1a1d38;
+  --bg-surface-2: #222548;
+  --text-secondary: rgba(232, 236, 244, 0.45);
+  --border-color: rgba(255, 255, 255, 0.08);
+
+  --glass-bg: rgba(0, 212, 255, 0.03);
+  --glass-border: rgba(0, 212, 255, 0.06);
 }
 
-/* Accent color presets */
-:root.accent-blue { --accent-color: #3b82f6; --accent-hover: #2563eb; }
-:root.accent-green { --accent-color: #10b981; --accent-hover: #059669; }
-:root.accent-purple { --accent-color: #8b5cf6; --accent-hover: #7c3aed; }
-:root.accent-coral { --accent-color: #f43f5e; --accent-hover: #e11d48; }
-:root.accent-orange { --accent-color: #f97316; --accent-hover: #ea580c; }
-:root.accent-cyan { --accent-color: #06b6d4; --accent-hover: #0891b2; }
+/* --- Accent Presets --- */
+:root.accent-hot {
+  --neon-primary: #FF2D78;
+  --neon-success: #00FFD0;
+  --neon-accent: #00D4FF;
+  --neon-warning: #FFB800;
+  --glass-bg: rgba(255, 45, 120, 0.04);
+  --glass-border: rgba(255, 45, 120, 0.08);
+}
+
+:root.accent-cyan {
+  --neon-primary: #00FFD0;
+  --neon-success: #00D4FF;
+  --neon-accent: #FF2D78;
+  --neon-warning: #FFB800;
+  --glass-bg: rgba(0, 255, 208, 0.04);
+  --glass-border: rgba(0, 255, 208, 0.08);
+}
 
 /* ========================================
-   BASE STYLES
+   BASE STYLES (60% — dark backgrounds)
    ======================================== */
 
 body {
-  background: var(--surface-color);
-  color: var(--text-color);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  transition: background-color 0.2s, color 0.2s;
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: 'Rajdhani', sans-serif;
 }
+
+/* ========================================
+   GLASS PANEL (30% layer — secondary surfaces)
+   Subtle glass, not heavy frosted-glass everywhere
+   ======================================== */
+
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--glass-border);
+  box-shadow: var(--glass-shadow);
+}
+
+/* Mobile: disable backdrop-filter for performance (audit M2) */
+@media (max-width: 768px) {
+  .glass-panel {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: var(--bg-surface-2);
+  }
+}
+
+/* ========================================
+   NEON UTILITIES (10% — accent only)
+   Use sparingly: CTAs, active states, progress
+   ======================================== */
+
+.neon-text-primary { color: var(--neon-primary); }
+.neon-text-success { color: var(--neon-success); }
+.neon-text-accent { color: var(--neon-accent); }
+.neon-text-warning { color: var(--neon-warning); }
 
 /* ========================================
    PROGRESS BAR
    ======================================== */
 
 .progress-bar {
-  height: 6px;
-  border-radius: 3px;
-  background: var(--surface-3-color);
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.06);
   overflow: hidden;
 }
 
 .progress-bar-fill {
   height: 100%;
-  border-radius: 3px;
-  background: var(--accent-color);
-  transition: width 0.3s ease;
+  border-radius: 2px;
+  background: var(--neon-primary);
+}
+
+.progress-bar-fill.active {
+  background: linear-gradient(
+    90deg,
+    var(--neon-primary) 0%,
+    color-mix(in srgb, var(--neon-primary) 70%, white) 50%,
+    var(--neon-primary) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s linear infinite;
 }
 
 /* ========================================
-   PIXEL ART LOGO (CSS)
+   CRT SCAN LINES (very subtle texture)
    ======================================== */
 
-.pixel-logo {
-  image-rendering: pixelated;
-  image-rendering: -moz-crisp-edges;
-  image-rendering: crisp-edges;
+.scan-lines {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 999;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.015) 2px,
+    rgba(0, 0, 0, 0.015) 4px
+  );
+}
+
+/* ========================================
+   NEON TOP LINE (sidebar + footer accent — 10%)
+   ======================================== */
+
+.neon-top-line::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--neon-primary), var(--neon-accent), transparent);
 }
 
 /* ========================================
    SCROLLBAR
    ======================================== */
 
-::-webkit-scrollbar {
-  width: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: var(--surface-2-color);
-}
-
-::-webkit-scrollbar-thumb {
-  background: var(--border-color);
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-secondary-color);
-}
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); }
 
 /* ========================================
    ANIMATIONS
    ======================================== */
 
-/* Page enter */
 @keyframes page-enter {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 
 .page-enter {
   animation: page-enter 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Card enter — staggered via --i custom property */
 @keyframes card-enter {
-  from {
-    opacity: 0;
-    transform: translateY(12px) scale(0.98);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 .card-enter {
@@ -150,53 +206,58 @@ body {
   animation-delay: calc(var(--i, 0) * 50ms);
 }
 
-/* Progress bar shimmer for active downloads */
 @keyframes shimmer {
   0% { background-position: -200% 0; }
   100% { background-position: 200% 0; }
 }
 
-.progress-bar-fill.active {
-  background: linear-gradient(
-    90deg,
-    var(--accent-color) 0%,
-    color-mix(in srgb, var(--accent-color) 70%, white) 50%,
-    var(--accent-color) 100%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 2s linear infinite;
-}
-
-/* Sidebar nav hover effect */
-@keyframes nav-hover-glow {
-  from { box-shadow: 0 0 0 0 transparent; }
-  to { box-shadow: 0 0 12px color-mix(in srgb, var(--accent-color) 20%, transparent); }
-}
-
-/* Subtle scale on interactive elements */
-.interactive {
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.interactive:hover {
-  transform: translateY(-1px);
-}
-.interactive:active {
-  transform: translateY(0) scale(0.98);
-}
-
-/* Fade transition for theme changes */
-* {
-  transition-property: background-color, border-color;
-  transition-duration: 0.15s;
-  transition-timing-function: ease;
-}
-
-/* Status dot pulse for active downloads */
-@keyframes status-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 var(--accent-color); }
-  50% { box-shadow: 0 0 0 4px transparent; }
+@keyframes neon-pulse {
+  0%, 100% { box-shadow: 0 0 4px var(--neon-primary); }
+  50% { box-shadow: 0 0 10px var(--neon-primary); }
 }
 
 .status-pulse {
-  animation: status-pulse 2s ease-in-out infinite;
+  animation: neon-pulse 2s ease-in-out infinite;
+}
+
+/* ========================================
+   FOCUS INDICATORS (audit H3)
+   ======================================== */
+
+*:focus-visible {
+  outline: 2px solid var(--neon-primary);
+  outline-offset: 2px;
+}
+
+/* ========================================
+   SKIP TO CONTENT (audit L6)
+   ======================================== */
+
+.skip-link {
+  position: absolute;
+  top: -100%;
+  left: 16px;
+  z-index: 1000;
+  padding: 8px 16px;
+  background: var(--neon-primary);
+  color: var(--bg-deep);
+  font-weight: 700;
+  border-radius: 0 0 8px 8px;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 0;
+}
+
+/* ========================================
+   REDUCED MOTION (audit H2)
+   ======================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

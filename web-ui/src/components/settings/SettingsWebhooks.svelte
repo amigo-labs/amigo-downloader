@@ -46,66 +46,66 @@
 
 <section>
   <div class="flex items-center justify-between mb-4">
-    <h3 class="text-lg font-bold">Webhooks</h3>
+    <h3 class="text-lg font-bold" style="color: var(--text-primary)">Webhooks</h3>
     <button
       onclick={() => (showAdd = !showAdd)}
-      class="px-3 py-1.5 rounded-lg text-xs font-semibold text-white"
-      style="background: var(--accent-color)"
+      class="px-3 py-1.5 rounded-lg text-xs font-semibold"
+      style="background: var(--neon-primary); color: var(--bg-deep)"
     >+ Add Webhook</button>
   </div>
 
   {#if showAdd}
-    <div class="rounded-xl p-5 mb-4 space-y-3" style="background: var(--surface-2-color); border: 1px solid var(--border-color)">
+    <div class="rounded-xl p-5 mb-4 space-y-3" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
       <div>
-        <label class="text-xs font-semibold mb-1 block">Name</label>
+        <label class="text-xs font-semibold mb-1 block" style="color: var(--text-secondary)">Name</label>
         <input bind:value={name} type="text" placeholder="Discord Notifications"
-          class="w-full rounded-lg px-3 py-2 text-sm outline-none"
-          style="background: var(--surface-3-color); border: 1px solid var(--border-color); color: var(--text-color)" />
+          class="w-full rounded-lg px-3 py-2 text-sm"
+          style="background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
       </div>
       <div>
-        <label class="text-xs font-semibold mb-1 block">URL</label>
+        <label class="text-xs font-semibold mb-1 block" style="color: var(--text-secondary)">URL</label>
         <input bind:value={url} type="url" placeholder="https://discord.com/api/webhooks/..."
-          class="w-full rounded-lg px-3 py-2 text-sm font-mono outline-none"
-          style="background: var(--surface-3-color); border: 1px solid var(--border-color); color: var(--text-color)" />
+          class="w-full rounded-lg px-3 py-2 text-sm"
+          style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
       </div>
       <div>
-        <label class="text-xs font-semibold mb-1 block">Secret <span class="opacity-50">(optional)</span></label>
+        <label class="text-xs font-semibold mb-1 block" style="color: var(--text-secondary)">Secret <span class="opacity-50">(optional)</span></label>
         <input bind:value={secret} type="text" placeholder="my-secret-key"
-          class="w-full rounded-lg px-3 py-2 text-sm font-mono outline-none"
-          style="background: var(--surface-3-color); border: 1px solid var(--border-color); color: var(--text-color)" />
+          class="w-full rounded-lg px-3 py-2 text-sm"
+          style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
       </div>
       <div>
-        <label class="text-xs font-semibold mb-1 block">Events <span class="opacity-50">(comma-separated, * = all)</span></label>
+        <label class="text-xs font-semibold mb-1 block" style="color: var(--text-secondary)">Events <span class="opacity-50">(comma-separated, * = all)</span></label>
         <input bind:value={events} type="text" placeholder="download.completed, download.failed"
-          class="w-full rounded-lg px-3 py-2 text-sm font-mono outline-none"
-          style="background: var(--surface-3-color); border: 1px solid var(--border-color); color: var(--text-color)" />
+          class="w-full rounded-lg px-3 py-2 text-sm"
+          style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
       </div>
       <div class="flex gap-2 pt-1">
         <button onclick={handleAdd}
-          class="px-4 py-2 rounded-lg text-sm font-semibold text-white"
-          style="background: var(--accent-color)"
+          class="px-4 py-2 rounded-lg text-sm font-semibold"
+          style="background: var(--neon-primary); color: var(--bg-deep)"
           disabled={!name.trim() || !url.trim()}>Save</button>
         <button onclick={() => (showAdd = false)}
           class="px-4 py-2 rounded-lg text-sm"
-          style="color: var(--text-secondary-color)">Cancel</button>
+          style="color: var(--text-secondary)">Cancel</button>
       </div>
     </div>
   {/if}
 
   {#if webhooks.length === 0 && !showAdd}
-    <div class="rounded-xl p-5 text-center" style="background: var(--surface-2-color); border: 1px solid var(--border-color)">
-      <p class="text-sm" style="color: var(--text-secondary-color)">
+    <div class="rounded-xl p-5 text-center" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
+      <p class="text-sm" style="color: var(--text-secondary)">
         No webhooks configured. Add one to receive notifications on Discord, Slack, Home Assistant, etc.
       </p>
     </div>
   {:else}
     <div class="space-y-2">
       {#each webhooks as wh}
-        <div class="rounded-xl p-4 flex items-center justify-between gap-3" style="background: var(--surface-2-color); border: 1px solid var(--border-color)">
+        <div class="rounded-xl p-4 flex items-center justify-between gap-3" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
           <div class="min-w-0 flex-1">
-            <p class="font-semibold text-sm truncate">{wh.name}</p>
-            <p class="text-xs font-mono truncate" style="color: var(--text-secondary-color)">{wh.url}</p>
-            <p class="text-[10px] mt-0.5" style="color: var(--text-secondary-color)">
+            <p class="font-semibold text-sm truncate" style="color: var(--text-primary)">{wh.name}</p>
+            <p class="text-xs truncate" style="font-family: 'Share Tech Mono', monospace; color: var(--text-secondary)">{wh.url}</p>
+            <p class="text-[10px] mt-0.5" style="color: var(--text-secondary)">
               Events: {wh.events?.join(", ") || "*"}
               {#if wh.secret}&middot; signed{/if}
             </p>
@@ -113,9 +113,10 @@
           <div class="flex gap-1.5 shrink-0">
             <button onclick={() => handleTest(wh.id)}
               class="px-2.5 py-1.5 rounded-lg text-xs border"
-              style="border-color: var(--border-color); color: var(--text-secondary-color)">Test</button>
+              style="border-color: var(--border-color); color: var(--text-secondary)">Test</button>
             <button onclick={() => handleDelete(wh.id)}
-              class="px-2.5 py-1.5 rounded-lg text-xs text-red-400 border border-red-400/30 hover:bg-red-400/10">Delete</button>
+              class="px-2.5 py-1.5 rounded-lg text-xs"
+              style="color: var(--neon-accent); border: 1px solid color-mix(in srgb, var(--neon-accent) 20%, transparent)">Delete</button>
           </div>
         </div>
       {/each}

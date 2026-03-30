@@ -44,6 +44,12 @@
 docker compose -f docker/docker-compose.yml up -d
 ```
 
+To build from source locally instead of pulling the image:
+
+```bash
+docker compose -f docker/docker-compose.local.yml up -d --build
+```
+
 Open `http://localhost:1516` in your browser.
 
 ### From source
@@ -59,6 +65,10 @@ cargo run --release --bin amigo-server
 ### CLI
 
 ```bash
+# Install to ~/.cargo/bin/
+cargo install --path crates/cli
+
+# Use it
 amigo-dl https://example.com/file.zip
 ```
 
@@ -328,6 +338,12 @@ services:
       - ./plugins:/etc/amigo/plugins     # Custom plugins
     environment:
       - AMIGO_GITHUB_TOKEN=ghp_...  # Optional: auto crash reporting
+```
+
+To build from source locally, use the local compose file:
+
+```bash
+docker compose -f docker/docker-compose.local.yml up -d --build
 ```
 
 ## Plugin Development
