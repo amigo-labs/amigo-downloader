@@ -153,6 +153,7 @@ name = "amigo-server"
 version = "0.1.0"
 dependencies = [
  "amigo-core",
+ "amigo-extractors",
  "amigo-plugin-runtime",
  "anyhow",
  "async-trait",
