@@ -48,18 +48,21 @@ struct JsonRpcRequest {
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct JsonRpcResponse {
     id: Value,
     result: Value,
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct JsonRpcError {
     id: Value,
     error: JsonRpcErrorDetail,
 }
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct JsonRpcErrorDetail {
     code: i32,
     message: String,
@@ -71,13 +74,12 @@ fn check_basic_auth(headers: &HeaderMap) -> bool {
     // Accept all requests for now (configurable later via nzbget_username/password in config)
     // NZBGet embeds credentials in the URL: http://user:pass@host/jsonrpc
     // Axum receives them as HTTP Basic Auth header
-    if let Some(auth) = headers.get("authorization") {
-        if let Ok(auth_str) = auth.to_str() {
-            if auth_str.starts_with("Basic ") {
-                // Credentials present — accept any for now
-                return true;
-            }
-        }
+    if let Some(auth) = headers.get("authorization")
+        && let Ok(auth_str) = auth.to_str()
+        && auth_str.starts_with("Basic ")
+    {
+        // Credentials present — accept any for now
+        return true;
     }
     // Also accept requests without auth (for easier testing)
     true
