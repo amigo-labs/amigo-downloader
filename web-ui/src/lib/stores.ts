@@ -54,15 +54,11 @@ export interface Features {
 // THEME
 // ========================================
 
-export type ThemeMode = "dark" | "lights-on" | "light";
-
-const THEME_CYCLE: ThemeMode[] = ["dark", "lights-on", "light"];
+export type ThemeMode = "dark" | "light";
 
 function applyThemeClass(value: ThemeMode) {
   const root = document.documentElement;
-  root.classList.remove("lights-on", "light");
-  if (value === "lights-on") root.classList.add("lights-on");
-  if (value === "light") root.classList.add("light");
+  root.classList.toggle("light", value === "light");
 }
 
 function createThemeStore() {
@@ -79,8 +75,7 @@ function createThemeStore() {
     },
     toggle() {
       update((v) => {
-        const idx = THEME_CYCLE.indexOf(v);
-        const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
+        const next: ThemeMode = v === "dark" ? "light" : "dark";
         if (typeof localStorage !== "undefined") localStorage.setItem("theme", next);
         applyThemeClass(next);
         return next;
@@ -121,7 +116,6 @@ function createPaletteStore() {
       root.classList.add(`palette-${value}`);
       // Re-apply theme class that may have been stripped
       const currentTheme = typeof localStorage !== "undefined" ? localStorage.getItem("theme") : null;
-      if (currentTheme === "lights-on") root.classList.add("lights-on");
       if (currentTheme === "light") root.classList.add("light");
       set(value);
       // Glow tokens depend on --neon-primary which changes with palette

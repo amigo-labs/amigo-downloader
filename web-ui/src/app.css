@@ -63,15 +63,6 @@
   --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
 }
 
-/* --- "Lights On" Mode --- */
-:root.lights-on {
-  --bg-deep: #14162a;
-  --bg-surface: #1a1d38;
-  --bg-surface-2: #222548;
-  --text-secondary: rgba(232, 236, 244, 0.45);
-  --border-color: rgba(255, 255, 255, 0.08);
-}
-
 /* --- Light Mode --- */
 :root.light {
   --bg-deep: #f4f5f7;
