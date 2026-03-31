@@ -21,7 +21,7 @@
   <div class="neon-card rounded-xl p-5 mb-4" style="background: var(--bg-surface)">
     <label class="text-sm font-semibold mb-3 block" style="color: var(--text-primary)">Theme</label>
     <div class="flex gap-3">
-      {#each [{ id: "dark", label: "Dark" }, { id: "lights-on", label: "Lights On" }] as mode}
+      {#each [{ id: "dark", label: "Dark" }, { id: "lights-on", label: "Lights On" }, { id: "light", label: "Light" }] as mode}
         <button
           onclick={() => theme.set(mode.id as ThemeMode)}
           class="flex-1 py-3 rounded-xl text-sm font-medium transition-colors"

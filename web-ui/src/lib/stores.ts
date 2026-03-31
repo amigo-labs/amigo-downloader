@@ -54,7 +54,16 @@ export interface Features {
 // THEME
 // ========================================
 
-export type ThemeMode = "dark" | "lights-on";
+export type ThemeMode = "dark" | "lights-on" | "light";
+
+const THEME_CYCLE: ThemeMode[] = ["dark", "lights-on", "light"];
+
+function applyThemeClass(value: ThemeMode) {
+  const root = document.documentElement;
+  root.classList.remove("lights-on", "light");
+  if (value === "lights-on") root.classList.add("lights-on");
+  if (value === "light") root.classList.add("light");
+}
 
 function createThemeStore() {
   const stored = typeof localStorage !== "undefined" ? localStorage.getItem("theme") : null;
@@ -65,14 +74,15 @@ function createThemeStore() {
     subscribe,
     set(value: ThemeMode) {
       if (typeof localStorage !== "undefined") localStorage.setItem("theme", value);
-      document.documentElement.classList.toggle("lights-on", value === "lights-on");
+      applyThemeClass(value);
       set(value);
     },
     toggle() {
       update((v) => {
-        const next: ThemeMode = v === "dark" ? "lights-on" : "dark";
+        const idx = THEME_CYCLE.indexOf(v);
+        const next = THEME_CYCLE[(idx + 1) % THEME_CYCLE.length];
         if (typeof localStorage !== "undefined") localStorage.setItem("theme", next);
-        document.documentElement.classList.toggle("lights-on", next === "lights-on");
+        applyThemeClass(next);
         return next;
       });
     },
@@ -109,6 +119,10 @@ function createPaletteStore() {
       const root = document.documentElement;
       root.className = root.className.replace(/palette-\w+/g, "").trim();
       root.classList.add(`palette-${value}`);
+      // Re-apply theme class that may have been stripped
+      const currentTheme = typeof localStorage !== "undefined" ? localStorage.getItem("theme") : null;
+      if (currentTheme === "lights-on") root.classList.add("lights-on");
+      if (currentTheme === "light") root.classList.add("light");
       set(value);
       // Glow tokens depend on --neon-primary which changes with palette
       const storedIntensity = typeof localStorage !== "undefined"
