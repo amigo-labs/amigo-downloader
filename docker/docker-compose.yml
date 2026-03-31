@@ -1,6 +1,9 @@
 services:
   amigo-downloader:
-    image: ghcr.io/amigo-labs/amigo-downloader:latest
+    image: amigo-downloader:local
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
     container_name: amigo-downloader
     ports:
       - "1516:1516"

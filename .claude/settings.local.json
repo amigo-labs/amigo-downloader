@@ -31,7 +31,12 @@
       "Bash(ls -la /d/github/VibeVideo/frontend/src/components/*.tsx)",
       "Bash(npx svelte-check:*)",
       "Bash(npm ci:*)",
-      "Bash(bash \"C:\\\\Users\\\\rueck\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\5.0.6\\\\skills\\\\brainstorming\\\\scripts\\\\start-server.sh\" --project-dir \"d:\\\\github\\\\amigo-downloader\")"
+      "Bash(bash \"C:\\\\Users\\\\rueck\\\\.claude\\\\plugins\\\\cache\\\\claude-plugins-official\\\\superpowers\\\\5.0.6\\\\skills\\\\brainstorming\\\\scripts\\\\start-server.sh\" --project-dir \"d:\\\\github\\\\amigo-downloader\")",
+      "Bash(docker compose:*)",
+      "Bash(chmod +x d:/github/amigo-downloader/scripts/docker-start.sh)",
+      "Bash(mv scripts/docker-start.sh scripts/container-start.sh)",
+      "Bash(chmod +x scripts/container-start.sh)",
+      "Bash(bash scripts/container-start.sh --stop)"
     ]
   }
 }
