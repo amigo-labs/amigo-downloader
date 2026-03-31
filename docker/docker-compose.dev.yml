@@ -1,0 +1,17 @@
+services:
+  web-ui:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    container_name: amigo-web-ui
+    ports:
+      - "5173:5173"
+    volumes:
+      - ../web-ui/src:/app/web-ui/src
+      - ../web-ui/index.html:/app/web-ui/index.html
+      - ../web-ui/vite.config.ts:/app/web-ui/vite.config.ts
+      - ../web-ui/tsconfig.json:/app/web-ui/tsconfig.json
+      - ../web-ui/svelte.config.js:/app/web-ui/svelte.config.js
+      - ../web-ui/public:/app/web-ui/public
+    environment:
+      - TZ=Europe/Berlin

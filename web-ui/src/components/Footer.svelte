@@ -8,7 +8,7 @@
 
 <footer
   class="relative shrink-0 flex items-center gap-4 px-4 border-t neon-top-line"
-  style="height: 36px; background: var(--bg-surface); border-color: var(--border-color); font-family: 'Share Tech Mono', monospace; font-size: 12px"
+  style="height: 36px; background: var(--bg-surface); border-color: var(--border-color); font-family: var(--font-mono);font-size: 12px"
 >
   <!-- Mini sparkline -->
   <div class="shrink-0">
@@ -49,7 +49,7 @@
   <button
     onclick={() => crashReport.set(null)}
     class="transition-opacity hover:opacity-80"
-    style="color: var(--text-secondary); opacity: 0.6; font-size: 11px; font-family: 'Rajdhani', sans-serif"
+    style="color: var(--text-secondary); opacity: 0.6; font-size: 11px"
   >
     Feedback
   </button>

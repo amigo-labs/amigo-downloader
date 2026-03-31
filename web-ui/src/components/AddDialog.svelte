@@ -122,7 +122,7 @@
         placeholder="Paste URL(s) here — one per line"
         rows="5"
         class="w-full rounded-lg px-4 py-3 text-sm resize-none"
-        style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)"
+        style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)"
       ></textarea>
       <p class="text-xs mt-1.5" style="color: var(--text-secondary)">
         Ctrl+Enter to submit. Multiple URLs supported (one per line).

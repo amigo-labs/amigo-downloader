@@ -54,7 +54,7 @@
         <div class="space-y-2 text-sm">
           <div>
             <span style="color: var(--text-secondary)">URL</span>
-            <p class="truncate mt-0.5" style="font-family: 'Share Tech Mono', monospace; font-size: 11px; color: var(--text-primary)">{dl.url}</p>
+            <p class="truncate mt-0.5" style="font-family: var(--font-mono);font-size: 11px; color: var(--text-primary)">{dl.url}</p>
           </div>
           <div class="flex justify-between">
             <span style="color: var(--text-secondary)">Protocol</span>
@@ -63,12 +63,12 @@
           {#if dl.filesize}
             <div class="flex justify-between">
               <span style="color: var(--text-secondary)">Size</span>
-              <span style="font-family: 'Share Tech Mono', monospace; color: var(--text-primary)">{formatBytes(dl.filesize)}</span>
+              <span style="font-family: var(--font-mono);color: var(--text-primary)">{formatBytes(dl.filesize)}</span>
             </div>
           {/if}
           <div class="flex justify-between">
             <span style="color: var(--text-secondary)">Progress</span>
-            <span style="font-family: 'Share Tech Mono', monospace; color: var(--neon-primary)">{progress}%</span>
+            <span style="font-family: var(--font-mono);color: var(--neon-primary)">{progress}%</span>
           </div>
         </div>
       </section>
@@ -85,7 +85,7 @@
       {#if dl.status === "downloading" && dl.speed > 0}
         <section>
           <h4 class="text-xs font-semibold uppercase mb-2" style="color: var(--text-secondary)">Speed</h4>
-          <span class="text-lg font-bold" style="font-family: 'Share Tech Mono', monospace; color: var(--neon-primary)">{formatSpeed(dl.speed)}</span>
+          <span class="text-lg font-bold" style="font-family: var(--font-mono);color: var(--neon-primary)">{formatSpeed(dl.speed)}</span>
         </section>
       {/if}
 
@@ -93,7 +93,7 @@
       {#if dl.error}
         <section>
           <h4 class="text-xs font-semibold uppercase mb-2" style="color: var(--neon-accent)">Error</h4>
-          <p class="text-xs p-3 rounded-lg" style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); color: var(--neon-accent)">{dl.error}</p>
+          <p class="text-xs p-3 rounded-lg" style="font-family: var(--font-mono);background: var(--bg-surface-2); color: var(--neon-accent)">{dl.error}</p>
         </section>
       {/if}
 

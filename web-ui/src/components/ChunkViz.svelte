@@ -33,7 +33,7 @@
         "
       ></div>
       {#if size === "detailed"}
-        <span class="absolute inset-0 flex items-center justify-center text-[8px]" style="font-family: 'Share Tech Mono', monospace; color: var(--text-secondary)">
+        <span class="absolute inset-0 flex items-center justify-center text-[8px]" style="font-family: var(--font-mono);color: var(--text-secondary)">
           {cp}%
         </span>
       {/if}

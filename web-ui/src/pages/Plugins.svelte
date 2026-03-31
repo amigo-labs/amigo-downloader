@@ -27,7 +27,7 @@
     >
       <div>
         <p class="font-semibold text-sm" style="color: var(--text-primary)">Core Update Available</p>
-        <p class="text-xs" style="font-family: 'Share Tech Mono', monospace; color: var(--text-secondary)">
+        <p class="text-xs" style="font-family: var(--font-mono);color: var(--text-secondary)">
           v{updateInfo.core.current_version} &rarr; v{updateInfo.core.latest_version}
         </p>
       </div>
@@ -59,7 +59,7 @@
             <div class="flex items-start justify-between">
               <div>
                 <h4 class="font-semibold text-sm" style="color: var(--text-primary)">{plugin.name}</h4>
-                <p class="text-xs" style="font-family: 'Share Tech Mono', monospace; color: var(--text-secondary)">
+                <p class="text-xs" style="font-family: var(--font-mono);color: var(--text-secondary)">
                   v{plugin.version}
                 </p>
               </div>
@@ -72,7 +72,7 @@
                 {plugin.enabled ? "Active" : "Disabled"}
               </span>
             </div>
-            <p class="text-xs mt-2 truncate" style="font-family: 'Share Tech Mono', monospace; color: var(--text-secondary)">
+            <p class="text-xs mt-2 truncate" style="font-family: var(--font-mono);color: var(--text-secondary)">
               {plugin.url_pattern}
             </p>
           </div>

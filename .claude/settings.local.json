@@ -36,7 +36,8 @@
       "Bash(chmod +x d:/github/amigo-downloader/scripts/docker-start.sh)",
       "Bash(mv scripts/docker-start.sh scripts/container-start.sh)",
       "Bash(chmod +x scripts/container-start.sh)",
-      "Bash(bash scripts/container-start.sh --stop)"
+      "Bash(bash scripts/container-start.sh --stop)",
+      "Bash(npm run:*)"
     ]
   }
 }

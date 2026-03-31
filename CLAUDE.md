@@ -490,3 +490,32 @@ amigo-dl serve [--port 1516 --bind 0.0.0.0]
 10. **Click'n'Load** auf Port 9666 — Browser-Extension Ökosystem nutzen
 11. **Eigenes Extractor-Crate** — YouTube, HLS, DASH als Built-in Extractors
 12. **i18n** — JSON-basierte Locale-Dateien (en, de)
+
+---
+
+## Design System (Corporate Neon)
+
+> Full design system in `.impeccable.md`. Summary below for every session.
+
+### Target Audience
+Power users and tech enthusiasts managing downloads (HTTP, Usenet) centrally. Dark mode preferred, status at a glance.
+
+### Brand: Technical, Precise, Powerful
+- Corporate Neon — professional at rest, electric on interaction
+- 6 color palettes: Blue, Teal, Indigo, Amber, Violet, Rose
+- Dark mode primary, "Lights On" as alternative
+- Neon intensity 5 levels (Off to Full), CRT scanlines only at Full
+
+### Design Principles
+1. **Glow Follows Function** — Neon effects reinforce information hierarchy
+2. **Instant Orientation** — Status, speed, progress at a glance
+3. **Adjustable Intensity** — User decides cyberpunk level
+4. **Responsive Without Compromise** — 320px to 2560px
+5. **Accessibility** — `prefers-reduced-motion`, WCAG AA across all themes
+
+### Tokens
+- **Typography**: Inter + ui-monospace stack, Major Third Scale
+- **Breakpoint**: 768px (single primary)
+- **60:30:10**: 60% dark bg, 30% surfaces/text/borders, 10% neon accents
+- **Neon Glow**: --neon-glow-sm/md/lg, --neon-text-glow, --neon-border (scaled by intensity)
+- **Status**: online=#22c55e, warning=#eab308, error=#ef4444

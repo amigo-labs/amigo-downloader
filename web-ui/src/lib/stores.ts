@@ -55,7 +55,6 @@ export interface Features {
 // ========================================
 
 export type ThemeMode = "dark" | "lights-on";
-export type AccentPreset = "electric" | "hot" | "cyan";
 
 function createThemeStore() {
   const stored = typeof localStorage !== "undefined" ? localStorage.getItem("theme") : null;
@@ -80,54 +79,132 @@ function createThemeStore() {
   };
 }
 
-function createAccentStore() {
-  const stored = typeof localStorage !== "undefined" ? localStorage.getItem("accent") : null;
-  const initial: AccentPreset = (stored as AccentPreset) || "electric";
-  const { subscribe, set } = writable<AccentPreset>(initial);
-
-  return {
-    subscribe,
-    set(value: AccentPreset) {
-      if (typeof localStorage !== "undefined") localStorage.setItem("accent", value);
-      const root = document.documentElement;
-      root.className = root.className.replace(/accent-\w+/g, "").trim();
-      if (value !== "electric") {
-        root.classList.add(`accent-${value}`);
-      }
-      set(value);
-    },
-  };
-}
-
 export const theme = createThemeStore();
-export const accent = createAccentStore();
 
 // ========================================
-// SIDEBAR
+// COLOR PALETTE
 // ========================================
 
-function createSidebarStore() {
-  const stored = typeof localStorage !== "undefined" ? localStorage.getItem("sidebar-collapsed") : null;
-  const initial = stored === "true";
-  const { subscribe, set, update } = writable<boolean>(initial);
+export type ColorPalette = "blue" | "teal" | "indigo" | "amber" | "violet" | "rose";
+
+const PALETTE_COLORS: Record<ColorPalette, string> = {
+  blue: "#3b82f6",
+  teal: "#14b8a6",
+  indigo: "#6366f1",
+  amber: "#f59e0b",
+  violet: "#8b5cf6",
+  rose: "#f43f5e",
+};
+
+function createPaletteStore() {
+  const stored = typeof localStorage !== "undefined" ? localStorage.getItem("color-palette") : null;
+  const initial: ColorPalette = (stored as ColorPalette) || "blue";
+  const { subscribe, set } = writable<ColorPalette>(initial);
 
   return {
     subscribe,
-    set(value: boolean) {
-      if (typeof localStorage !== "undefined") localStorage.setItem("sidebar-collapsed", String(value));
+    colors: PALETTE_COLORS,
+    set(value: ColorPalette) {
+      if (typeof localStorage !== "undefined") localStorage.setItem("color-palette", value);
+      const root = document.documentElement;
+      root.className = root.className.replace(/palette-\w+/g, "").trim();
+      root.classList.add(`palette-${value}`);
       set(value);
-    },
-    toggle() {
-      update((v) => {
-        const next = !v;
-        if (typeof localStorage !== "undefined") localStorage.setItem("sidebar-collapsed", String(next));
-        return next;
-      });
+      // Glow tokens depend on --neon-primary which changes with palette
+      const storedIntensity = typeof localStorage !== "undefined"
+        ? localStorage.getItem("neon-intensity")
+        : null;
+      applyIntensity(storedIntensity !== null ? parseFloat(storedIntensity) : 0.5);
     },
   };
 }
 
-export const sidebarCollapsed = createSidebarStore();
+export const palette = createPaletteStore();
+
+// ========================================
+// NEON INTENSITY
+// ========================================
+
+export type NeonLevel = 0 | 0.25 | 0.5 | 0.75 | 1;
+
+const NEON_LABELS: Record<number, string> = {
+  0: "Off",
+  25: "Low",
+  50: "Mid",
+  75: "High",
+  100: "Full",
+};
+
+export function getNeonLabel(intensity: number): string {
+  return NEON_LABELS[Math.round(intensity * 100)] ?? "";
+}
+
+export function applyIntensity(raw: number): void {
+  const intensity = Math.max(0, Math.min(1, raw));
+  const root = document.documentElement;
+  root.style.setProperty("--neon-intensity", String(intensity));
+
+  if (intensity === 0) {
+    root.style.setProperty("--neon-glow-sm", "none");
+    root.style.setProperty("--neon-glow-md", "none");
+    root.style.setProperty("--neon-glow-lg", "none");
+    root.style.setProperty("--neon-text-glow", "none");
+    root.style.setProperty(
+      "--neon-border",
+      "color-mix(in srgb, var(--neon-primary) 10%, transparent)"
+    );
+    root.style.setProperty(
+      "--neon-border-hover",
+      "color-mix(in srgb, var(--neon-primary) 15%, transparent)"
+    );
+    root.style.setProperty("--neon-drop-blur", "0px");
+  } else {
+    const sm = `0 0 ${6 * intensity}px color-mix(in srgb, var(--neon-primary) ${Math.round(25 * intensity)}%, transparent)`;
+    root.style.setProperty("--neon-glow-sm", sm);
+
+    const md = `0 0 ${12 * intensity}px color-mix(in srgb, var(--neon-primary) ${Math.round(30 * intensity)}%, transparent), 0 0 ${4 * intensity}px color-mix(in srgb, var(--neon-primary) ${Math.round(15 * intensity)}%, transparent)`;
+    root.style.setProperty("--neon-glow-md", md);
+
+    const lg = `0 0 ${20 * intensity}px color-mix(in srgb, var(--neon-primary) ${Math.round(35 * intensity)}%, transparent), 0 0 ${8 * intensity}px color-mix(in srgb, var(--neon-primary) ${Math.round(20 * intensity)}%, transparent), 0 0 ${2 * intensity}px color-mix(in srgb, var(--neon-primary) ${Math.round(40 * intensity)}%, transparent)`;
+    root.style.setProperty("--neon-glow-lg", lg);
+
+    const textGlow = `0 0 ${8 * intensity}px color-mix(in srgb, var(--neon-primary) ${Math.round(40 * intensity)}%, transparent)`;
+    root.style.setProperty("--neon-text-glow", textGlow);
+
+    const borderOpacity = Math.max(10, Math.round(30 * intensity));
+    root.style.setProperty(
+      "--neon-border",
+      `color-mix(in srgb, var(--neon-primary) ${borderOpacity}%, transparent)`
+    );
+
+    const borderHoverOpacity = Math.max(15, Math.round(50 * intensity));
+    root.style.setProperty(
+      "--neon-border-hover",
+      `color-mix(in srgb, var(--neon-primary) ${borderHoverOpacity}%, transparent)`
+    );
+
+    root.style.setProperty("--neon-drop-blur", `${3 * intensity}px`);
+  }
+
+  root.classList.toggle("neon-full", intensity >= 1.0);
+}
+
+function createNeonIntensityStore() {
+  const stored = typeof localStorage !== "undefined" ? localStorage.getItem("neon-intensity") : null;
+  const initial = stored !== null ? parseFloat(stored) : 0.5;
+  const { subscribe, set } = writable<number>(initial);
+
+  return {
+    subscribe,
+    set(value: number) {
+      if (typeof localStorage !== "undefined") localStorage.setItem("neon-intensity", String(value));
+      applyIntensity(value);
+      set(value);
+    },
+  };
+}
+
+export const neonIntensity = createNeonIntensityStore();
 
 // ========================================
 // NAVIGATION

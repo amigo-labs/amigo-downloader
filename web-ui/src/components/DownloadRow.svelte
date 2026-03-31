@@ -24,7 +24,7 @@
   <td class="px-4 py-2.5">
     <div class="truncate max-w-xs font-medium text-sm" style="color: var(--text-primary)">{download.filename || download.url}</div>
   </td>
-  <td class="px-4 py-2.5" style="font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--text-secondary)">
+  <td class="px-4 py-2.5" style="font-family: var(--font-mono);font-size: 12px; color: var(--text-secondary)">
     {download.filesize ? formatBytes(download.filesize) : "\u2014"}
   </td>
   <td class="px-4 py-2.5">
@@ -35,10 +35,10 @@
       <div class="progress-bar flex-1">
         <div class="progress-bar-fill" style="width: {progress}%"></div>
       </div>
-      <span class="text-xs w-10 text-right" style="font-family: 'Share Tech Mono', monospace; color: var(--text-secondary)">{progress}%</span>
+      <span class="text-xs w-10 text-right" style="font-family: var(--font-mono);color: var(--text-secondary)">{progress}%</span>
     </div>
   </td>
-  <td class="px-4 py-2.5" style="font-family: 'Share Tech Mono', monospace; font-size: 12px; color: var(--neon-primary)">
+  <td class="px-4 py-2.5" style="font-family: var(--font-mono);font-size: 12px; color: var(--neon-primary)">
     {download.status === "downloading" ? formatSpeed(download.speed) : "\u2014"}
   </td>
   <td class="px-4 py-2.5 text-right">

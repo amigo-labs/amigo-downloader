@@ -123,7 +123,7 @@
       <span
         class="text-xs px-2 py-0.5 rounded"
         class:neon-text-accent={TIMEOUT - elapsed < 60}
-        style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); color: var(--text-secondary)"
+        style="font-family: var(--font-mono);background: var(--bg-surface-2); color: var(--text-secondary)"
       >
         {remaining()}
       </span>
@@ -154,7 +154,7 @@
         bind:value={answer}
         placeholder="Enter captcha text..."
         class="w-full px-4 py-3 rounded-lg text-center text-lg tracking-wider border"
-        style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border-color: var(--border-color); color: var(--text-primary)"
+        style="font-family: var(--font-mono);background: var(--bg-surface-2); border-color: var(--border-color); color: var(--text-primary)"
         autofocus
         disabled={submitting}
       />

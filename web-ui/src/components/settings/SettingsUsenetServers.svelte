@@ -83,7 +83,7 @@
           <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">Host</label>
           <input type="text" bind:value={host} placeholder="news.example.com"
             class="w-full rounded-lg px-3 py-2 text-sm"
-            style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
+            style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
         </div>
       </div>
       <div class="grid grid-cols-3 gap-3">
@@ -91,19 +91,19 @@
           <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">Port</label>
           <input type="number" bind:value={port}
             class="w-full rounded-lg px-3 py-2 text-sm"
-            style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
+            style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
         </div>
         <div>
           <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">Connections</label>
           <input type="number" bind:value={connections} min="1" max="50"
             class="w-full rounded-lg px-3 py-2 text-sm"
-            style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
+            style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
         </div>
         <div>
           <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">Priority</label>
           <input type="number" bind:value={priority} min="0"
             class="w-full rounded-lg px-3 py-2 text-sm"
-            style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
+            style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
         </div>
       </div>
       <div class="grid grid-cols-2 gap-3">
@@ -151,7 +151,7 @@
         <div class="flex items-center justify-between gap-3">
           <div class="min-w-0 flex-1">
             <p class="font-semibold text-sm truncate" style="color: var(--text-primary)">{server.name}</p>
-            <p class="text-xs truncate" style="font-family: 'Share Tech Mono', monospace; color: var(--text-secondary)">
+            <p class="text-xs truncate" style="font-family: var(--font-mono);color: var(--text-secondary)">
               {server.host}:{server.port} {server.ssl ? "(SSL)" : ""}
             </p>
             <p class="text-[10px] mt-0.5" style="color: var(--text-secondary)">
@@ -172,15 +172,15 @@
             </div>
             <div>
               <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary)">Active</p>
-              <p class="text-xs" style="font-family: 'Share Tech Mono', monospace">0/{server.connections}</p>
+              <p class="text-xs" style="font-family: var(--font-mono)">0/{server.connections}</p>
             </div>
             <div>
               <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary)">Articles</p>
-              <p class="text-xs" style="font-family: 'Share Tech Mono', monospace">&mdash;</p>
+              <p class="text-xs" style="font-family: var(--font-mono)">&mdash;</p>
             </div>
             <div>
               <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary)">Speed</p>
-              <p class="text-xs" style="font-family: 'Share Tech Mono', monospace">&mdash;</p>
+              <p class="text-xs" style="font-family: var(--font-mono)">&mdash;</p>
             </div>
           </div>
         {/if}

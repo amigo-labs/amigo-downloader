@@ -6,6 +6,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.yml"
+COMPOSE_DEV_FILE="$REPO_ROOT/docker/docker-compose.dev.yml"
 IMAGE_NAME="amigo-downloader:local"
 DOCKERFILE="$REPO_ROOT/docker/Dockerfile"
 
@@ -41,9 +42,19 @@ usage() {
     echo "  (none)      Build if needed, then start"
     echo "  --build     Force rebuild and start"
     echo "  --rebuild   Clean rebuild (no cache) and start"
+    echo "  --dev       Start web-ui dev server (builds + watches)"
     echo "  --stop      Stop and remove container"
     echo "  --logs      Follow container logs"
     echo "  --status    Show container status"
+}
+
+start_dev() {
+    echo "Starting web-ui dev server (build + watch)..."
+    echo "  Vite Dev:  http://localhost:5173"
+    echo ""
+    trap '$COMPOSE -f "$COMPOSE_DEV_FILE" down; exit 0' INT TERM
+    $COMPOSE -f "$COMPOSE_DEV_FILE" up --build --abort-on-container-exit --remove-orphans
+    $COMPOSE -f "$COMPOSE_DEV_FILE" down
 }
 
 build_image() {
@@ -71,6 +82,9 @@ case "${1:-}" in
     --rebuild)
         build_image "--no-cache"
         start_container
+        ;;
+    --dev)
+        start_dev
         ;;
     --stop)
         echo "Stopping amigo-downloader..."

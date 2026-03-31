@@ -63,7 +63,7 @@
           {/if}
           <h3 class="font-semibold truncate text-sm" style="color: var(--text-primary)">{download.filename || download.url}</h3>
         </div>
-        <p class="text-xs truncate mt-0.5" style="font-family: 'Share Tech Mono', monospace; color: var(--text-secondary); font-size: 11px">
+        <p class="text-xs truncate mt-0.5" style="font-family: var(--font-mono);color: var(--text-secondary); font-size: 11px">
           {download.url}
         </p>
       </div>
@@ -91,7 +91,7 @@
     {/if}
 
     <div class="flex items-center justify-between text-xs" style="color: var(--text-secondary)">
-      <div class="flex gap-3" style="font-family: 'Share Tech Mono', monospace; font-size: 11px">
+      <div class="flex gap-3" style="font-family: var(--font-mono);font-size: 11px">
         <span>{formatBytes(download.bytes_downloaded)}{download.filesize ? ` / ${formatBytes(download.filesize)}` : ""}</span>
         {#if isActive && download.speed > 0}
           <span style="color: var(--neon-primary)">{formatSpeed(download.speed)}</span>
