@@ -384,7 +384,7 @@
         >
         <div class="flex items-center gap-1">
           <button
-            class="p-1.5 rounded-lg transition-colors"
+            class="icon-btn p-1.5 rounded-lg"
             style="color: var(--text-secondary)"
             aria-label="Color theme"
             onclick={() => (showPalette = !showPalette)}
@@ -396,7 +396,7 @@
           </button>
           <button
             onclick={() => theme.toggle()}
-            class="p-1.5 rounded-lg transition-colors"
+            class="icon-btn p-1.5 rounded-lg"
             style="color: var(--text-secondary)"
             aria-label={$theme === "dark"
               ? "Switch to Light mode"
@@ -540,7 +540,7 @@
       </div>
       <button
         onclick={() => openAddPanel()}
-        class="p-2 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+        class="icon-btn p-2 rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center"
         style="color: var(--text-secondary)"
         aria-label="Add download"
       >

@@ -27,7 +27,7 @@
       <h3 class="font-semibold text-sm truncate flex-1" style="color: var(--text-primary)">{title}</h3>
       <button
         onclick={closeSidePanel}
-        class="p-1.5 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+        class="icon-btn p-1.5 rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center"
         style="color: var(--text-secondary)"
         aria-label="Close panel"
       >
@@ -55,14 +55,14 @@
       aria-label={$sidePanelMode === "add" ? "Add download" : "Download details"}
       class="absolute right-0 top-0 bottom-0 w-full max-w-sm flex flex-col overflow-y-auto"
       style="background: var(--bg-surface)"
-      transition:fly={{ x: 384, duration: 200 }}
+      transition:fly={{ x: 384, duration: 250 }}
     >
       <!-- Header -->
       <div class="flex items-center justify-between px-4 py-3 border-b" style="border-color: var(--border-color)">
         <h3 class="font-semibold text-sm truncate flex-1" style="color: var(--text-primary)">{title}</h3>
         <button
           onclick={closeSidePanel}
-          class="p-2 rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center"
+          class="icon-btn p-2 rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center"
           style="color: var(--text-secondary)"
           aria-label="Close panel"
         >

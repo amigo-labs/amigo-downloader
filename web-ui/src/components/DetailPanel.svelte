@@ -79,7 +79,7 @@
         {#if dl.status === "downloading"}
           <button
             onclick={() => pauseDownload(dl.id)}
-            class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px] transition-colors"
+            class="action-btn flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px]"
             style="background: var(--bg-surface-2); color: var(--neon-warning)"
             aria-label="Pause download"
           >
@@ -88,7 +88,7 @@
         {:else if dl.status === "paused" || dl.status === "queued"}
           <button
             onclick={() => resumeDownload(dl.id)}
-            class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px] transition-colors"
+            class="action-btn flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px]"
             style="background: var(--bg-surface-2); color: var(--neon-primary)"
             aria-label="Resume download"
           >
@@ -98,7 +98,7 @@
         {#if dl.status === "failed" && dl.error}
           <button
             onclick={() => crashReport.set({ download_id: dl.id, error_message: dl.error ?? undefined })}
-            class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px] transition-colors"
+            class="action-btn flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px]"
             style="background: var(--bg-surface-2); color: var(--neon-warning)"
             aria-label="Report error"
           >
@@ -107,7 +107,7 @@
         {/if}
         <button
           onclick={() => { deleteDownload(dl.id); closeSidePanel(); }}
-          class="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px] transition-colors"
+          class="action-btn flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px]"
           style="background: var(--bg-surface-2); color: var(--neon-accent)"
           aria-label="Delete download"
         >

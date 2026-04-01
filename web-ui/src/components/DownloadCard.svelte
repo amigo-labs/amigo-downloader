@@ -33,9 +33,8 @@
 
 <!-- svelte-ignore a11y_click_events_have_key_events -->
 <div
-  class="rounded-xl p-4 card-enter cursor-pointer flex gap-3 transition-colors"
+  class="download-card rounded-xl p-4 card-enter cursor-pointer flex gap-3"
   style="
-    background: var(--bg-surface);
     border: 1px solid {isSelected ? statusColor : 'var(--border-color)'};
     --i: {index};
   "
@@ -106,7 +105,7 @@
         {#if download.status === "failed" && download.error}
           <button
             onclick={() => crashReport.set({ download_id: download.id, error_message: download.error })}
-            class="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-[10px] font-medium transition-colors"
+            class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-[10px] font-medium"
             style="color: var(--neon-warning)"
             aria-label="Report error for {download.filename || 'download'}"
           >
@@ -114,15 +113,15 @@
           </button>
         {/if}
         {#if download.status === "downloading"}
-          <button onclick={handlePause} class="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors" style="color: var(--text-secondary)" aria-label="Pause {download.filename || 'download'}">
+          <button onclick={handlePause} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--text-secondary)" aria-label="Pause {download.filename || 'download'}">
             <Icon name="pause" size={16} />
           </button>
         {:else if download.status === "paused" || download.status === "queued"}
-          <button onclick={handleResume} class="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors" style="color: var(--text-secondary)" aria-label="Resume {download.filename || 'download'}">
+          <button onclick={handleResume} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--text-secondary)" aria-label="Resume {download.filename || 'download'}">
             <Icon name="play" size={16} />
           </button>
         {/if}
-        <button onclick={handleDelete} class="min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors" style="color: var(--neon-accent)" aria-label="Delete {download.filename || 'download'}">
+        <button onclick={handleDelete} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--neon-accent)" aria-label="Delete {download.filename || 'download'}">
           <Icon name="trash" size={16} />
         </button>
       </div>
