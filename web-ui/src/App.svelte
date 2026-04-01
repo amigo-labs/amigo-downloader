@@ -4,7 +4,9 @@
   import DropZone from "./components/DropZone.svelte";
   import FeedbackDialog from "./components/FeedbackDialog.svelte";
   import Icon from "./components/Icon.svelte";
+  import ShortcutsDialog from "./components/ShortcutsDialog.svelte";
   import SidePanel from "./components/SidePanel.svelte";
+  import Sparkline from "./components/Sparkline.svelte";
   import Toasts from "./components/Toasts.svelte";
   import {
     addDownload,
@@ -27,7 +29,9 @@
     palette,
     pendingCaptcha,
     protocolFilter,
+    pushSpeedSample,
     sidePanelMode,
+    speedHistory,
     stats,
     theme,
     updateDownloadProgress,
@@ -44,6 +48,7 @@
   import Settings from "./pages/Settings.svelte";
 
   let showFeedback = $state(false);
+  let showShortcuts = $state(false);
   let showPalette = $state(false);
   let mobileMenuOpen = $state(false);
   let pageKey = $state(0);
@@ -174,6 +179,7 @@
       ]);
       downloads.set(dl);
       stats.set(st);
+      pushSpeedSample(st.speed_bytes_per_sec ?? 0);
       if (cfg?.features) features.set(cfg.features);
     } catch {
       // Server offline
@@ -197,6 +203,10 @@
         closeSidePanel();
         return;
       }
+      if (showShortcuts) {
+        showShortcuts = false;
+        return;
+      }
       if (showFeedback) {
         showFeedback = false;
         return;
@@ -207,10 +217,15 @@
       }
       mobileMenuOpen = false;
     }
+    if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      showShortcuts = !showShortcuts;
+      return;
+    }
     const allNav = [...mainNavItems, ...mgmtNavItems];
     if (
       !$sidePanelMode &&
       !showFeedback &&
+      !showShortcuts &&
       !e.ctrlKey &&
       !e.metaKey &&
       !e.altKey
@@ -303,7 +318,7 @@
       {/each}
     </nav>
 
-    <!-- Stats (moved from footer) -->
+    <!-- Stats + Speed Graph -->
     <div
       class="px-4 py-3 border-t flex flex-col gap-1.5"
       style="border-color: var(--border-color)"
@@ -316,6 +331,9 @@
           {formatSpeed($stats.speed_bytes_per_sec)}
         </span>
       </div>
+      {#if $speedHistory.length > 1}
+        <Sparkline values={$speedHistory} width={200} height={28} />
+      {/if}
       <div class="flex items-center justify-between">
         <span class="stat-label">Active</span>
         <span class="text-xs" style="color: var(--text-primary)">
@@ -575,6 +593,10 @@
 </div>
 
 <!-- Dialogs -->
+{#if showShortcuts}
+  <ShortcutsDialog onclose={() => (showShortcuts = false)} />
+{/if}
+
 {#if showFeedback}
   <FeedbackDialog onclose={() => (showFeedback = false)} />
 {/if}

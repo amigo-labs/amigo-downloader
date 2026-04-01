@@ -1,6 +1,7 @@
 <script lang="ts">
   import { selectedDownload, closeSidePanel, crashReport } from "../lib/stores";
   import { formatBytes, formatSpeed, pauseDownload, resumeDownload, deleteDownload } from "../lib/api";
+  import { addToast } from "../lib/toast";
   import ChunkViz from "./ChunkViz.svelte";
   import Icon from "./Icon.svelte";
 
@@ -9,6 +10,28 @@
   let progress = $derived(
     dl?.filesize ? Math.round((dl.bytes_downloaded / dl.filesize) * 100) : 0
   );
+
+  let eta = $derived(() => {
+    if (!dl || dl.status !== "downloading" || !dl.speed || dl.speed <= 0 || !dl.filesize) return "";
+    const remaining = dl.filesize - dl.bytes_downloaded;
+    if (remaining <= 0) return "";
+    const secs = Math.round(remaining / dl.speed);
+    if (secs < 60) return `${secs}s`;
+    if (secs < 3600) return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+    const h = Math.floor(secs / 3600);
+    const m = Math.floor((secs % 3600) / 60);
+    return `${h}h ${m}m`;
+  });
+
+  async function copyUrl() {
+    if (!dl) return;
+    try {
+      await navigator.clipboard.writeText(dl.url);
+      addToast("info", "URL copied");
+    } catch {
+      addToast("error", "Failed to copy");
+    }
+  }
 </script>
 
 {#if dl}
@@ -28,7 +51,12 @@
       <h4 class="text-xs font-semibold uppercase mb-2" style="color: var(--text-secondary)">File Info</h4>
       <div class="space-y-2 text-sm">
         <div>
-          <span style="color: var(--text-secondary)">URL</span>
+          <div class="flex items-center justify-between">
+            <span style="color: var(--text-secondary)">URL</span>
+            <button onclick={copyUrl} class="icon-btn p-1 rounded" style="color: var(--text-secondary)" aria-label="Copy URL">
+              <Icon name="copy" size={12} />
+            </button>
+          </div>
           <p class="truncate mt-0.5" style="font-family: var(--font-mono);font-size: 11px; color: var(--text-primary)">{dl.url}</p>
         </div>
         <div class="flex justify-between">
@@ -54,13 +82,25 @@
         <h4 class="text-xs font-semibold uppercase mb-2" style="color: var(--text-secondary)">Chunks</h4>
         <ChunkViz chunks={8} {progress} active={true} size="detailed" />
       </section>
+    {:else if dl.status === "paused" && progress > 0}
+      <section>
+        <h4 class="text-xs font-semibold uppercase mb-2" style="color: var(--text-secondary)">Chunks (paused)</h4>
+        <div style="opacity: 0.5">
+          <ChunkViz chunks={8} {progress} active={false} size="detailed" />
+        </div>
+      </section>
     {/if}
 
-    <!-- Speed -->
+    <!-- Speed + ETA -->
     {#if dl.status === "downloading" && dl.speed > 0}
       <section>
         <h4 class="text-xs font-semibold uppercase mb-2" style="color: var(--text-secondary)">Speed</h4>
-        <span class="text-lg font-bold" style="font-family: var(--font-mono);color: var(--neon-primary)">{formatSpeed(dl.speed)}</span>
+        <div class="flex items-baseline gap-3">
+          <span class="text-lg font-bold" style="font-family: var(--font-mono);color: var(--neon-primary)">{formatSpeed(dl.speed)}</span>
+          {#if eta()}
+            <span class="text-xs" style="font-family: var(--font-mono);color: var(--text-secondary)">ETA {eta()}</span>
+          {/if}
+        </div>
       </section>
     {/if}
 

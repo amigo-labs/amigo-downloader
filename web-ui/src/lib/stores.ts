@@ -294,6 +294,49 @@ export const stats = writable<Stats>({
 });
 
 // ========================================
+// SPEED HISTORY (for sparkline graph)
+// ========================================
+
+const MAX_SPEED_HISTORY = 30;
+export const speedHistory = writable<number[]>([]);
+
+export function pushSpeedSample(speed: number) {
+  speedHistory.update((h) => {
+    const next = [...h, speed];
+    return next.length > MAX_SPEED_HISTORY ? next.slice(-MAX_SPEED_HISTORY) : next;
+  });
+}
+
+// ========================================
+// BATCH SELECTION
+// ========================================
+
+export const selectedIds = writable<Set<string>>(new Set());
+
+export function toggleSelection(id: string) {
+  selectedIds.update((s) => {
+    const next = new Set(s);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+}
+
+export function clearSelection() {
+  selectedIds.set(new Set());
+}
+
+export function selectAll(ids: string[]) {
+  selectedIds.set(new Set(ids));
+}
+
+// ========================================
+// SEARCH
+// ========================================
+
+export const searchQuery = writable<string>("");
+
+// ========================================
 // CAPTCHA
 // ========================================
 
