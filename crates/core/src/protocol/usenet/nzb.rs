@@ -69,10 +69,13 @@ pub fn parse_nzb(data: &str) -> Result<Nzb, crate::Error> {
         let poster = extract_xml_attr(tag, "poster").unwrap_or_default();
         let date = extract_xml_attr(tag, "date").and_then(|d| d.parse::<u64>().ok());
 
-        let file_end = data[abs_start..]
-            .find("</file>")
-            .map(|p| abs_start + p)
-            .unwrap_or(data.len());
+        let file_end = match data[abs_start..].find("</file>") {
+            Some(p) => abs_start + p,
+            None => {
+                // Malformed NZB — skip to end
+                break;
+            }
+        };
         let file_content = &data[abs_start..file_end];
 
         // Parse groups
