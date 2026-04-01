@@ -1,6 +1,7 @@
 <script lang="ts">
   import { addDownload, addBatch } from "../lib/api";
   import { closeSidePanel } from "../lib/stores";
+  import { addToast } from "../lib/toast";
   import Icon from "./Icon.svelte";
 
   let urlInput = $state("");
@@ -17,9 +18,10 @@
       } else {
         await addBatch(urls);
       }
+      addToast("success", "Download added");
       closeSidePanel();
-    } catch (e) {
-      console.error("Failed to add download:", e);
+    } catch (e: any) {
+      addToast("error", "Failed to add download", e?.message);
     } finally {
       loading = false;
     }
@@ -45,9 +47,10 @@
         loading = false;
         return;
       }
+      addToast("success", "File imported");
       closeSidePanel();
-    } catch (e) {
-      console.error("Failed to upload:", e);
+    } catch (e: any) {
+      addToast("error", "Failed to import file", e?.message);
     } finally {
       loading = false;
     }

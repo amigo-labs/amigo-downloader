@@ -59,12 +59,16 @@
     const text = e.dataTransfer?.getData("text/plain");
     if (text) {
       const urls = text.split("\n").map((u) => u.trim()).filter((u) => u.startsWith("http"));
-      if (urls.length === 1) {
-        await addDownload(urls[0]);
-        addToast("success", "Download added", urls[0]);
-      } else if (urls.length > 1) {
-        await addBatch(urls);
-        addToast("success", `Added ${urls.length} downloads`);
+      try {
+        if (urls.length === 1) {
+          await addDownload(urls[0]);
+          addToast("success", "Download added", urls[0]);
+        } else if (urls.length > 1) {
+          await addBatch(urls);
+          addToast("success", `Added ${urls.length} downloads`);
+        }
+      } catch {
+        addToast("error", "Failed to add download");
       }
     }
   }

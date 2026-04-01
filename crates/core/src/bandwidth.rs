@@ -103,15 +103,23 @@ impl BandwidthLimiter {
     /// Request `bytes` worth of bandwidth. Returns when the tokens are available.
     pub async fn acquire(&self, bytes: u64) {
         loop {
+            // Check if we need to refresh the cached limit (outside inner lock to avoid nested locking)
+            let needs_refresh = {
+                let state = self.inner.lock().await;
+                let now = tokio::time::Instant::now();
+                now.duration_since(state.limit_cached_at).as_secs() >= 1
+            };
+
+            if needs_refresh {
+                let new_limit = self.effective_limit().await;
+                let mut state = self.inner.lock().await;
+                state.cached_limit = new_limit;
+                state.limit_cached_at = tokio::time::Instant::now();
+            }
+
             {
                 let mut state = self.inner.lock().await;
                 let now = tokio::time::Instant::now();
-
-                // Refresh cached limit every second (avoids locking config on every chunk)
-                if now.duration_since(state.limit_cached_at).as_secs() >= 1 {
-                    state.cached_limit = self.effective_limit().await;
-                    state.limit_cached_at = now;
-                }
 
                 let limit = state.cached_limit;
                 if limit == 0 {
