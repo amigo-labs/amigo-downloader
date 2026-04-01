@@ -1,21 +1,40 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getPlugins, checkUpdates } from "../lib/api";
+  import { getPlugins, checkUpdates, applyCoreUpdate } from "../lib/api";
+  import { addToast } from "../lib/toast";
   import SkeletonCard from "../components/SkeletonCard.svelte";
 
   let plugins = $state<any[]>([]);
   let updateInfo = $state<any>(null);
   let loading = $state(true);
+  let error = $state<string | null>(null);
+  let updating = $state(false);
 
   onMount(async () => {
     try {
       plugins = await getPlugins();
-    } catch { /* offline */ }
+    } catch {
+      error = "Failed to load plugins. Is the server running?";
+    }
     try {
       updateInfo = await checkUpdates();
-    } catch { /* offline */ }
+    } catch {
+      // Update check is optional — don't block UI
+    }
     loading = false;
   });
+
+  async function handleCoreUpdate() {
+    updating = true;
+    try {
+      await applyCoreUpdate();
+      addToast("success", "Update initiated — restart required.");
+    } catch (e) {
+      addToast("error", "Update failed", e instanceof Error ? e.message : "Unknown error");
+    } finally {
+      updating = false;
+    }
+  }
 </script>
 
 <div class="space-y-6">
@@ -32,10 +51,12 @@
         </p>
       </div>
       <button
-        class="px-4 py-2 rounded-lg text-sm font-semibold"
+        onclick={handleCoreUpdate}
+        disabled={updating}
+        class="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
         style="background: var(--neon-primary); color: var(--bg-deep)"
       >
-        Update
+        {updating ? "Updating…" : "Update"}
       </button>
     </div>
   {/if}
@@ -46,6 +67,10 @@
     {#if loading}
       <div class="grid gap-3 sm:grid-cols-2">
         <SkeletonCard count={2} />
+      </div>
+    {:else if error}
+      <div class="rounded-xl p-4" style="background: color-mix(in srgb, var(--status-error, #ef4444) 8%, transparent); border: 1px solid color-mix(in srgb, var(--status-error, #ef4444) 20%, transparent)">
+        <p class="text-sm" style="color: var(--status-error, #ef4444)">{error}</p>
       </div>
     {:else if plugins.length === 0}
       <p class="text-sm" style="color: var(--text-secondary)">No plugins loaded.</p>

@@ -379,6 +379,12 @@ impl Storage {
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
     }
 
+    pub async fn clear_history(&self) -> Result<u64, crate::Error> {
+        let db = self.db.lock().await;
+        let deleted = db.execute("DELETE FROM history", [])?;
+        Ok(deleted as u64)
+    }
+
     pub async fn count_by_status(&self, status: QueueStatus) -> Result<u32, crate::Error> {
         let db = self.db.lock().await;
         let count: u32 = db.query_row(

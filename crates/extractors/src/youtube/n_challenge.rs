@@ -70,7 +70,9 @@ fn extract_n_function(player_js: &str) -> Result<String, ExtractorError> {
     let re = regex::Regex::new(patterns[0]).map_err(|e| ExtractorError::Other(e.to_string()))?;
 
     if let Some(caps) = re.captures(player_js) {
-        let func_name = caps.get(1).unwrap().as_str();
+        let func_name = caps.get(1)
+            .ok_or_else(|| ExtractorError::Other("N-challenge regex matched but capture group 1 missing".into()))?
+            .as_str();
         let array_idx = caps.get(2).map(|m| m.as_str());
 
         debug!("Found n-function reference: {func_name}, index: {array_idx:?}");

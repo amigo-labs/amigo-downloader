@@ -62,7 +62,19 @@
     }
   }
 
-  async function handleDelete(id: string) {
+  let confirmingDeleteId = $state<string | null>(null);
+
+  function handleDelete(id: string) {
+    if (confirmingDeleteId !== id) {
+      confirmingDeleteId = id;
+      setTimeout(() => { if (confirmingDeleteId === id) confirmingDeleteId = null; }, 3000);
+      return;
+    }
+    confirmingDeleteId = null;
+    doDelete(id);
+  }
+
+  async function doDelete(id: string) {
     try {
       await deleteUsenetServer(id);
       usenetServers.update((s) => s.filter((srv) => srv.id !== id));
@@ -97,7 +109,7 @@
       class="rounded-xl p-5 space-y-3"
       style="background: var(--bg-surface-2); border: 1px solid var(--border-color)"
     >
-      <div class="grid grid-cols-2 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <div>
           <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">Name</label>
           <input
@@ -120,7 +132,7 @@
         </div>
       </div>
 
-      <div class="grid grid-cols-3 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">Port</label>
           <input
@@ -232,9 +244,10 @@
         <div class="flex gap-1.5 shrink-0">
           <button
             onclick={() => handleDelete(server.id)}
-            class="px-2.5 py-1.5 rounded-lg text-xs text-red-400 hover:bg-red-400/10"
+            class="px-2.5 py-1.5 rounded-lg text-xs hover:opacity-80"
+            style="color: var(--status-error, #ef4444)"
           >
-            Delete
+            {confirmingDeleteId === server.id ? "Sure?" : "Delete"}
           </button>
         </div>
       </div>
@@ -247,7 +260,7 @@
         >
           <div>
             <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary)">Status</p>
-            <p class="text-xs font-semibold" style="color: #10b981">Idle</p>
+            <p class="text-xs font-semibold" style="color: var(--neon-success, #22c55e)">Idle</p>
           </div>
           <div>
             <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary)">Active</p>

@@ -105,19 +105,19 @@
   <!-- Actions -->
   <div class="flex gap-0.5 shrink-0" onclick={(e) => e.stopPropagation()}>
     {#if download.status === "downloading"}
-      <button onclick={() => pauseDownload(download.id)} class="icon-btn p-1 rounded" style="color: var(--text-secondary)" aria-label="Pause">
+      <button onclick={() => pauseDownload(download.id)} class="icon-btn p-2 rounded min-w-[36px] min-h-[36px] flex items-center justify-center" style="color: var(--text-secondary)" aria-label="Pause">
         <Icon name="pause" size={14} />
       </button>
     {:else if download.status === "paused" || download.status === "queued"}
-      <button onclick={() => resumeDownload(download.id)} class="icon-btn p-1 rounded" style="color: var(--text-secondary)" aria-label="Resume">
+      <button onclick={() => resumeDownload(download.id)} class="icon-btn p-2 rounded min-w-[36px] min-h-[36px] flex items-center justify-center" style="color: var(--text-secondary)" aria-label="Resume">
         <Icon name="play" size={14} />
       </button>
     {:else if download.status === "failed"}
-      <button onclick={() => retryDownload(download.id)} class="icon-btn p-1 rounded" style="color: var(--neon-primary)" aria-label="Retry">
+      <button onclick={() => retryDownload(download.id)} class="icon-btn p-2 rounded min-w-[36px] min-h-[36px] flex items-center justify-center" style="color: var(--neon-primary)" aria-label="Retry">
         <Icon name="refresh" size={14} />
       </button>
     {/if}
-    <button onclick={handleDelete} class="icon-btn p-1 rounded" style="color: {confirmingDelete ? 'var(--neon-accent)' : 'var(--text-secondary)'}" aria-label="Delete">
+    <button onclick={handleDelete} class="icon-btn p-2 rounded min-w-[36px] min-h-[36px] flex items-center justify-center" style="color: {confirmingDelete ? 'var(--neon-accent)' : 'var(--text-secondary)'}" aria-label="Delete">
       {#if confirmingDelete}
         <span class="text-[10px] font-semibold px-1">Sure?</span>
       {:else}

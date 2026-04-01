@@ -335,15 +335,17 @@ async fn reorder_queue(
 }
 
 async fn delete_history(
-    State(_state): State<AppState>,
+    State(state): State<AppState>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    // TODO: implement history clearing via storage layer
-    Err((
-        StatusCode::NOT_IMPLEMENTED,
-        Json(ErrorResponse {
-            error: "History clearing not yet implemented".to_string(),
-        }),
-    ))
+    state.coordinator.storage().clear_history().await.map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
+        )
+    })?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 // --- Plugin handlers ---

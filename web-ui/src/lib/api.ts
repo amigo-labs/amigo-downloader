@@ -50,6 +50,7 @@ export const getQueue = () => api<Download[]>("GET", "/queue");
 export const getHistory = () => api<Download[]>("GET", "/history");
 export const getPlugins = () => api<Plugin[]>("GET", "/plugins");
 export const checkUpdates = () => api<unknown>("GET", "/updates/check");
+export const applyCoreUpdate = () => api<unknown>("POST", "/updates/core");
 export const getSystemInfo = () => api<unknown>("GET", "/system-info");
 
 // Re-export Download from stores (single source of truth — audit M6)

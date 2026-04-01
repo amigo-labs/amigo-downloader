@@ -29,13 +29,6 @@ const MEDIA_EXTENSIONS: &[&str] = &[
 /// Streaming manifest extensions.
 const MANIFEST_EXTENSIONS: &[&str] = &[".m3u8", ".mpd"];
 
-/// Content-Type prefixes that indicate media.
-#[allow(dead_code)]
-const MEDIA_CONTENT_TYPES: &[&str] = &[
-    "video/", "audio/", "application/x-mpegurl", "application/dash+xml",
-    "application/vnd.apple.mpegurl",
-];
-
 /// Maximum iframe recursion depth.
 const MAX_IFRAME_DEPTH: u32 = 3;
 
