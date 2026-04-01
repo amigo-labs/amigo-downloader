@@ -88,6 +88,8 @@ pub struct Coordinator {
     active: Arc<Mutex<HashMap<String, ActiveDownload>>>,
     event_tx: broadcast::Sender<DownloadEvent>,
     resolvers: Vec<Arc<dyn UrlResolver>>,
+    /// Signaled when a download completes/fails so the queue can advance.
+    queue_notify: Arc<tokio::sync::Notify>,
 }
 
 impl Coordinator {
@@ -105,6 +107,7 @@ impl Coordinator {
             active: Arc::new(Mutex::new(HashMap::new())),
             event_tx,
             resolvers: Vec::new(),
+            queue_notify: Arc::new(tokio::sync::Notify::new()),
         }
     }
 
@@ -112,6 +115,20 @@ impl Coordinator {
     /// Resolvers are tried in order; first match wins.
     pub fn set_resolvers(&mut self, resolvers: Vec<Arc<dyn UrlResolver>>) {
         self.resolvers = resolvers;
+    }
+
+    /// Spawn a background loop that advances the queue when downloads complete.
+    /// Must be called after wrapping the Coordinator in `Arc`.
+    pub fn spawn_queue_advance_loop(self: &Arc<Self>) {
+        let coordinator = Arc::clone(self);
+        tokio::spawn(async move {
+            loop {
+                coordinator.queue_notify.notified().await;
+                if let Err(e) = coordinator.try_start_next().await {
+                    warn!("Queue advance failed: {e}");
+                }
+            }
+        });
     }
 
     /// Get a reference to the bandwidth limiter.
@@ -314,6 +331,7 @@ impl Coordinator {
         let retry_policy = self.retry_policy.lock().await.clone();
         let bandwidth = self.bandwidth.clone();
         let pp_config = config.postprocessing.clone();
+        let queue_notify = self.queue_notify.clone();
 
         tokio::spawn(async move {
             let mut original_progress_tx = Some(progress_tx);
@@ -438,6 +456,8 @@ impl Coordinator {
             }
 
             active.lock().await.remove(&download_id);
+            // Signal the queue to advance and start the next queued download
+            queue_notify.notify_one();
         });
 
         Ok(())

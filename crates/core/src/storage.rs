@@ -355,13 +355,15 @@ impl Storage {
 
     pub async fn move_to_history(&self, id: &str) -> Result<(), crate::Error> {
         let db = self.db.lock().await;
-        db.execute(
+        let tx = db.unchecked_transaction()?;
+        tx.execute(
             "INSERT INTO history (id, url, protocol, filename, filesize, download_dir, completed_at)
              SELECT id, url, protocol, filename, filesize, download_dir, datetime('now')
              FROM downloads WHERE id = ?1",
             rusqlite::params![id],
         )?;
-        db.execute("DELETE FROM downloads WHERE id = ?1", rusqlite::params![id])?;
+        tx.execute("DELETE FROM downloads WHERE id = ?1", rusqlite::params![id])?;
+        tx.commit()?;
         Ok(())
     }
 
