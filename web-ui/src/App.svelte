@@ -75,10 +75,8 @@
 
   onMount(() => {
     // Initialize theme + palette + intensity
-    document.documentElement.classList.toggle(
-      "lights-on",
-      $theme === "lights-on",
-    );
+    // Apply theme class
+    document.documentElement.classList.toggle("light", $theme === "light");
     document.documentElement.classList.add(`palette-${$palette}`);
     applyIntensity($neonIntensity);
 
@@ -405,10 +403,10 @@
             class="p-1.5 rounded-lg transition-colors"
             style="color: var(--text-secondary)"
             aria-label={$theme === "dark"
-              ? "Switch to Lights On mode"
+              ? "Switch to Light mode"
               : "Switch to Dark mode"}
           >
-            <Icon name={$theme === "dark" ? "sun" : "moon"} size={16} />
+            <Icon name={$theme === "light" ? "moon" : "sun"} size={16} />
           </button>
         </div>
       </div>

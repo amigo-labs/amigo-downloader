@@ -141,7 +141,7 @@
       </div>
 
       <!-- Progress bar -->
-      <div class="w-full h-1 rounded-full overflow-hidden" style="background: rgba(255,255,255,0.06)">
+      <div class="w-full h-1 rounded-full overflow-hidden" style="background: var(--border-color)">
         <div
           class="h-full rounded-full transition-all duration-1000"
           style="width: {((TIMEOUT - elapsed) / TIMEOUT) * 100}%; background: var(--neon-primary)"
