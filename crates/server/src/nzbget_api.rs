@@ -290,6 +290,7 @@ async fn handle_listgroups(coordinator: &Arc<Coordinator>) -> RpcResult {
         .map(|r| {
             let filesize = r.filesize.unwrap_or(0);
             let downloaded = r.bytes_downloaded;
+            let remaining = filesize.saturating_sub(downloaded);
             let nzbid = id_to_nzbid(&r.id);
 
             let status = match r.status.as_str() {
@@ -315,9 +316,9 @@ async fn handle_listgroups(coordinator: &Arc<Coordinator>) -> RpcResult {
                 "DownloadedSizeLo": (downloaded & 0xFFFFFFFF) as u32,
                 "DownloadedSizeHi": (downloaded >> 32) as u32,
                 "DownloadedSizeMB": downloaded / (1024 * 1024),
-                "RemainingSizeLo": (filesize.saturating_sub(downloaded) & 0xFFFFFFFF) as u32,
-                "RemainingSizeHi": (filesize.saturating_sub(downloaded) >> 32) as u32,
-                "RemainingSizeMB": filesize.saturating_sub(downloaded) / (1024 * 1024),
+                "RemainingSizeLo": (remaining & 0xFFFFFFFF) as u32,
+                "RemainingSizeHi": (remaining >> 32) as u32,
+                "RemainingSizeMB": remaining / (1024 * 1024),
                 "ActiveDownloads": if r.status == "downloading" { 1 } else { 0 },
                 "Status": status,
                 "TotalArticles": 0,

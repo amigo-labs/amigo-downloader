@@ -213,9 +213,7 @@ async fn add_batch(
             Err(e) => errors.push(format!("{url}: {e}")),
         }
     }
-    let status = if ids.is_empty() && !errors.is_empty() {
-        StatusCode::BAD_REQUEST
-    } else if !errors.is_empty() {
+    let status = if !errors.is_empty() {
         StatusCode::MULTI_STATUS
     } else {
         StatusCode::CREATED

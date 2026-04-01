@@ -13,23 +13,29 @@ pub mod storage;
 pub mod update_events;
 pub mod updater;
 
-/// Sanitize a filename to prevent path traversal attacks.
+/// Sanitize a filename to prevent path traversal and platform-invalid characters.
 ///
-/// Strips directory components, removes `..`, null bytes, and other dangerous
-/// characters. Returns `"download"` if the result would be empty.
+/// Strips directory components, replaces control characters and characters that
+/// are invalid on Windows (`<>:"/\|?*`) with `_`, and trims leading/trailing
+/// dots and spaces. Returns `"download"` if the result would be empty.
 pub fn sanitize_filename(name: &str) -> String {
     // Take only the final path component (handles both / and \)
-    let name = name
-        .rsplit(['/', '\\'])
-        .next()
-        .unwrap_or(name);
+    let name = name.rsplit(['/', '\\']).next().unwrap_or(name);
 
-    // Remove null bytes and leading/trailing whitespace/dots
-    let name: String = name.chars().filter(|&c| c != '\0').collect();
-    let name = name.trim().trim_matches('.').trim();
+    // Replace dangerous and platform-invalid characters
+    let name: String = name
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect();
 
-    // Reject if empty or is a special traversal component
-    if name.is_empty() || name == ".." {
+    // Remove leading/trailing dots and spaces (Windows-invalid)
+    let name = name.trim_matches(|c| c == '.' || c == ' ');
+
+    if name.is_empty() {
         return "download".to_string();
     }
 

@@ -117,9 +117,11 @@ export function connectWebSocket(
 ): { close: () => void } {
   let reconnectDelay = 1000;
   let currentWs: WebSocket | null = null;
+  let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
   let closed = false;
 
   function connect(): void {
+    if (closed) return;
     const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
     const ws = new WebSocket(`${protocol}//${window.location.host}${API_BASE}/ws`);
     currentWs = ws;
@@ -141,7 +143,7 @@ export function connectWebSocket(
     ws.onclose = () => {
       wsConnected.set(false);
       if (!closed) {
-        setTimeout(() => connect(), reconnectDelay);
+        reconnectTimer = setTimeout(() => connect(), reconnectDelay);
         reconnectDelay = Math.min(reconnectDelay * 2, 30000);
       }
     };
@@ -152,6 +154,7 @@ export function connectWebSocket(
   return {
     close() {
       closed = true;
+      clearTimeout(reconnectTimer);
       currentWs?.close();
     },
   };

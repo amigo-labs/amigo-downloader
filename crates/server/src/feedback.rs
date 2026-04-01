@@ -524,4 +524,28 @@ mod tests {
             "Different error on same host should produce different hash"
         );
     }
+
+    #[test]
+    fn test_urlencoding_ascii() {
+        assert_eq!(urlencoding("hello world"), "hello+world");
+        assert_eq!(urlencoding("a&b=c"), "a%26b%3Dc");
+        assert_eq!(urlencoding("safe-text_here.ok~"), "safe-text_here.ok~");
+    }
+
+    #[test]
+    fn test_urlencoding_reserved() {
+        assert_eq!(urlencoding("?q=1&x=2"), "%3Fq%3D1%26x%3D2");
+        assert_eq!(urlencoding("a+b"), "a%2Bb");
+        assert_eq!(urlencoding("/path/to"), "%2Fpath%2Fto");
+    }
+
+    #[test]
+    fn test_urlencoding_multibyte_utf8() {
+        // é is U+00E9, encoded as C3 A9 in UTF-8
+        assert_eq!(urlencoding("café"), "caf%C3%A9");
+        // ü is U+00FC, encoded as C3 BC in UTF-8
+        assert_eq!(urlencoding("über"), "%C3%BCber");
+        // 日 is U+65E5, encoded as E6 97 A5 in UTF-8
+        assert_eq!(urlencoding("日本"), "%E6%97%A5%E6%9C%AC");
+    }
 }
