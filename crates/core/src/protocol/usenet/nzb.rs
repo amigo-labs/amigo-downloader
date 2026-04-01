@@ -36,10 +36,10 @@ impl NzbFile {
         // Try to extract quoted filename
         if let Some(start) = self.subject.find('"')
             && let Some(end) = self.subject[start + 1..].find('"') {
-                return self.subject[start + 1..start + 1 + end].to_string();
+                return crate::sanitize_filename(&self.subject[start + 1..start + 1 + end]);
             }
-        // Fallback: use subject as-is
-        self.subject.clone()
+        // Fallback: use subject as-is, sanitized
+        crate::sanitize_filename(&self.subject)
     }
 
     /// Total size in bytes (sum of all segments).

@@ -27,6 +27,9 @@ pub enum ChunkStatus {
 impl ChunkPlan {
     /// Split a file of `total_size` into `num_chunks` chunks.
     pub fn split(total_size: u64, num_chunks: u32) -> Self {
+        if num_chunks == 0 || total_size == 0 {
+            return Self { chunks: vec![] };
+        }
         let chunk_size = total_size / num_chunks as u64;
         let mut chunks = Vec::with_capacity(num_chunks as usize);
 

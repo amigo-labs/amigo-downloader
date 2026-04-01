@@ -438,16 +438,19 @@ async fn check_duplicate_issue(
 
 /// Simple URL encoding for query parameters.
 fn urlencoding(s: &str) -> String {
-    s.chars()
-        .map(|c| match c {
-            ' ' => "+".to_string(),
-            '&' | '=' | '?' | '#' | '+' | ':' | '/' => format!("%{:02X}", c as u8),
-            _ if c.is_ascii_alphanumeric() || c == '-' || c == '_' || c == '.' || c == '~' => {
-                c.to_string()
+    let mut result = String::with_capacity(s.len() * 2);
+    for byte in s.bytes() {
+        match byte {
+            b' ' => result.push('+'),
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                result.push(byte as char);
             }
-            _ => format!("%{:02X}", c as u8),
-        })
-        .collect()
+            _ => {
+                result.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+    result
 }
 
 #[cfg(test)]

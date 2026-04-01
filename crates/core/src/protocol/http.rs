@@ -374,7 +374,7 @@ fn parse_content_disposition_filename(header: &str) -> Option<String> {
                 .trim()
                 .trim_matches('"');
             if !name.is_empty() {
-                return Some(name.to_string());
+                return Some(crate::sanitize_filename(name));
             }
         }
     }
@@ -388,7 +388,7 @@ fn parse_content_disposition_filename(header: &str) -> Option<String> {
             .trim()
             .trim_matches('"');
         if !name.is_empty() {
-            return Some(name.to_string());
+            return Some(crate::sanitize_filename(name));
         }
     }
     None
