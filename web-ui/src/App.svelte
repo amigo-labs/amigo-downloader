@@ -5,6 +5,7 @@
   import FeedbackDialog from "./components/FeedbackDialog.svelte";
   import Icon from "./components/Icon.svelte";
   import ShortcutsDialog from "./components/ShortcutsDialog.svelte";
+  import ProgressRing from "./components/ProgressRing.svelte";
   import SidePanel from "./components/SidePanel.svelte";
   import Sparkline from "./components/Sparkline.svelte";
   import Toasts from "./components/Toasts.svelte";
@@ -15,6 +16,8 @@
     getConfig,
     getDownloads,
     getStats,
+    putConfig,
+    type AppConfig,
   } from "./lib/api";
   import {
     applyIntensity,
@@ -52,6 +55,20 @@
   let showPalette = $state(false);
   let mobileMenuOpen = $state(false);
   let pageKey = $state(0);
+
+  // Bandwidth limit
+  let appConfig = $state<AppConfig | null>(null);
+  let limitEnabled = $state(false);
+  let limitMbps = $state(5);
+
+  // Overall progress for active downloads
+  let overallProgress = $derived(() => {
+    const active = $downloads.filter((d) => d.status === "downloading");
+    if (active.length === 0) return 0;
+    const totalBytes = active.reduce((sum, d) => sum + (d.filesize ?? 0), 0);
+    const dlBytes = active.reduce((sum, d) => sum + d.bytes_downloaded, 0);
+    return totalBytes > 0 ? Math.round((dlBytes / totalBytes) * 100) : 0;
+  });
 
   const mainNavItems: { id: Page; label: string; icon: string }[] = [
     { id: "downloads", label: "Downloads", icon: "arrow-down" },
@@ -111,18 +128,14 @@
 
       if (msg.type === "completed") {
         updateDownloadStatus(msg.id, "completed");
-        addToast(
-          "success",
-          "Download complete",
-          (msg.data?.filename as string) || msg.id,
-        );
+        const fname = (msg.data?.filename as string) || msg.id;
+        addToast("success", "Download complete", fname);
+        notifyIfHidden("Download complete", fname);
       } else if (msg.type === "failed") {
         updateDownloadStatus(msg.id, "failed");
-        addToast(
-          "error",
-          "Download failed",
-          (msg.data?.error as string) || msg.id,
-        );
+        const errMsg = (msg.data?.error as string) || msg.id;
+        addToast("error", "Download failed", errMsg);
+        notifyIfHidden("Download failed", errMsg);
       } else if (msg.type === "captcha_challenge") {
         pendingCaptcha.set(msg.data as unknown as CaptchaChallenge);
       } else if (
@@ -180,9 +193,42 @@
       downloads.set(dl);
       stats.set(st);
       pushSpeedSample(st.speed_bytes_per_sec ?? 0);
-      if (cfg?.features) features.set(cfg.features);
+      if (cfg) {
+        if (cfg.features) features.set(cfg.features);
+        if (!appConfig) {
+          // First load — init bandwidth limit state
+          appConfig = cfg;
+          const limit = cfg.bandwidth?.global_limit ?? 0;
+          limitEnabled = limit > 0;
+          limitMbps = limit > 0 ? Math.round(limit / 1_000_000) : 5;
+        }
+      }
     } catch {
       // Server offline
+    }
+  }
+
+  function notifyIfHidden(title: string, body: string) {
+    if (document.hasFocus()) return;
+    if (typeof Notification === "undefined") return;
+    if (Notification.permission === "granted") {
+      new Notification(title, { body, icon: "/amigo-logo.png" });
+    } else if (Notification.permission !== "denied") {
+      Notification.requestPermission().then((p) => {
+        if (p === "granted") new Notification(title, { body, icon: "/amigo-logo.png" });
+      });
+    }
+  }
+
+  async function saveBandwidthLimit() {
+    if (!appConfig) return;
+    const limitBytes = limitEnabled ? limitMbps * 1_000_000 : 0;
+    appConfig.bandwidth.global_limit = limitBytes;
+    try {
+      await putConfig(appConfig);
+      addToast("info", limitEnabled ? `Limit set to ${limitMbps} MB/s` : "Speed limit disabled");
+    } catch {
+      addToast("error", "Failed to save limit");
     }
   }
 
@@ -334,12 +380,39 @@
       {#if $speedHistory.length > 1}
         <Sparkline values={$speedHistory} width={200} height={28} />
       {/if}
-      <div class="flex items-center justify-between">
+
+      <!-- Bandwidth limit -->
+      <div class="flex items-center gap-2 mt-1">
+        <span class="stat-label shrink-0">Limit</span>
+        <button
+          onclick={() => { limitEnabled = !limitEnabled; saveBandwidthLimit(); }}
+          class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+          style={limitEnabled
+            ? "background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--neon-primary)"
+            : "background: var(--bg-surface-2); color: var(--text-secondary)"}
+        >
+          {limitEnabled ? "On" : "Off"}
+        </button>
+        <input
+          type="number"
+          min="1"
+          max="1000"
+          bind:value={limitMbps}
+          onchange={saveBandwidthLimit}
+          disabled={!limitEnabled}
+          class="w-12 text-center rounded px-1 py-0.5 text-xs"
+          style="font-family: var(--font-mono); background: var(--bg-surface-2); border: 1px solid var(--border-color); color: {limitEnabled ? 'var(--text-primary)' : 'var(--text-secondary)'}; opacity: {limitEnabled ? 1 : 0.4}"
+          aria-label="Speed limit in MB/s"
+        />
+        <span class="text-[10px]" style="color: var(--text-secondary)">MB/s</span>
+      </div>
+
+      <div class="flex items-center justify-between mt-1">
         <span class="stat-label">Active</span>
-        <span class="text-xs" style="color: var(--text-primary)">
+        <span class="flex items-center gap-1.5 text-xs" style="color: var(--text-primary)">
           {$stats.active_downloads}
           {#if $stats.active_downloads > 0}
-            <span class="status-dot status-dot--online ml-1"></span>
+            <ProgressRing progress={overallProgress()} size={18} stroke={2} active={true} />
           {/if}
         </span>
       </div>

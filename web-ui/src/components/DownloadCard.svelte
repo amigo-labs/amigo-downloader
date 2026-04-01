@@ -3,6 +3,7 @@
   import { openDetailPanel, selectedDownloadId, selectedIds, toggleSelection, crashReport } from "../lib/stores";
   import { addToast } from "../lib/toast";
   import ChunkViz from "./ChunkViz.svelte";
+  import ContextMenu from "./ContextMenu.svelte";
   import Icon from "./Icon.svelte";
 
   let { download, index = 0 }: { download: any; index?: number } = $props();
@@ -38,9 +39,22 @@
     return `${h}h ${m}m`;
   });
 
+  let confirmingDelete = $state(false);
+  let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+
   async function handlePause() { await pauseDownload(download.id); }
   async function handleResume() { await resumeDownload(download.id); }
-  async function handleDelete() { await deleteDownload(download.id); }
+  function handleDelete(e: MouseEvent) {
+    e.stopPropagation();
+    if (!confirmingDelete) {
+      confirmingDelete = true;
+      confirmTimer = setTimeout(() => { confirmingDelete = false; }, 2000);
+    } else {
+      clearTimeout(confirmTimer);
+      confirmingDelete = false;
+      deleteDownload(download.id);
+    }
+  }
 
   function select() {
     openDetailPanel(download.id);
@@ -51,6 +65,30 @@
       e.preventDefault();
       select();
     }
+  }
+
+  // Context menu (desktop only)
+  let contextMenu = $state<{ x: number; y: number } | null>(null);
+
+  function handleContextMenu(e: MouseEvent) {
+    // Only on non-touch devices
+    if ("ontouchstart" in window) return;
+    e.preventDefault();
+    contextMenu = { x: e.clientX, y: e.clientY };
+  }
+
+  function getContextMenuItems() {
+    const items: { label: string; icon: string; action: () => void; color?: string }[] = [
+      { label: "Copy URL", icon: "copy", action: () => navigator.clipboard.writeText(download.url) },
+      { label: "Open in Browser", icon: "globe", action: () => window.open(download.url, "_blank") },
+    ];
+    if (download.status === "downloading") {
+      items.push({ label: "Pause", icon: "pause", action: () => pauseDownload(download.id) });
+    } else if (download.status === "paused" || download.status === "queued") {
+      items.push({ label: "Resume", icon: "play", action: () => resumeDownload(download.id) });
+    }
+    items.push({ label: "Delete", icon: "trash", action: () => deleteDownload(download.id), color: "var(--neon-accent)" });
+    return items;
   }
 
   async function copyUrl(e: MouseEvent) {
@@ -72,6 +110,7 @@
   "
   onclick={select}
   onkeydown={handleKeydown}
+  oncontextmenu={handleContextMenu}
   role="button"
   tabindex="0"
 >
@@ -179,9 +218,17 @@
           </button>
         {/if}
         <button onclick={handleDelete} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--neon-accent)" aria-label="Delete {download.filename || 'download'}">
-          <Icon name="trash" size={16} />
+          {#if confirmingDelete}
+            <span class="text-[10px] font-bold">Sure?</span>
+          {:else}
+            <Icon name="trash" size={16} />
+          {/if}
         </button>
       </div>
     </div>
   </div>
 </div>
+
+{#if contextMenu}
+  <ContextMenu x={contextMenu.x} y={contextMenu.y} items={getContextMenuItems()} onclose={() => (contextMenu = null)} />
+{/if}

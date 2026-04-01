@@ -85,5 +85,17 @@
     <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" />
   {:else if name === "bolt"}
     <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+  {:else if name === "grid"}
+    <rect x="3" y="3" width="7" height="7" rx="1" />
+    <rect x="14" y="3" width="7" height="7" rx="1" />
+    <rect x="3" y="14" width="7" height="7" rx="1" />
+    <rect x="14" y="14" width="7" height="7" rx="1" />
+  {:else if name === "list"}
+    <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01" />
+  {:else if name === "sort"}
+    <path d="M3 6h18M3 12h12M3 18h6" />
+  {:else if name === "globe"}
+    <circle cx="12" cy="12" r="10" />
+    <path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
   {/if}
 </svg>

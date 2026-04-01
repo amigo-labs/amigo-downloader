@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getHistory, formatBytes } from "../lib/api";
+  import { getHistory, formatBytes, formatRelativeTime } from "../lib/api";
   import SkeletonCard from "../components/SkeletonCard.svelte";
 
   let history = $state<any[]>([]);
@@ -33,7 +33,7 @@
           <div class="flex-1 min-w-0">
             <p class="font-medium truncate text-sm" style="color: var(--text-primary)">{item.filename || item.url}</p>
             <p class="text-xs" style="color: var(--text-secondary)">
-              {item.filesize ? formatBytes(item.filesize) : "\u2014"} &middot; {item.created_at}
+              {item.filesize ? formatBytes(item.filesize) : "\u2014"} &middot; {formatRelativeTime(item.created_at)}
             </p>
           </div>
           <!-- Fix M9: use neon-success instead of hardcoded text-green-500 -->

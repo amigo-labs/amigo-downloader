@@ -6,6 +6,8 @@
   import Icon from "./Icon.svelte";
 
   let dl = $derived($selectedDownload);
+  let confirmingDelete = $state(false);
+  let confirmTimer: ReturnType<typeof setTimeout> | undefined;
 
   let progress = $derived(
     dl?.filesize ? Math.round((dl.bytes_downloaded / dl.filesize) * 100) : 0
@@ -146,12 +148,22 @@
           </button>
         {/if}
         <button
-          onclick={() => { deleteDownload(dl.id); closeSidePanel(); }}
+          onclick={() => {
+            if (!confirmingDelete) {
+              confirmingDelete = true;
+              confirmTimer = setTimeout(() => { confirmingDelete = false; }, 2000);
+            } else {
+              clearTimeout(confirmTimer);
+              confirmingDelete = false;
+              deleteDownload(dl.id);
+              closeSidePanel();
+            }
+          }}
           class="action-btn flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px]"
           style="background: var(--bg-surface-2); color: var(--neon-accent)"
           aria-label="Delete download"
         >
-          <Icon name="trash" size={14} /> Delete
+          <Icon name="trash" size={14} /> {confirmingDelete ? "Sure?" : "Delete"}
         </button>
       </div>
     </section>

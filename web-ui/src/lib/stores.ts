@@ -61,9 +61,16 @@ function applyThemeClass(value: ThemeMode) {
   root.classList.toggle("light", value === "light");
 }
 
+function detectSystemTheme(): ThemeMode {
+  if (typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: light)").matches) {
+    return "light";
+  }
+  return "dark";
+}
+
 function createThemeStore() {
   const stored = typeof localStorage !== "undefined" ? localStorage.getItem("theme") : null;
-  const initial: ThemeMode = (stored as ThemeMode) || "dark";
+  const initial: ThemeMode = (stored as ThemeMode) || detectSystemTheme();
   const { subscribe, set, update } = writable<ThemeMode>(initial);
 
   return {
@@ -237,7 +244,6 @@ if (typeof window !== "undefined") {
     if (location.hash !== `#${page}`) {
       history.pushState({ page }, "", `#${page}`);
     }
-    // Dynamic page title (audit L7)
     document.title = `${page.charAt(0).toUpperCase() + page.slice(1)} — amigo-downloader`;
   });
   window.addEventListener("popstate", () => {
@@ -292,6 +298,16 @@ export const stats = writable<Stats>({
   queued: 0,
   completed: 0,
 });
+
+// Tab badge — show active count in document title
+if (typeof window !== "undefined") {
+  stats.subscribe((s) => {
+    const hash = typeof location !== "undefined" ? location.hash.slice(1) : "downloads";
+    const page = hash || "downloads";
+    const prefix = s.active_downloads > 0 ? `(${s.active_downloads}) ` : "";
+    document.title = `${prefix}${page.charAt(0).toUpperCase() + page.slice(1)} — amigo-downloader`;
+  });
+}
 
 // ========================================
 // SPEED HISTORY (for sparkline graph)

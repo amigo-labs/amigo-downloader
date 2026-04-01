@@ -7,11 +7,21 @@
   } from "../lib/stores";
   import { addToast } from "../lib/toast";
   import DownloadCard from "../components/DownloadCard.svelte";
+  import DownloadCompactRow from "../components/DownloadCompactRow.svelte";
   import Icon from "../components/Icon.svelte";
   import SkeletonCard from "../components/SkeletonCard.svelte";
 
   let filter = $state<string>("all");
   let loading = $state(false);
+  let sortBy = $state<string>("status");
+  let viewMode = $state<"grid" | "list">(
+    (typeof localStorage !== "undefined" ? localStorage.getItem("dl-view") : null) as "grid" | "list" || "grid"
+  );
+
+  function setViewMode(mode: "grid" | "list") {
+    viewMode = mode;
+    if (typeof localStorage !== "undefined") localStorage.setItem("dl-view", mode);
+  }
 
   const statusOrder: Record<string, number> = {
     downloading: 0,
@@ -22,6 +32,12 @@
   };
 
   const filters = ["all", "downloading", "queued", "paused", "completed", "failed"];
+  const sortOptions = [
+    { value: "status", label: "Status" },
+    { value: "name", label: "Name" },
+    { value: "size", label: "Size" },
+    { value: "date", label: "Date" },
+  ];
 
   // Merge HTTP + Usenet downloads based on protocol filter
   let allDownloads = $derived(() => {
@@ -39,7 +55,12 @@
         const q = $searchQuery.toLowerCase();
         return (d.filename?.toLowerCase().includes(q)) || d.url.toLowerCase().includes(q);
       })
-      .sort((a, b) => (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99))
+      .sort((a, b) => {
+        if (sortBy === "name") return (a.filename || a.url).localeCompare(b.filename || b.url);
+        if (sortBy === "size") return (b.filesize ?? 0) - (a.filesize ?? 0);
+        if (sortBy === "date") return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        return (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
+      })
   );
 
   let batchMode = $derived($selectedIds.size > 0);
@@ -76,7 +97,7 @@
 </script>
 
 <div class="space-y-4">
-  <!-- Search bar -->
+  <!-- Search bar + sort + view toggle -->
   <div class="flex gap-2 items-center">
     <div class="flex-1 flex items-center gap-2 rounded-lg px-3 py-2" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
       <Icon name="search" size={16} />
@@ -93,6 +114,41 @@
           <Icon name="x" size={14} />
         </button>
       {/if}
+    </div>
+
+    <!-- Sort -->
+    <div class="flex items-center gap-1 rounded-lg px-2 py-1.5 shrink-0" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
+      <Icon name="sort" size={14} />
+      <select
+        bind:value={sortBy}
+        class="bg-transparent text-xs outline-none cursor-pointer"
+        style="color: var(--text-primary)"
+        aria-label="Sort by"
+      >
+        {#each sortOptions as opt}
+          <option value={opt.value} style="background: var(--bg-surface-2)">{opt.label}</option>
+        {/each}
+      </select>
+    </div>
+
+    <!-- View toggle -->
+    <div class="flex shrink-0 rounded-lg overflow-hidden" style="border: 1px solid var(--border-color)">
+      <button
+        onclick={() => setViewMode("grid")}
+        class="icon-btn p-2"
+        style="color: {viewMode === 'grid' ? 'var(--neon-primary)' : 'var(--text-secondary)'}; background: {viewMode === 'grid' ? 'var(--hover-bg)' : 'var(--bg-surface)'}"
+        aria-label="Grid view"
+      >
+        <Icon name="grid" size={14} />
+      </button>
+      <button
+        onclick={() => setViewMode("list")}
+        class="icon-btn p-2"
+        style="color: {viewMode === 'list' ? 'var(--neon-primary)' : 'var(--text-secondary)'}; background: {viewMode === 'list' ? 'var(--hover-bg)' : 'var(--bg-surface)'}"
+        aria-label="List view"
+      >
+        <Icon name="list" size={14} />
+      </button>
     </div>
   </div>
 
@@ -177,10 +233,18 @@
       <p class="text-xs mt-3" style="color: var(--text-secondary); opacity: 0.5">Ctrl+N to add &middot; Drag & drop supported</p>
     </div>
   {:else}
-    <div class="grid gap-3">
-      {#each filtered as download, i (download.id)}
-        <DownloadCard {download} index={i} />
-      {/each}
-    </div>
+    {#if viewMode === "grid"}
+      <div class="grid gap-3">
+        {#each filtered as download, i (download.id)}
+          <DownloadCard {download} index={i} />
+        {/each}
+      </div>
+    {:else}
+      <div class="flex flex-col gap-1">
+        {#each filtered as download (download.id)}
+          <DownloadCompactRow {download} />
+        {/each}
+      </div>
+    {/if}
   {/if}
 </div>
