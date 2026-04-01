@@ -106,21 +106,23 @@ async fn flash_addcrypted2(
 
 /// Simple URL decoding (percent-encoded).
 fn urlencoding_decode(input: &str) -> String {
-    let mut result = String::with_capacity(input.len());
+    let mut bytes = Vec::with_capacity(input.len());
     let mut chars = input.chars();
 
     while let Some(c) = chars.next() {
         if c == '%' {
             let hex: String = chars.by_ref().take(2).collect();
             if let Ok(byte) = u8::from_str_radix(&hex, 16) {
-                result.push(byte as char);
+                bytes.push(byte);
             }
         } else if c == '+' {
-            result.push(' ');
+            bytes.push(b' ');
         } else {
-            result.push(c);
+            // Safe for ASCII; multi-byte chars get their UTF-8 bytes
+            let mut buf = [0u8; 4];
+            bytes.extend_from_slice(c.encode_utf8(&mut buf).as_bytes());
         }
     }
 
-    result
+    String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
 }

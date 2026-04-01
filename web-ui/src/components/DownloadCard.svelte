@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { pauseDownload, resumeDownload, retryDownload, deleteDownload, formatBytes, formatSpeed } from "../lib/api";
   import { openDetailPanel, selectedDownloadId, selectedIds, toggleSelection, crashReport } from "../lib/stores";
   import { addToast } from "../lib/toast";
@@ -53,6 +54,8 @@
 
   let confirmingDelete = $state(false);
   let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+
+  onDestroy(() => clearTimeout(confirmTimer));
 
   async function handlePause() { await pauseDownload(download.id); }
   async function handleResume() { await resumeDownload(download.id); }

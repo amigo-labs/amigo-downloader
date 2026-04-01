@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { pauseDownload, resumeDownload, retryDownload, deleteDownload, formatBytes, formatSpeed } from "../lib/api";
   import { openDetailPanel, selectedIds, toggleSelection } from "../lib/stores";
   import Icon from "./Icon.svelte";
@@ -34,6 +35,8 @@
 
   let confirmingDelete = $state(false);
   let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+
+  onDestroy(() => clearTimeout(confirmTimer));
 
   function handleDelete(e: MouseEvent) {
     e.stopPropagation();

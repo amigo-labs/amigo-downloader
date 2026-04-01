@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy } from "svelte";
   import { selectedDownload, closeSidePanel, crashReport, showFeedbackDialog } from "../lib/stores";
   import { formatBytes, formatSpeed, pauseDownload, resumeDownload, retryDownload, deleteDownload } from "../lib/api";
   import { addToast } from "../lib/toast";
@@ -8,6 +9,8 @@
   let dl = $derived($selectedDownload);
   let confirmingDelete = $state(false);
   let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+
+  onDestroy(() => clearTimeout(confirmTimer));
 
   let progress = $derived(
     dl?.filesize ? Math.round((dl.bytes_downloaded / dl.filesize) * 100) : 0
