@@ -115,8 +115,9 @@
     return (e: DragEvent) => {
       e.preventDefault();
       if (!draggedId || draggedId === targetId) { draggedId = null; return; }
-      // Reorder locally
-      downloads.update((list) => {
+      // Reorder in the correct store based on protocol filter
+      const store = $protocolFilter === "usenet" ? usenetDownloads : downloads;
+      store.update((list) => {
         const items = [...list];
         const fromIdx = items.findIndex((d) => d.id === draggedId);
         const toIdx = items.findIndex((d) => d.id === targetId);

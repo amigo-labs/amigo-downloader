@@ -13,6 +13,35 @@ pub mod storage;
 pub mod update_events;
 pub mod updater;
 
+/// Sanitize a filename to prevent path traversal and platform-invalid characters.
+///
+/// Strips directory components, replaces control characters and characters that
+/// are invalid on Windows (`<>:"/\|?*`) with `_`, and trims leading/trailing
+/// dots and spaces. Returns `"download"` if the result would be empty.
+pub fn sanitize_filename(name: &str) -> String {
+    // Take only the final path component (handles both / and \)
+    let name = name.rsplit(['/', '\\']).next().unwrap_or(name);
+
+    // Replace dangerous and platform-invalid characters
+    let name: String = name
+        .chars()
+        .map(|c| match c {
+            '/' | '\\' | ':' | '*' | '?' | '"' | '<' | '>' | '|' | '\0' => '_',
+            c if c.is_control() => '_',
+            c => c,
+        })
+        .collect();
+
+    // Remove leading/trailing dots and spaces (Windows-invalid)
+    let name = name.trim_matches(|c| c == '.' || c == ' ');
+
+    if name.is_empty() {
+        return "download".to_string();
+    }
+
+    name.to_string()
+}
+
 /// Core error type.
 #[derive(Debug, thiserror::Error)]
 pub enum Error {

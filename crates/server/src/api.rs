@@ -36,17 +36,18 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/stats", get(stats))
         .route("/api/v1/downloads", post(add_download))
         .route("/api/v1/downloads", get(list_downloads))
+        // Specific download routes MUST come before {id} routes
+        .route("/api/v1/downloads/batch", post(add_batch))
+        .route("/api/v1/downloads/nzb", post(upload_nzb))
+        .route("/api/v1/downloads/usenet", get(list_usenet_downloads))
         .route("/api/v1/downloads/{id}", get(get_download))
         .route("/api/v1/downloads/{id}", patch(update_download))
         .route("/api/v1/downloads/{id}", delete(delete_download))
-        .route("/api/v1/downloads/batch", post(add_batch))
         .route("/api/v1/queue", get(get_queue))
         .route("/api/v1/queue/reorder", patch(reorder_queue))
         .route("/api/v1/history", get(get_history))
         .route("/api/v1/history", delete(delete_history))
         // Usenet endpoints
-        .route("/api/v1/downloads/nzb", post(upload_nzb))
-        .route("/api/v1/downloads/usenet", get(list_usenet_downloads))
         .route("/api/v1/usenet/servers", get(list_usenet_servers))
         .route("/api/v1/usenet/servers", post(add_usenet_server))
         .route("/api/v1/usenet/servers/{id}", delete(delete_usenet_server))
@@ -59,11 +60,11 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/rss", get(list_rss_feeds))
         .route("/api/v1/rss", post(add_rss_feed))
         .route("/api/v1/rss/{id}", delete(delete_rss_feed))
-        // Plugin endpoints
+        // Plugin endpoints — specific routes before {id}
         .route("/api/v1/plugins", get(list_plugins))
-        .route("/api/v1/plugins/{id}", patch(update_plugin))
         .route("/api/v1/plugins/suggest", post(suggest_plugin))
-        // Captcha endpoints
+        .route("/api/v1/plugins/{id}", patch(update_plugin))
+        // Captcha endpoints — specific routes before {id}
         .route("/api/v1/captcha/pending", get(list_pending_captchas))
         .route("/api/v1/captcha/{id}/solve", post(solve_captcha))
         .route("/api/v1/captcha/{id}/cancel", post(cancel_captcha))
@@ -120,6 +121,7 @@ struct AddResponse {
 #[derive(Serialize)]
 struct BatchResponse {
     ids: Vec<String>,
+    errors: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -202,22 +204,21 @@ async fn add_download(
 async fn add_batch(
     State(state): State<AppState>,
     Json(req): Json<BatchRequest>,
-) -> Result<(StatusCode, Json<BatchResponse>), (StatusCode, Json<ErrorResponse>)> {
+) -> (StatusCode, Json<BatchResponse>) {
     let mut ids = Vec::new();
+    let mut errors = Vec::new();
     for url in &req.urls {
         match state.coordinator.add_download(url, None).await {
             Ok(id) => ids.push(id),
-            Err(e) => {
-                return Err((
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                    Json(ErrorResponse {
-                        error: e.to_string(),
-                    }),
-                ));
-            }
+            Err(e) => errors.push(format!("{url}: {e}")),
         }
     }
-    Ok((StatusCode::CREATED, Json(BatchResponse { ids })))
+    let status = if !errors.is_empty() {
+        StatusCode::MULTI_STATUS
+    } else {
+        StatusCode::CREATED
+    };
+    (status, Json(BatchResponse { ids, errors }))
 }
 
 async fn list_downloads(State(state): State<AppState>) -> Json<Vec<DownloadResponse>> {
@@ -334,14 +335,15 @@ async fn reorder_queue(
 }
 
 async fn delete_history(
-    State(state): State<AppState>,
+    State(_state): State<AppState>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    // Delete all history entries by clearing the history table
-    let db = state.coordinator.storage();
-    // Use the update_state mechanism to signal a history clear
-    // For now, just return OK since the history table requires direct SQL
-    let _ = db;
-    Ok(StatusCode::OK)
+    // TODO: implement history clearing via storage layer
+    Err((
+        StatusCode::NOT_IMPLEMENTED,
+        Json(ErrorResponse {
+            error: "History clearing not yet implemented".to_string(),
+        }),
+    ))
 }
 
 // --- Plugin handlers ---

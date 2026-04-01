@@ -70,19 +70,33 @@ struct JsonRpcErrorDetail {
 
 // --- Auth ---
 
-fn check_basic_auth(headers: &HeaderMap) -> bool {
-    // Accept all requests for now (configurable later via nzbget_username/password in config)
-    // NZBGet embeds credentials in the URL: http://user:pass@host/jsonrpc
-    // Axum receives them as HTTP Basic Auth header
-    if let Some(auth) = headers.get("authorization")
-        && let Ok(auth_str) = auth.to_str()
-        && auth_str.starts_with("Basic ")
-    {
-        // Credentials present — accept any for now
+fn check_basic_auth(headers: &HeaderMap, expected_user: &str, expected_pass: &str) -> bool {
+    // If both username and password are empty, auth is disabled
+    if expected_user.is_empty() && expected_pass.is_empty() {
         return true;
     }
-    // Also accept requests without auth (for easier testing)
-    true
+
+    let Some(auth) = headers.get("authorization") else {
+        return false;
+    };
+    let Ok(auth_str) = auth.to_str() else {
+        return false;
+    };
+    let Some(encoded) = auth_str.strip_prefix("Basic ") else {
+        return false;
+    };
+
+    let decoded = match base64::engine::general_purpose::STANDARD.decode(encoded.trim()) {
+        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        Err(_) => return false,
+    };
+
+    // Format: "username:password"
+    let Some((user, pass)) = decoded.split_once(':') else {
+        return false;
+    };
+
+    user == expected_user && pass == expected_pass
 }
 
 // --- Handler ---
@@ -92,7 +106,8 @@ async fn jsonrpc_handler(
     headers: HeaderMap,
     Json(req): Json<JsonRpcRequest>,
 ) -> impl IntoResponse {
-    if !check_basic_auth(&headers) {
+    let config = state.coordinator.config().await;
+    if !check_basic_auth(&headers, &config.nzbget_api.username, &config.nzbget_api.password) {
         return (
             StatusCode::UNAUTHORIZED,
             Json(json!({"id": null, "error": {"code": -32000, "message": "Unauthorized"}})),
@@ -275,6 +290,7 @@ async fn handle_listgroups(coordinator: &Arc<Coordinator>) -> RpcResult {
         .map(|r| {
             let filesize = r.filesize.unwrap_or(0);
             let downloaded = r.bytes_downloaded;
+            let remaining = filesize.saturating_sub(downloaded);
             let nzbid = id_to_nzbid(&r.id);
 
             let status = match r.status.as_str() {
@@ -300,9 +316,9 @@ async fn handle_listgroups(coordinator: &Arc<Coordinator>) -> RpcResult {
                 "DownloadedSizeLo": (downloaded & 0xFFFFFFFF) as u32,
                 "DownloadedSizeHi": (downloaded >> 32) as u32,
                 "DownloadedSizeMB": downloaded / (1024 * 1024),
-                "RemainingSizeLo": ((filesize - downloaded) & 0xFFFFFFFF) as u32,
-                "RemainingSizeHi": ((filesize - downloaded) >> 32) as u32,
-                "RemainingSizeMB": (filesize - downloaded) / (1024 * 1024),
+                "RemainingSizeLo": (remaining & 0xFFFFFFFF) as u32,
+                "RemainingSizeHi": (remaining >> 32) as u32,
+                "RemainingSizeMB": remaining / (1024 * 1024),
                 "ActiveDownloads": if r.status == "downloading" { 1 } else { 0 },
                 "Status": status,
                 "TotalArticles": 0,

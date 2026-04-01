@@ -222,7 +222,7 @@ fn build_segment_urls(
                 }
             } else if let Some(duration) = template.duration {
                 // Duration-based segments
-                let timescale = template.timescale.unwrap_or(1);
+                let timescale = template.timescale.unwrap_or(1).max(1);
                 let period_duration = period
                     .duration
                     .as_ref()
@@ -230,13 +230,15 @@ fn build_segment_urls(
                     .unwrap_or(3600.0);
 
                 let segment_duration = duration / timescale as f64;
-                let num_segments = (period_duration / segment_duration).ceil() as u64;
-                let start_number = template.startNumber.unwrap_or(1);
+                if segment_duration > 0.0 {
+                    let num_segments = (period_duration / segment_duration).ceil() as u64;
+                    let start_number = template.startNumber.unwrap_or(1);
 
-                for i in 0..num_segments {
-                    let number = start_number + i;
-                    let url = expand_template(media_template, repr, number);
-                    urls.push(resolve_url(mpd_url, &url));
+                    for i in 0..num_segments {
+                        let number = start_number + i;
+                        let url = expand_template(media_template, repr, number);
+                        urls.push(resolve_url(mpd_url, &url));
+                    }
                 }
             }
         }
@@ -282,8 +284,9 @@ fn expand_template(template: &str, repr: &dash_mpd::Representation, number: u64)
     result = result.replace("$Number$", &number.to_string());
 
     // Handle $Number%0Xd$ patterns (zero-padded numbers)
-    let re = regex::Regex::new(r"\$Number%(\d+)d\$").unwrap();
-    result = re
+    static DASH_NUMBER_RE: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"\$Number%(\d+)d\$").unwrap());
+    result = DASH_NUMBER_RE
         .replace_all(&result, |caps: &regex::Captures| {
             let width: usize = caps[1].parse().unwrap_or(1);
             format!("{:0>width$}", number, width = width)

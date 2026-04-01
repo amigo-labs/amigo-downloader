@@ -201,16 +201,27 @@ impl HttpDownloader {
         }
         progress_reporter.abort();
 
-        // Reassemble chunks into final file
-        debug!("Reassembling {} chunks into {:?}", num_chunks, dest);
-        let mut dest_file = tokio::fs::File::create(dest).await?;
-        for i in 0..num_chunks {
-            let chunk_path = temp_dir.join(format!("chunk_{i}"));
-            let chunk_data = tokio::fs::read(&chunk_path).await?;
-            dest_file.write_all(&chunk_data).await?;
-            tokio::fs::remove_file(&chunk_path).await?;
+        // Reassemble chunks into final file (use temp name, rename on success)
+        let dest_tmp = dest.with_extension("part");
+        debug!("Reassembling {} chunks into {:?}", num_chunks, dest_tmp);
+        let reassemble_result: Result<(), crate::Error> = async {
+            let mut dest_file = tokio::fs::File::create(&dest_tmp).await?;
+            for i in 0..num_chunks {
+                let chunk_path = temp_dir.join(format!("chunk_{i}"));
+                let chunk_data = tokio::fs::read(&chunk_path).await?;
+                dest_file.write_all(&chunk_data).await?;
+                tokio::fs::remove_file(&chunk_path).await?;
+            }
+            dest_file.flush().await?;
+            Ok(())
         }
-        dest_file.flush().await?;
+        .await;
+
+        if let Err(e) = reassemble_result {
+            let _ = tokio::fs::remove_file(&dest_tmp).await;
+            return Err(e);
+        }
+        tokio::fs::rename(&dest_tmp, dest).await?;
 
         let _ = progress_tx.send(DownloadProgress {
             bytes_downloaded: total_size,
@@ -374,7 +385,7 @@ fn parse_content_disposition_filename(header: &str) -> Option<String> {
                 .trim()
                 .trim_matches('"');
             if !name.is_empty() {
-                return Some(name.to_string());
+                return Some(crate::sanitize_filename(name));
             }
         }
     }
@@ -388,7 +399,7 @@ fn parse_content_disposition_filename(header: &str) -> Option<String> {
             .trim()
             .trim_matches('"');
         if !name.is_empty() {
-            return Some(name.to_string());
+            return Some(crate::sanitize_filename(name));
         }
     }
     None

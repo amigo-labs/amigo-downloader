@@ -101,6 +101,9 @@ async fn main() -> anyhow::Result<()> {
 
     let coordinator = std::sync::Arc::new(coordinator);
 
+    // Spawn queue advance loop — starts next queued download when one completes
+    coordinator.spawn_queue_advance_loop();
+
     // Recover any downloads that were in-progress when the server last stopped
     let recovered = coordinator.recover_downloads().await.unwrap_or(0);
     if recovered > 0 {

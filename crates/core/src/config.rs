@@ -58,6 +58,29 @@ pub struct Config {
     pub webhooks: Vec<WebhookEndpoint>,
     #[serde(default)]
     pub features: FeatureFlags,
+    #[serde(default)]
+    pub nzbget_api: NzbGetApiConfig,
+}
+
+/// NZBGet-compatible JSON-RPC API credentials for Sonarr/Radarr integration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NzbGetApiConfig {
+    /// Enable the NZBGet-compatible JSON-RPC API.
+    pub enabled: bool,
+    /// Username for HTTP Basic Auth. Empty string disables auth.
+    pub username: String,
+    /// Password for HTTP Basic Auth. Empty string disables auth.
+    pub password: String,
+}
+
+impl Default for NzbGetApiConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            username: String::new(),
+            password: String::new(),
+        }
+    }
 }
 
 /// Retry behavior for failed downloads.
@@ -163,6 +186,7 @@ impl Default for Config {
             retry: RetryConfig::default(),
             webhooks: Vec::new(),
             features: FeatureFlags::default(),
+            nzbget_api: NzbGetApiConfig::default(),
         }
     }
 }

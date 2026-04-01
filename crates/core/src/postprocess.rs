@@ -140,6 +140,10 @@ fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
     let mut zip = zip::ZipArchive::new(file)
         .map_err(|e| crate::Error::Other(format!("Invalid ZIP: {e}")))?;
 
+    let canonical_output = output_dir
+        .canonicalize()
+        .unwrap_or_else(|_| output_dir.to_path_buf());
+
     for i in 0..zip.len() {
         let mut entry = zip
             .by_index(i)
@@ -147,6 +151,18 @@ fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
 
         let name = entry.name().to_string();
         let out_path = output_dir.join(&name);
+
+        // Zip Slip protection: ensure extracted path stays within output_dir
+        let canonical_out = out_path
+            .canonicalize()
+            .unwrap_or_else(|_| output_dir.join(crate::sanitize_filename(&name)));
+        if !canonical_out.starts_with(&canonical_output) {
+            warn!(
+                "ZIP entry {:?} escapes output directory — skipping (path traversal blocked)",
+                name
+            );
+            continue;
+        }
 
         if entry.is_dir() {
             std::fs::create_dir_all(&out_path)?;
@@ -177,6 +193,7 @@ fn extract_tar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
             &archive.to_string_lossy(),
             "-C",
             &output_dir.to_string_lossy(),
+            "--no-absolute-names",
         ],
     )
 }

@@ -15,7 +15,7 @@
   onMount(async () => {
     try {
       const res = await fetch("/api/v1/system-info");
-      systemInfo = await res.json();
+      if (res.ok) systemInfo = await res.json();
     } catch { /* offline */ }
 
     // Auto-report crash if error_context provided via store (audit M5)

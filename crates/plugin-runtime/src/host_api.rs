@@ -402,8 +402,8 @@ impl HostApi {
             "host": u.host_str().unwrap_or(""),
             "port": u.port(),
             "pathname": u.path(),
-            "search": if u.query().is_some() { format!("?{}", u.query().unwrap()) } else { String::new() },
-            "hash": if u.fragment().is_some() { format!("#{}", u.fragment().unwrap()) } else { String::new() },
+            "search": u.query().map(|q| format!("?{q}")).unwrap_or_default(),
+            "hash": u.fragment().map(|f| format!("#{f}")).unwrap_or_default(),
             "origin": u.origin().unicode_serialization(),
         }))
     }

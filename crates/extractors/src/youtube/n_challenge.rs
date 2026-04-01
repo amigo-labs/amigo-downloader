@@ -115,14 +115,13 @@ fn extract_named_function(js: &str, name: &str) -> Option<String> {
     let pat = format!(r"(?s)var\s+{escaped}\s*=\s*function\([^)]*\)\s*\{{");
     if let Ok(re) = regex::Regex::new(&pat)
         && let Some(m) = re.find(js)
+        && let Some(end) = find_closing_brace(js, m.end() - 1)
     {
-        let start = m.start();
-        if let Some(end) = find_closing_brace(js, m.end() - 1) {
-            return Some(format!(
-                "var {name}={}",
-                &js[m.start() + m.as_str().find("function").unwrap_or(0) + start - start..=end]
-            ));
-        }
+        let func_offset = m.as_str().find("function").unwrap_or(0);
+        return Some(format!(
+            "var {name}={}",
+            &js[m.start() + func_offset..=end]
+        ));
     }
 
     // Try: function name(a){...}

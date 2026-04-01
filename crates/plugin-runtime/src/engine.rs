@@ -358,7 +358,23 @@ JSON.stringify(__test_results);
         // Execute tests and collect results
         match self.eval_js(runner) {
             Ok(json) => {
-                let raw: Vec<serde_json::Value> = serde_json::from_str(&json).unwrap_or_default();
+                let raw: Vec<serde_json::Value> = match serde_json::from_str(&json) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return TestResults {
+                            passed: 0,
+                            failed: 1,
+                            skipped: 0,
+                            results: vec![SingleTestResult {
+                                name: "<test-runner>".to_string(),
+                                passed: false,
+                                skipped: false,
+                                skip_reason: None,
+                                error: Some(format!("Test results JSON parse error: {e}")),
+                            }],
+                        };
+                    }
+                };
                 let mut passed = 0;
                 let mut failed = 0;
                 let mut skipped = 0;

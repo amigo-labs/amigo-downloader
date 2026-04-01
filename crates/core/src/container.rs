@@ -113,10 +113,10 @@ fn parse_dlc_xml(xml: &str) -> Result<Vec<ContainerPackage>, crate::Error> {
         // Extract package name
         let name = extract_attr(&xml[abs_start..], "name").unwrap_or_else(|| "Default".to_string());
 
-        let pkg_end = xml[abs_start..]
-            .find("</package>")
-            .map(|p| abs_start + p)
-            .unwrap_or(xml.len());
+        let pkg_end = match xml[abs_start..].find("</package>") {
+            Some(p) => abs_start + p,
+            None => break,
+        };
 
         let pkg_content = &xml[abs_start..pkg_end];
 
@@ -124,10 +124,10 @@ fn parse_dlc_xml(xml: &str) -> Result<Vec<ContainerPackage>, crate::Error> {
         let mut fpos = 0;
         while let Some(file_start) = pkg_content[fpos..].find("<file") {
             let abs_fstart = fpos + file_start;
-            let file_end = pkg_content[abs_fstart..]
-                .find("</file>")
-                .map(|p| abs_fstart + p)
-                .unwrap_or(pkg_content.len());
+            let file_end = match pkg_content[abs_fstart..].find("</file>") {
+                Some(p) => abs_fstart + p,
+                None => break,
+            };
 
             let file_content = &pkg_content[abs_fstart..file_end];
 
@@ -136,7 +136,8 @@ fn parse_dlc_xml(xml: &str) -> Result<Vec<ContainerPackage>, crate::Error> {
                     .map_err(|e| crate::Error::Other(e.to_string()))?;
 
                 let filename = extract_tag(file_content, "filename")
-                    .and_then(|f| String::from_utf8(b64_decode(&f).ok()?).ok());
+                    .and_then(|f| String::from_utf8(b64_decode(&f).ok()?).ok())
+                    .map(|f| crate::sanitize_filename(&f));
 
                 let filesize =
                     extract_tag(file_content, "size").and_then(|s| s.parse::<u64>().ok());
@@ -164,10 +165,10 @@ fn parse_dlc_xml(xml: &str) -> Result<Vec<ContainerPackage>, crate::Error> {
         let mut fpos = 0;
         while let Some(file_start) = xml[fpos..].find("<file") {
             let abs_fstart = fpos + file_start;
-            let file_end = xml[abs_fstart..]
-                .find("</file>")
-                .map(|p| abs_fstart + p)
-                .unwrap_or(xml.len());
+            let file_end = match xml[abs_fstart..].find("</file>") {
+                Some(p) => abs_fstart + p,
+                None => break,
+            };
 
             let file_content = &xml[abs_fstart..file_end];
 
@@ -175,7 +176,8 @@ fn parse_dlc_xml(xml: &str) -> Result<Vec<ContainerPackage>, crate::Error> {
                 && let Ok(url_bytes) = b64_decode(&url_b64)
                     && let Ok(url) = String::from_utf8(url_bytes) {
                         let filename = extract_tag(file_content, "filename")
-                            .and_then(|f| String::from_utf8(b64_decode(&f).ok()?).ok());
+                            .and_then(|f| String::from_utf8(b64_decode(&f).ok()?).ok())
+                            .map(|f| crate::sanitize_filename(&f));
                         let filesize =
                             extract_tag(file_content, "size").and_then(|s| s.parse::<u64>().ok());
                         links.push(ContainerLink {
