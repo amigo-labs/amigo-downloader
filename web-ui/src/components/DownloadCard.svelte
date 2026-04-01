@@ -1,12 +1,24 @@
 <script lang="ts">
-  import { pauseDownload, resumeDownload, deleteDownload, formatBytes, formatSpeed } from "../lib/api";
+  import { pauseDownload, resumeDownload, retryDownload, deleteDownload, formatBytes, formatSpeed } from "../lib/api";
   import { openDetailPanel, selectedDownloadId, selectedIds, toggleSelection, crashReport } from "../lib/stores";
   import { addToast } from "../lib/toast";
   import ChunkViz from "./ChunkViz.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import Icon from "./Icon.svelte";
 
-  let { download, index = 0 }: { download: any; index?: number } = $props();
+  let { download, index = 0, ondragstart, ondragover, ondrop }:
+    { download: any; index?: number; ondragstart?: (e: DragEvent) => void; ondragover?: (e: DragEvent) => void; ondrop?: (e: DragEvent) => void } = $props();
+
+  function fileIcon(filename: string | null): string {
+    if (!filename) return "file";
+    const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+    if (["zip", "rar", "7z", "tar", "gz", "bz2"].includes(ext)) return "archive";
+    if (["mp4", "mkv", "avi", "mov", "webm", "flv"].includes(ext)) return "video";
+    if (["mp3", "flac", "ogg", "wav", "aac", "m4a"].includes(ext)) return "music";
+    if (["pdf", "doc", "docx", "txt", "rtf", "odt"].includes(ext)) return "file-text";
+    if (["jpg", "jpeg", "png", "gif", "svg", "webp", "bmp"].includes(ext)) return "image";
+    return "file";
+  }
 
   let progress = $derived(
     download.filesize ? Math.round((download.bytes_downloaded / download.filesize) * 100) : 0
@@ -86,6 +98,8 @@
       items.push({ label: "Pause", icon: "pause", action: () => pauseDownload(download.id) });
     } else if (download.status === "paused" || download.status === "queued") {
       items.push({ label: "Resume", icon: "play", action: () => resumeDownload(download.id) });
+    } else if (download.status === "failed") {
+      items.push({ label: "Retry", icon: "refresh", action: () => retryDownload(download.id) });
     }
     items.push({ label: "Delete", icon: "trash", action: () => deleteDownload(download.id), color: "var(--neon-accent)" });
     return items;
@@ -111,6 +125,10 @@
   onclick={select}
   onkeydown={handleKeydown}
   oncontextmenu={handleContextMenu}
+  ondragstart={ondragstart}
+  ondragover={ondragover}
+  ondrop={ondrop}
+  draggable={!batchMode}
   role="button"
   tabindex="0"
 >
@@ -147,6 +165,7 @@
           {#if isActive}
             <span class="w-1.5 h-1.5 rounded-full shrink-0 status-pulse" style="background: var(--neon-primary)"></span>
           {/if}
+          <Icon name={fileIcon(download.filename)} size={14} />
           <h3 class="font-semibold truncate text-sm" style="color: var(--text-primary)">{download.filename || download.url}</h3>
         </div>
         <p class="text-xs truncate mt-0.5" style="font-family: var(--font-mono);color: var(--text-secondary); font-size: 11px">
@@ -198,15 +217,20 @@
         <button onclick={copyUrl} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--text-secondary)" aria-label="Copy URL">
           <Icon name="copy" size={14} />
         </button>
-        {#if download.status === "failed" && download.error}
-          <button
-            onclick={() => crashReport.set({ download_id: download.id, error_message: download.error })}
-            class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-[10px] font-medium"
-            style="color: var(--neon-warning)"
-            aria-label="Report error for {download.filename || 'download'}"
-          >
-            <Icon name="flag" size={14} />
+        {#if download.status === "failed"}
+          <button onclick={(e: MouseEvent) => { e.stopPropagation(); retryDownload(download.id); }} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--neon-primary)" aria-label="Retry {download.filename || 'download'}">
+            <Icon name="refresh" size={14} />
           </button>
+          {#if download.error}
+            <button
+              onclick={() => crashReport.set({ download_id: download.id, error_message: download.error })}
+              class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-[10px] font-medium"
+              style="color: var(--neon-warning)"
+              aria-label="Report error for {download.filename || 'download'}"
+            >
+              <Icon name="flag" size={14} />
+            </button>
+          {/if}
         {/if}
         {#if download.status === "downloading"}
           <button onclick={handlePause} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--text-secondary)" aria-label="Pause {download.filename || 'download'}">

@@ -1,9 +1,20 @@
 <script lang="ts">
-  import { pauseDownload, resumeDownload, deleteDownload, formatBytes, formatSpeed } from "../lib/api";
+  import { pauseDownload, resumeDownload, retryDownload, deleteDownload, formatBytes, formatSpeed } from "../lib/api";
   import { openDetailPanel, selectedIds, toggleSelection } from "../lib/stores";
   import Icon from "./Icon.svelte";
 
   let { download }: { download: any } = $props();
+
+  function fileIcon(filename: string | null): string {
+    if (!filename) return "file";
+    const ext = filename.split(".").pop()?.toLowerCase() ?? "";
+    if (["zip", "rar", "7z", "tar", "gz", "bz2"].includes(ext)) return "archive";
+    if (["mp4", "mkv", "avi", "mov", "webm", "flv"].includes(ext)) return "video";
+    if (["mp3", "flac", "ogg", "wav", "aac", "m4a"].includes(ext)) return "music";
+    if (["pdf", "doc", "docx", "txt", "rtf", "odt"].includes(ext)) return "file-text";
+    if (["jpg", "jpeg", "png", "gif", "svg", "webp", "bmp"].includes(ext)) return "image";
+    return "file";
+  }
 
   let progress = $derived(
     download.filesize ? Math.round((download.bytes_downloaded / download.filesize) * 100) : 0
@@ -59,9 +70,10 @@
     </div>
   {/if}
 
-  <!-- Filename -->
-  <span class="flex-1 truncate text-sm font-medium min-w-0" style="color: var(--text-primary)">
-    {download.filename || download.url}
+  <!-- Filename with type icon -->
+  <span class="flex items-center gap-1.5 flex-1 truncate text-sm font-medium min-w-0" style="color: var(--text-primary)">
+    <Icon name={fileIcon(download.filename)} size={14} />
+    <span class="truncate">{download.filename || download.url}</span>
   </span>
 
   <!-- Progress bar (inline) -->
@@ -96,6 +108,10 @@
     {:else if download.status === "paused" || download.status === "queued"}
       <button onclick={() => resumeDownload(download.id)} class="icon-btn p-1 rounded" style="color: var(--text-secondary)" aria-label="Resume">
         <Icon name="play" size={14} />
+      </button>
+    {:else if download.status === "failed"}
+      <button onclick={() => retryDownload(download.id)} class="icon-btn p-1 rounded" style="color: var(--neon-primary)" aria-label="Retry">
+        <Icon name="refresh" size={14} />
       </button>
     {/if}
     <button onclick={handleDelete} class="icon-btn p-1 rounded" style="color: {confirmingDelete ? 'var(--neon-accent)' : 'var(--text-secondary)'}" aria-label="Delete">

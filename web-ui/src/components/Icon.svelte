@@ -97,5 +97,28 @@
   {:else if name === "globe"}
     <circle cx="12" cy="12" r="10" />
     <path d="M2 12h20M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z" />
+  {:else if name === "file"}
+    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+    <path d="M14 2v6h6" />
+  {:else if name === "file-text"}
+    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+    <path d="M14 2v6h6M16 13H8M16 17H8M10 9H8" />
+  {:else if name === "archive"}
+    <path d="M21 8v13H3V8M1 3h22v5H1z" />
+    <path d="M10 12h4" />
+  {:else if name === "video"}
+    <rect x="2" y="4" width="20" height="16" rx="2" />
+    <path d="M10 9l5 3-5 3V9z" />
+  {:else if name === "music"}
+    <path d="M9 18V5l12-2v13" />
+    <circle cx="6" cy="18" r="3" />
+    <circle cx="18" cy="16" r="3" />
+  {:else if name === "image"}
+    <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
+    <circle cx="8.5" cy="8.5" r="1.5" />
+    <path d="M21 15l-5-5L5 21" />
+  {:else if name === "sidebar"}
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <path d="M9 3v18" />
   {/if}
 </svg>

@@ -21,6 +21,7 @@
   } from "./lib/api";
   import {
     applyIntensity,
+    ariaAnnouncement,
     closeSidePanel,
     crashReport,
     currentPage,
@@ -33,17 +34,20 @@
     pendingCaptcha,
     protocolFilter,
     pushSpeedSample,
+    sidebarCollapsed,
     sidePanelMode,
     speedHistory,
     stats,
     theme,
     updateDownloadProgress,
     updateDownloadStatus,
+    wsConnected,
     type CaptchaChallenge,
     type ColorPalette,
     type Page,
     type ProtocolFilter,
   } from "./lib/stores";
+  import { locale, tr } from "./lib/i18n";
   import { addToast } from "./lib/toast";
   import Downloads from "./pages/Downloads.svelte";
   import History from "./pages/History.svelte";
@@ -130,11 +134,13 @@
         updateDownloadStatus(msg.id, "completed");
         const fname = (msg.data?.filename as string) || msg.id;
         addToast("success", "Download complete", fname);
+        ariaAnnouncement.set(`Download complete: ${fname}`);
         notifyIfHidden("Download complete", fname);
       } else if (msg.type === "failed") {
         updateDownloadStatus(msg.id, "failed");
         const errMsg = (msg.data?.error as string) || msg.id;
         addToast("error", "Download failed", errMsg);
+        ariaAnnouncement.set(`Download failed: ${errMsg}`);
         notifyIfHidden("Download failed", errMsg);
       } else if (msg.type === "captcha_challenge") {
         pendingCaptcha.set(msg.data as unknown as CaptchaChallenge);
@@ -295,43 +301,44 @@
 <a class="skip-link" href="#main-content">Skip to content</a>
 
 <div class="flex h-screen overflow-hidden" style="background: var(--bg-deep)">
-  <!-- Sidebar (Layout: fixed 16rem) -->
+  <!-- Sidebar -->
   <aside
     aria-label="Navigation"
-    class="hidden md:flex flex-col shrink-0 w-64 relative neon-top-line"
-    style="background: var(--bg-surface); border-right: 1px solid var(--border-color)"
+    class="hidden md:flex flex-col shrink-0 relative neon-top-line transition-all duration-200"
+    style="width: {$sidebarCollapsed ? '56px' : '256px'}; background: var(--bg-surface); border-right: 1px solid var(--border-color)"
   >
     <!-- Logo -->
     <div
-      class="sidebar-logo flex items-center gap-3 px-4 py-4 border-b"
+      class="sidebar-logo flex items-center gap-3 px-4 py-4 border-b overflow-hidden"
       style="border-color: var(--border-color)"
     >
       <img
         src="/amigo-logo.png"
         alt="amigo-downloader"
-        width="40"
-        height="40"
+        width="28"
+        height="28"
         class="shrink-0"
       />
-      <div class="min-w-0">
-        <h1
-          class="font-bold text-base leading-tight"
-          style="color: var(--neon-primary)"
-        >
-          AMIGO
-        </h1>
-        <p class="text-xs" style="color: var(--text-secondary)">
-          Download Manager
-        </p>
-      </div>
+      {#if !$sidebarCollapsed}
+        <div class="min-w-0">
+          <h1 class="font-bold text-base leading-tight" style="color: var(--neon-primary)">AMIGO</h1>
+          <p class="text-xs" style="color: var(--text-secondary)">Download Manager</p>
+        </div>
+      {/if}
     </div>
 
     <!-- Add download trigger -->
-    <button class="search-trigger" onclick={() => openAddPanel()}>
-      <Icon name="plus" size={16} />
-      <span>Add Download...</span>
-      <kbd>Ctrl+N</kbd>
-    </button>
+    {#if $sidebarCollapsed}
+      <button class="icon-btn flex items-center justify-center p-3 mx-1 my-2 rounded-lg" onclick={() => openAddPanel()} aria-label={tr($locale, "sidebar.add")} style="color: var(--text-secondary)">
+        <Icon name="plus" size={18} />
+      </button>
+    {:else}
+      <button class="search-trigger" onclick={() => openAddPanel()}>
+        <Icon name="plus" size={16} />
+        <span>{tr($locale, "sidebar.add")}</span>
+        <kbd>Ctrl+N</kbd>
+      </button>
+    {/if}
 
     <!-- Navigation -->
     <nav class="flex-1 px-2 py-1">
@@ -340,174 +347,163 @@
           onclick={() => navigate(item.id)}
           class="nav-link w-full"
           class:active={$currentPage === item.id}
+          title={$sidebarCollapsed ? item.label : undefined}
         >
           <Icon name={item.icon} size={18} />
-          <span class="flex-1 text-left">{item.label}</span>
-          <span class="text-[10px] opacity-30">{i + 1}</span>
+          {#if !$sidebarCollapsed}
+            <span class="flex-1 text-left">{item.label}</span>
+            <span class="text-[10px] opacity-30">{i + 1}</span>
+          {/if}
         </button>
       {/each}
 
-      <div class="nav-section-label">Management</div>
+      {#if !$sidebarCollapsed}
+        <div class="nav-section-label">{tr($locale, "nav.management")}</div>
+      {/if}
 
       {#each mgmtNavItems as item, i}
         <button
           onclick={() => navigate(item.id)}
           class="nav-link w-full"
           class:active={$currentPage === item.id}
+          title={$sidebarCollapsed ? item.label : undefined}
         >
           <Icon name={item.icon} size={18} />
-          <span class="flex-1 text-left">{item.label}</span>
-          <span class="text-[10px] opacity-30"
-            >{mainNavItems.length + i + 1}</span
-          >
+          {#if !$sidebarCollapsed}
+            <span class="flex-1 text-left">{item.label}</span>
+            <span class="text-[10px] opacity-30">{mainNavItems.length + i + 1}</span>
+          {/if}
         </button>
       {/each}
     </nav>
 
     <!-- Stats + Speed Graph -->
-    <div
-      class="px-4 py-3 border-t flex flex-col gap-1.5"
-      style="border-color: var(--border-color)"
-    >
-      <div class="flex items-center justify-between">
-        <span class="stat-label">Speed</span>
-        <span
-          style="color: var(--neon-primary); font-family: var(--font-mono); font-size: var(--font-xs, 0.75rem)"
-        >
-          {formatSpeed($stats.speed_bytes_per_sec)}
-        </span>
-      </div>
-      {#if $speedHistory.length > 1}
-        <Sparkline values={$speedHistory} width={200} height={28} />
-      {/if}
-
-      <!-- Bandwidth limit -->
-      <div class="flex items-center gap-2 mt-1">
-        <span class="stat-label shrink-0">Limit</span>
-        <button
-          onclick={() => { limitEnabled = !limitEnabled; saveBandwidthLimit(); }}
-          class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
-          style={limitEnabled
-            ? "background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--neon-primary)"
-            : "background: var(--bg-surface-2); color: var(--text-secondary)"}
-        >
-          {limitEnabled ? "On" : "Off"}
-        </button>
-        <input
-          type="number"
-          min="1"
-          max="1000"
-          bind:value={limitMbps}
-          onchange={saveBandwidthLimit}
-          disabled={!limitEnabled}
-          class="w-12 text-center rounded px-1 py-0.5 text-xs"
-          style="font-family: var(--font-mono); background: var(--bg-surface-2); border: 1px solid var(--border-color); color: {limitEnabled ? 'var(--text-primary)' : 'var(--text-secondary)'}; opacity: {limitEnabled ? 1 : 0.4}"
-          aria-label="Speed limit in MB/s"
-        />
-        <span class="text-[10px]" style="color: var(--text-secondary)">MB/s</span>
-      </div>
-
-      <div class="flex items-center justify-between mt-1">
-        <span class="stat-label">Active</span>
-        <span class="flex items-center gap-1.5 text-xs" style="color: var(--text-primary)">
-          {$stats.active_downloads}
-          {#if $stats.active_downloads > 0}
-            <ProgressRing progress={overallProgress()} size={18} stroke={2} active={true} />
-          {/if}
-        </span>
-      </div>
-      <div class="flex items-center justify-between">
-        <span class="stat-label">Queued</span>
-        <span class="text-xs" style="color: var(--text-primary)"
-          >{$stats.queued}</span
-        >
-      </div>
-      <div class="flex items-center justify-between">
-        <span class="stat-label">Done</span>
-        <span class="text-xs" style="color: var(--status-online)"
-          >{$stats.completed}</span
-        >
-      </div>
-    </div>
-
-    <!-- Sidebar footer: theme controls -->
-    <div class="px-4 py-3 border-t" style="border-color: var(--border-color)">
-      <!-- Palette picker -->
-      {#if showPalette}
-        <div class="flex items-center gap-2 mb-3">
-          {#each paletteOptions as opt}
-            <button
-              class="color-swatch"
-              class:active={$palette === opt.id}
-              style="--swatch-color: {opt.color}; background: {opt.color}"
-              aria-label={opt.label}
-              onclick={() => {
-                palette.set(opt.id);
-                showPalette = false;
-              }}
-            ></button>
-          {/each}
-        </div>
-      {/if}
-
-      <!-- Neon intensity slider -->
-      <div class="neon-slider mb-2">
-        <Icon name="bolt" size={14} />
-        <input
-          type="range"
-          min="0"
-          max="1"
-          step="0.25"
-          value={$neonIntensity}
-          oninput={(e) =>
-            neonIntensity.set(parseFloat((e.target as HTMLInputElement).value))}
-          aria-label="Neon intensity"
-        />
-        <span class="neon-slider-label">{neonLabel}</span>
-      </div>
-
-      <!-- Bottom row: version + controls -->
-      <div class="flex items-center justify-between">
-        <span
-          class="text-[10px]"
-          style="color: var(--text-secondary); font-family: var(--font-mono)"
-          >v0.1</span
-        >
-        <div class="flex items-center gap-1">
-          <button
-            class="icon-btn p-1.5 rounded-lg"
-            style="color: var(--text-secondary)"
-            aria-label="Color theme"
-            onclick={() => (showPalette = !showPalette)}
-          >
-            <div
-              class="w-4 h-4 rounded-full"
-              style="background: var(--neon-primary); box-shadow: var(--neon-glow-sm)"
-            ></div>
-          </button>
-          <button
-            onclick={() => theme.toggle()}
-            class="icon-btn p-1.5 rounded-lg"
-            style="color: var(--text-secondary)"
-            aria-label={$theme === "dark"
-              ? "Switch to Light mode"
-              : "Switch to Dark mode"}
-          >
-            <Icon name={$theme === "light" ? "moon" : "sun"} size={16} />
-          </button>
-        </div>
-      </div>
-
-      <!-- Feedback link -->
-      <button
-        onclick={() => {
-          crashReport.set(null);
-          showFeedback = true;
-        }}
-        class="mt-2 text-xs transition-opacity hover:opacity-80"
-        style="color: var(--text-secondary); opacity: 0.5"
+    {#if !$sidebarCollapsed}
+      <div
+        class="px-4 py-3 border-t flex flex-col gap-1.5"
+        style="border-color: var(--border-color)"
       >
-        Feedback
+        <div class="flex items-center justify-between">
+          <span class="stat-label">{tr($locale, "sidebar.speed")}</span>
+          <span style="color: var(--neon-primary); font-family: var(--font-mono); font-size: var(--font-xs, 0.75rem)">
+            {formatSpeed($stats.speed_bytes_per_sec)}
+          </span>
+        </div>
+        {#if $speedHistory.length > 1}
+          <Sparkline values={$speedHistory} width={200} height={28} />
+        {/if}
+
+        <!-- Bandwidth limit -->
+        <div class="flex items-center gap-2 mt-1">
+          <span class="stat-label shrink-0">{tr($locale, "sidebar.limit")}</span>
+          <button
+            onclick={() => { limitEnabled = !limitEnabled; saveBandwidthLimit(); }}
+            class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+            style={limitEnabled
+              ? "background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--neon-primary)"
+              : "background: var(--bg-surface-2); color: var(--text-secondary)"}
+          >
+            {limitEnabled ? "On" : "Off"}
+          </button>
+          <input
+            type="number"
+            min="1"
+            max="1000"
+            bind:value={limitMbps}
+            onchange={saveBandwidthLimit}
+            disabled={!limitEnabled}
+            class="w-12 text-center rounded px-1 py-0.5 text-xs"
+            style="font-family: var(--font-mono); background: var(--bg-surface-2); border: 1px solid var(--border-color); color: {limitEnabled ? 'var(--text-primary)' : 'var(--text-secondary)'}; opacity: {limitEnabled ? 1 : 0.4}"
+            aria-label="Speed limit in MB/s"
+          />
+          <span class="text-[10px]" style="color: var(--text-secondary)">MB/s</span>
+        </div>
+
+        <div class="flex items-center justify-between mt-1">
+          <span class="stat-label">{tr($locale, "sidebar.active")}</span>
+          <span class="flex items-center gap-1.5 text-xs" style="color: var(--text-primary)">
+            {$stats.active_downloads}
+            {#if $stats.active_downloads > 0}
+              <ProgressRing progress={overallProgress()} size={18} stroke={2} active={true} />
+            {/if}
+          </span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="stat-label">{tr($locale, "sidebar.queued")}</span>
+          <span class="text-xs" style="color: var(--text-primary)">{$stats.queued}</span>
+        </div>
+        <div class="flex items-center justify-between">
+          <span class="stat-label">{tr($locale, "sidebar.done")}</span>
+          <span class="text-xs" style="color: var(--status-online)">{$stats.completed}</span>
+        </div>
+      </div>
+    {:else}
+      <!-- Collapsed: just show progress ring -->
+      <div class="flex flex-col items-center gap-2 py-3 border-t" style="border-color: var(--border-color)">
+        {#if $stats.active_downloads > 0}
+          <ProgressRing progress={overallProgress()} size={24} stroke={2.5} active={true} />
+        {/if}
+      </div>
+    {/if}
+
+    <!-- Sidebar footer -->
+    <div class="px-2 py-3 border-t" style="border-color: var(--border-color)">
+      {#if !$sidebarCollapsed}
+        <!-- Palette picker -->
+        {#if showPalette}
+          <div class="flex items-center gap-2 mb-3 px-2">
+            {#each paletteOptions as opt}
+              <button
+                class="color-swatch"
+                class:active={$palette === opt.id}
+                style="--swatch-color: {opt.color}; background: {opt.color}"
+                aria-label={opt.label}
+                onclick={() => { palette.set(opt.id); showPalette = false; }}
+              ></button>
+            {/each}
+          </div>
+        {/if}
+
+        <!-- Neon intensity slider -->
+        <div class="neon-slider mb-2 px-2">
+          <Icon name="bolt" size={14} />
+          <input
+            type="range" min="0" max="1" step="0.25" value={$neonIntensity}
+            oninput={(e) => neonIntensity.set(parseFloat((e.target as HTMLInputElement).value))}
+            aria-label="Neon intensity"
+          />
+          <span class="neon-slider-label">{neonLabel}</span>
+        </div>
+
+        <!-- Controls row -->
+        <div class="flex items-center justify-between px-2">
+          <!-- Connection status -->
+          <div class="flex items-center gap-1.5">
+            <span
+              class="w-2 h-2 rounded-full shrink-0"
+              style="background: {$wsConnected ? 'var(--status-online)' : 'var(--status-error)'}; box-shadow: 0 0 4px {$wsConnected ? 'var(--status-online)' : 'var(--status-error)'}"
+            ></span>
+            <span class="text-[10px]" style="color: var(--text-secondary); font-family: var(--font-mono)">v0.1</span>
+          </div>
+          <div class="flex items-center gap-1">
+            <button class="icon-btn p-1.5 rounded-lg" style="color: var(--text-secondary)" aria-label="Color theme" onclick={() => (showPalette = !showPalette)}>
+              <div class="w-4 h-4 rounded-full" style="background: var(--neon-primary); box-shadow: var(--neon-glow-sm)"></div>
+            </button>
+            <button onclick={() => theme.toggle()} class="icon-btn p-1.5 rounded-lg" style="color: var(--text-secondary)" aria-label={$theme === "dark" ? "Switch to Light mode" : "Switch to Dark mode"}>
+              <Icon name={$theme === "light" ? "moon" : "sun"} size={16} />
+            </button>
+          </div>
+        </div>
+      {/if}
+
+      <!-- Collapse toggle -->
+      <button
+        onclick={() => sidebarCollapsed.toggle()}
+        class="icon-btn w-full flex items-center justify-center p-1.5 rounded-lg mt-1"
+        style="color: var(--text-secondary)"
+        aria-label={$sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+      >
+        <Icon name={$sidebarCollapsed ? "chevron-right" : "chevron-left"} size={14} />
       </button>
     </div>
   </aside>
@@ -680,6 +676,9 @@
     onclose={() => pendingCaptcha.set(null)}
   />
 {/if}
+
+<!-- aria-live announcer for screen readers -->
+<div aria-live="polite" class="sr-only">{$ariaAnnouncement}</div>
 
 <Toasts />
 <DropZone />

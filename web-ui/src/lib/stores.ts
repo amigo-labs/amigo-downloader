@@ -409,3 +409,89 @@ export interface CrashContext {
 }
 
 export const crashReport = writable<CrashContext | null>(null);
+
+// ========================================
+// WEBSOCKET CONNECTION STATUS
+// ========================================
+
+export const wsConnected = writable<boolean>(false);
+
+// ========================================
+// SIDEBAR COLLAPSED
+// ========================================
+
+function createSidebarCollapsedStore() {
+  const stored = typeof localStorage !== "undefined" ? localStorage.getItem("sidebar-collapsed") : null;
+  const initial = stored === "true";
+  const { subscribe, set } = writable<boolean>(initial);
+  return {
+    subscribe,
+    set(value: boolean) {
+      if (typeof localStorage !== "undefined") localStorage.setItem("sidebar-collapsed", String(value));
+      set(value);
+    },
+    toggle() {
+      let current = false;
+      subscribe((v) => { current = v; })();
+      const next = !current;
+      if (typeof localStorage !== "undefined") localStorage.setItem("sidebar-collapsed", String(next));
+      set(next);
+    },
+  };
+}
+
+export const sidebarCollapsed = createSidebarCollapsedStore();
+
+// ========================================
+// FAVICON BADGE
+// ========================================
+
+let originalFavicon: string | null = null;
+
+export function updateFaviconBadge(count: number) {
+  if (typeof document === "undefined") return;
+  const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
+  if (!link) return;
+
+  if (!originalFavicon) originalFavicon = link.href;
+
+  if (count <= 0) {
+    link.href = originalFavicon;
+    return;
+  }
+
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0, 32, 32);
+    // Red badge circle
+    ctx.fillStyle = "#ef4444";
+    ctx.beginPath();
+    ctx.arc(24, 8, 8, 0, 2 * Math.PI);
+    ctx.fill();
+    // Count text
+    ctx.fillStyle = "white";
+    ctx.font = "bold 10px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(count > 9 ? "9+" : String(count), 24, 8);
+    link.href = canvas.toDataURL();
+  };
+  img.src = originalFavicon;
+}
+
+// Update favicon when stats change
+if (typeof window !== "undefined") {
+  stats.subscribe((s) => updateFaviconBadge(s.active_downloads));
+}
+
+// ========================================
+// aria-live ANNOUNCER
+// ========================================
+
+export const ariaAnnouncement = writable<string>("");

@@ -14,6 +14,7 @@
   let filter = $state<string>("all");
   let loading = $state(false);
   let sortBy = $state<string>("status");
+  let draggedId = $state<string | null>(null);
   let viewMode = $state<"grid" | "list">(
     (typeof localStorage !== "undefined" ? localStorage.getItem("dl-view") : null) as "grid" | "list" || "grid"
   );
@@ -93,6 +94,39 @@
     for (const id of $selectedIds) { await deleteDownload(id); }
     addToast("info", `Deleted ${$selectedIds.size} downloads`);
     clearSelection();
+  }
+
+  function handleDragStart(id: string) {
+    return (e: DragEvent) => {
+      draggedId = id;
+      if (e.dataTransfer) {
+        e.dataTransfer.effectAllowed = "move";
+        e.dataTransfer.setData("text/plain", id);
+      }
+    };
+  }
+
+  function handleDragOver(e: DragEvent) {
+    e.preventDefault();
+    if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+  }
+
+  function handleDrop(targetId: string) {
+    return (e: DragEvent) => {
+      e.preventDefault();
+      if (!draggedId || draggedId === targetId) { draggedId = null; return; }
+      // Reorder locally
+      downloads.update((list) => {
+        const items = [...list];
+        const fromIdx = items.findIndex((d) => d.id === draggedId);
+        const toIdx = items.findIndex((d) => d.id === targetId);
+        if (fromIdx === -1 || toIdx === -1) return list;
+        const [item] = items.splice(fromIdx, 1);
+        items.splice(toIdx, 0, item);
+        return items;
+      });
+      draggedId = null;
+    };
   }
 </script>
 
@@ -236,7 +270,13 @@
     {#if viewMode === "grid"}
       <div class="grid gap-3">
         {#each filtered as download, i (download.id)}
-          <DownloadCard {download} index={i} />
+          <DownloadCard
+          {download}
+          index={i}
+          ondragstart={handleDragStart(download.id)}
+          ondragover={handleDragOver}
+          ondrop={handleDrop(download.id)}
+        />
         {/each}
       </div>
     {:else}

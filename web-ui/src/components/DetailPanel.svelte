@@ -1,6 +1,6 @@
 <script lang="ts">
   import { selectedDownload, closeSidePanel, crashReport } from "../lib/stores";
-  import { formatBytes, formatSpeed, pauseDownload, resumeDownload, deleteDownload } from "../lib/api";
+  import { formatBytes, formatSpeed, pauseDownload, resumeDownload, retryDownload, deleteDownload } from "../lib/api";
   import { addToast } from "../lib/toast";
   import ChunkViz from "./ChunkViz.svelte";
   import Icon from "./Icon.svelte";
@@ -137,15 +137,25 @@
             <Icon name="play" size={14} /> Resume
           </button>
         {/if}
-        {#if dl.status === "failed" && dl.error}
+        {#if dl.status === "failed"}
           <button
-            onclick={() => crashReport.set({ download_id: dl.id, error_message: dl.error ?? undefined })}
+            onclick={() => retryDownload(dl.id)}
             class="action-btn flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px]"
-            style="background: var(--bg-surface-2); color: var(--neon-warning)"
-            aria-label="Report error"
+            style="background: var(--bg-surface-2); color: var(--neon-primary)"
+            aria-label="Retry download"
           >
-            <Icon name="flag" size={14} /> Report
+            <Icon name="refresh" size={14} /> Retry
           </button>
+          {#if dl.error}
+            <button
+              onclick={() => crashReport.set({ download_id: dl.id, error_message: dl.error ?? undefined })}
+              class="action-btn flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px]"
+              style="background: var(--bg-surface-2); color: var(--neon-warning)"
+              aria-label="Report error"
+            >
+              <Icon name="flag" size={14} /> Report
+            </button>
+          {/if}
         {/if}
         <button
           onclick={() => {
