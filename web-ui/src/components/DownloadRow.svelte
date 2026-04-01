@@ -1,6 +1,6 @@
 <script lang="ts">
   import { pauseDownload, resumeDownload, deleteDownload, formatBytes, formatSpeed } from "../lib/api";
-  import { selectedDownloadId } from "../lib/stores";
+  import { openDetailPanel } from "../lib/stores";
   import Icon from "./Icon.svelte";
 
   let { download }: { download: any } = $props();
@@ -18,7 +18,7 @@
 <tr
   class="border-t cursor-pointer transition-colors"
   style="border-color: var(--border-color)"
-  onclick={() => selectedDownloadId.set(download.id)}
+  onclick={() => openDetailPanel(download.id)}
   role="row"
 >
   <td class="px-4 py-2.5">

@@ -22,19 +22,19 @@
   --color-text-secondary: var(--text-secondary, rgba(232, 236, 244, 0.5));
 }
 
-/* --- Dark Mode (Default) --- */
+/* --- Dark Mode (Default — VS Code Dark) --- */
 :root {
   --neon-primary: #3b82f6;
   --neon-success: #22c55e;
   --neon-accent: #ef4444;
   --neon-warning: #eab308;
 
-  --bg-deep: #06080f;
-  --bg-surface: #0c0e18;
-  --bg-surface-2: #12152a;
-  --text-primary: #e8ecf4;
-  --text-secondary: rgba(232, 236, 244, 0.5);
-  --border-color: rgba(255, 255, 255, 0.06);
+  --bg-deep: #1e1e1e;
+  --bg-surface: #252526;
+  --bg-surface-2: #2d2d2d;
+  --text-primary: #cccccc;
+  --text-secondary: #858585;
+  --border-color: #3c3c3c;
 
   /* Neon glow tokens (scaled by intensity system) */
   --neon-glow-sm: 0 0 6px color-mix(in srgb, var(--neon-primary) 25%, transparent);
@@ -462,8 +462,8 @@ body {
 
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
 
 .light ::-webkit-scrollbar-thumb,
 :root.light ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.12); }

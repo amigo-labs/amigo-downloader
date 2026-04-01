@@ -317,6 +317,29 @@ export const features = writable<Features>({
 });
 
 // ========================================
+// SIDE PANEL
+// ========================================
+
+export type SidePanelMode = "detail" | "add" | null;
+
+export const sidePanelMode = writable<SidePanelMode>(null);
+
+export function openAddPanel() {
+  selectedDownloadId.set(null);
+  sidePanelMode.set("add");
+}
+
+export function openDetailPanel(id: string) {
+  selectedDownloadId.set(id);
+  sidePanelMode.set("detail");
+}
+
+export function closeSidePanel() {
+  sidePanelMode.set(null);
+  selectedDownloadId.set(null);
+}
+
+// ========================================
 // CRASH REPORT (audit M5 — replaces window.__amigo_report_crash)
 // ========================================
 

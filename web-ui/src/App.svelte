@@ -1,11 +1,10 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import AddDialog from "./components/AddDialog.svelte";
   import CaptchaDialog from "./components/CaptchaDialog.svelte";
-  import DetailPanel from "./components/DetailPanel.svelte";
   import DropZone from "./components/DropZone.svelte";
   import FeedbackDialog from "./components/FeedbackDialog.svelte";
   import Icon from "./components/Icon.svelte";
+  import SidePanel from "./components/SidePanel.svelte";
   import Toasts from "./components/Toasts.svelte";
   import {
     addDownload,
@@ -17,16 +16,18 @@
   } from "./lib/api";
   import {
     applyIntensity,
+    closeSidePanel,
     crashReport,
     currentPage,
     downloads,
     features,
     getNeonLabel,
     neonIntensity,
+    openAddPanel,
     palette,
     pendingCaptcha,
     protocolFilter,
-    selectedDownloadId,
+    sidePanelMode,
     stats,
     theme,
     updateDownloadProgress,
@@ -42,7 +43,6 @@
   import Plugins from "./pages/Plugins.svelte";
   import Settings from "./pages/Settings.svelte";
 
-  let showAddDialog = $state(false);
   let showFeedback = $state(false);
   let showPalette = $state(false);
   let mobileMenuOpen = $state(false);
@@ -190,11 +190,11 @@
   function handleKeydown(e: KeyboardEvent) {
     if ((e.ctrlKey || e.metaKey) && (e.key === "n" || e.key === "l")) {
       e.preventDefault();
-      showAddDialog = true;
+      openAddPanel();
     }
     if (e.key === "Escape") {
-      if (showAddDialog) {
-        showAddDialog = false;
+      if ($sidePanelMode) {
+        closeSidePanel();
         return;
       }
       if (showFeedback) {
@@ -205,15 +205,11 @@
         showPalette = false;
         return;
       }
-      if ($selectedDownloadId) {
-        selectedDownloadId.set(null);
-        return;
-      }
       mobileMenuOpen = false;
     }
     const allNav = [...mainNavItems, ...mgmtNavItems];
     if (
-      !showAddDialog &&
+      !$sidePanelMode &&
       !showFeedback &&
       !e.ctrlKey &&
       !e.metaKey &&
@@ -269,10 +265,10 @@
       </div>
     </div>
 
-    <!-- Search trigger -->
-    <button class="search-trigger" onclick={() => (showAddDialog = true)}>
-      <Icon name="search" size={16} />
-      <span>Add URL...</span>
+    <!-- Add download trigger -->
+    <button class="search-trigger" onclick={() => openAddPanel()}>
+      <Icon name="plus" size={16} />
+      <span>Add Download...</span>
       <kbd>Ctrl+N</kbd>
     </button>
 
@@ -455,12 +451,12 @@
         <button
           class="search-trigger"
           onclick={() => {
-            showAddDialog = true;
+            openAddPanel();
             mobileMenuOpen = false;
           }}
         >
-          <Icon name="search" size={16} />
-          <span>Add URL...</span>
+          <Icon name="plus" size={16} />
+          <span>Add Download...</span>
         </button>
         <nav class="flex-1 px-2 py-1">
           {#each mainNavItems as item, i}
@@ -542,6 +538,14 @@
           </div>
         {/if}
       </div>
+      <button
+        onclick={() => openAddPanel()}
+        class="p-2 rounded-lg transition-colors min-w-[44px] min-h-[44px] flex items-center justify-center"
+        style="color: var(--text-secondary)"
+        aria-label="Add download"
+      >
+        <Icon name="plus" size={20} />
+      </button>
     </header>
 
     <!-- Page content -->
@@ -564,17 +568,13 @@
         {/key}
       </div>
 
-      <!-- Detail Panel -->
-      <DetailPanel />
+      <!-- Side Panel (detail or add) -->
+      <SidePanel />
     </div>
   </main>
 </div>
 
 <!-- Dialogs -->
-{#if showAddDialog}
-  <AddDialog onclose={() => (showAddDialog = false)} />
-{/if}
-
 {#if showFeedback}
   <FeedbackDialog onclose={() => (showFeedback = false)} />
 {/if}

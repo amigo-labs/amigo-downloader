@@ -1,6 +1,6 @@
 <script lang="ts">
   import { pauseDownload, resumeDownload, deleteDownload, formatBytes, formatSpeed } from "../lib/api";
-  import { selectedDownloadId, crashReport } from "../lib/stores";
+  import { openDetailPanel, selectedDownloadId, crashReport } from "../lib/stores";
   import ChunkViz from "./ChunkViz.svelte";
   import Icon from "./Icon.svelte";
 
@@ -27,7 +27,7 @@
   async function handleDelete() { await deleteDownload(download.id); }
 
   function select() {
-    selectedDownloadId.set(download.id);
+    openDetailPanel(download.id);
   }
 </script>
 

@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="web-ui/public/icon-512.svg" width="128" height="128" alt="amigo-downloader mascot" />
+  <img src="amigo-downloader.png" width="128" height="128" alt="amigo-downloader mascot" />
 
   <h1>amigo-downloader</h1>
 
