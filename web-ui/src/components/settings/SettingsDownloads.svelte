@@ -13,7 +13,7 @@
         type="text"
         bind:value={config.download_dir}
         class="w-full rounded-lg px-4 py-2.5 text-sm"
-        style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)"
+        style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)"
       />
     </div>
     <div>
@@ -24,7 +24,7 @@
         min="1"
         max="50"
         class="w-32 rounded-lg px-4 py-2.5 text-sm"
-        style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)"
+        style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)"
       />
     </div>
     <div>
@@ -35,7 +35,7 @@
           bind:value={config.bandwidth.global_limit}
           min="0"
           class="w-32 rounded-lg px-4 py-2.5 text-sm"
-          style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)"
+          style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)"
         />
         <span class="text-sm" style="color: var(--text-secondary)">B/s (0 = unlimited)</span>
       </div>
@@ -47,20 +47,20 @@
           <label class="text-xs mb-1 block" style="color: var(--text-secondary)">Max retries before giving up</label>
           <input type="number" bind:value={config.retry.max_retries} min="0" max="20"
             class="w-32 rounded-lg px-4 py-2.5 text-sm"
-            style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
+            style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
         </div>
         <div class="flex gap-4">
           <div>
             <label class="text-xs mb-1 block" style="color: var(--text-secondary)">Initial delay (s)</label>
             <input type="number" bind:value={config.retry.base_delay_secs} min="0.1" max="30" step="0.5"
               class="w-28 rounded-lg px-4 py-2.5 text-sm"
-              style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
+              style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
           </div>
           <div>
             <label class="text-xs mb-1 block" style="color: var(--text-secondary)">Max delay (s)</label>
             <input type="number" bind:value={config.retry.max_delay_secs} min="1" max="600" step="1"
               class="w-28 rounded-lg px-4 py-2.5 text-sm"
-              style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
+              style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
           </div>
         </div>
       </div>

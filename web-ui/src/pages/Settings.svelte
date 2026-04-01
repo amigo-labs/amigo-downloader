@@ -60,7 +60,7 @@
         <div>
           <p class="font-bold" style="color: var(--text-primary)">amigo-downloader</p>
           <p class="text-sm" style="color: var(--text-secondary)">v0.1.0 — Fast, modular download manager</p>
-          <p class="text-xs mt-1" style="font-family: 'Share Tech Mono', monospace; color: var(--text-secondary)">
+          <p class="text-xs mt-1" style="font-family: var(--font-mono);color: var(--text-secondary)">
             github.com/amigo-labs/amigo-downloader
           </p>
         </div>

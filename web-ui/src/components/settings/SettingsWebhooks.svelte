@@ -66,19 +66,19 @@
         <label class="text-xs font-semibold mb-1 block" style="color: var(--text-secondary)">URL</label>
         <input bind:value={url} type="url" placeholder="https://discord.com/api/webhooks/..."
           class="w-full rounded-lg px-3 py-2 text-sm"
-          style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
+          style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
       </div>
       <div>
         <label class="text-xs font-semibold mb-1 block" style="color: var(--text-secondary)">Secret <span class="opacity-50">(optional)</span></label>
         <input bind:value={secret} type="text" placeholder="my-secret-key"
           class="w-full rounded-lg px-3 py-2 text-sm"
-          style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
+          style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
       </div>
       <div>
         <label class="text-xs font-semibold mb-1 block" style="color: var(--text-secondary)">Events <span class="opacity-50">(comma-separated, * = all)</span></label>
         <input bind:value={events} type="text" placeholder="download.completed, download.failed"
           class="w-full rounded-lg px-3 py-2 text-sm"
-          style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
+          style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
       </div>
       <div class="flex gap-2 pt-1">
         <button onclick={handleAdd}
@@ -104,7 +104,7 @@
         <div class="rounded-xl p-4 flex items-center justify-between gap-3" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
           <div class="min-w-0 flex-1">
             <p class="font-semibold text-sm truncate" style="color: var(--text-primary)">{wh.name}</p>
-            <p class="text-xs truncate" style="font-family: 'Share Tech Mono', monospace; color: var(--text-secondary)">{wh.url}</p>
+            <p class="text-xs truncate" style="font-family: var(--font-mono);color: var(--text-secondary)">{wh.url}</p>
             <p class="text-[10px] mt-0.5" style="color: var(--text-secondary)">
               Events: {wh.events?.join(", ") || "*"}
               {#if wh.secret}&middot; signed{/if}

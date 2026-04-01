@@ -81,7 +81,7 @@
         <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">Feed URL</label>
         <input type="url" bind:value={url} placeholder="https://example.com/feed.xml"
           class="w-full rounded-lg px-3 py-2 text-sm"
-          style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
+          style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
@@ -94,7 +94,7 @@
           <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">Check Interval (min)</label>
           <input type="number" bind:value={intervalMinutes} min="5"
             class="w-full rounded-lg px-3 py-2 text-sm"
-            style="font-family: 'Share Tech Mono', monospace; background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
+            style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
         </div>
       </div>
       <div class="flex gap-2 pt-2">
@@ -120,7 +120,7 @@
     <div class="rounded-xl p-4 flex items-center justify-between gap-3 mb-2" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
       <div class="min-w-0 flex-1">
         <p class="font-semibold text-sm truncate" style="color: var(--text-primary)">{feed.name}</p>
-        <p class="text-xs truncate" style="font-family: 'Share Tech Mono', monospace; color: var(--text-secondary)">{feed.url}</p>
+        <p class="text-xs truncate" style="font-family: var(--font-mono);color: var(--text-secondary)">{feed.url}</p>
         <div class="flex gap-3 text-[10px] mt-0.5" style="color: var(--text-secondary)">
           {#if feed.category}<span>Category: {feed.category}</span>{/if}
           <span>Every {feed.interval_minutes}m</span>

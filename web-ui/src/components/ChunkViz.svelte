@@ -19,7 +19,7 @@
   class="flex gap-0.5 rounded overflow-hidden"
   class:h-1={size === "compact"}
   class:h-3={size === "detailed"}
-  style="background: rgba(255, 255, 255, 0.04)"
+  style="background: var(--border-color)"
 >
   {#each chunkStates as cp, i}
     <div class="flex-1 relative overflow-hidden rounded-sm">
@@ -33,7 +33,7 @@
         "
       ></div>
       {#if size === "detailed"}
-        <span class="absolute inset-0 flex items-center justify-center text-[8px]" style="font-family: 'Share Tech Mono', monospace; color: var(--text-secondary)">
+        <span class="absolute inset-0 flex items-center justify-center text-[8px]" style="font-family: var(--font-mono);color: var(--text-secondary)">
           {cp}%
         </span>
       {/if}
