@@ -3,6 +3,8 @@
   import { features } from "../lib/stores";
   import { getConfig, putConfig, getWebhooks, type AppConfig } from "../lib/api";
   import { addToast } from "../lib/toast";
+  import { locale, type Locale } from "../lib/i18n";
+  import Icon from "../components/Icon.svelte";
 
   import SettingsFeatures from "../components/settings/SettingsFeatures.svelte";
   import SettingsUsenet from "../components/settings/SettingsUsenet.svelte";
@@ -50,6 +52,26 @@
   <SettingsAppearance />
   <SettingsDownloads {config} onsave={saveConfig} />
   <SettingsWebhooks bind:webhooks />
+
+  <!-- Language -->
+  <section>
+    <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">Language</h3>
+    <div class="rounded-xl p-5" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
+      <div class="flex items-center gap-3">
+        <Icon name="globe" size={18} />
+        <select
+          value={$locale}
+          onchange={(e) => locale.set((e.target as HTMLSelectElement).value as Locale)}
+          class="flex-1 rounded-lg px-3 py-2 text-sm"
+          style="background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)"
+          aria-label="Language"
+        >
+          <option value="en" style="background: var(--bg-surface-2)">English</option>
+          <option value="de" style="background: var(--bg-surface-2)">Deutsch</option>
+        </select>
+      </div>
+    </div>
+  </section>
 
   <!-- About -->
   <section>

@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /* ========================================
-   NEON THEME SYSTEM — Cyberpunk Arcade
+   NEON THEME SYSTEM — VS Code Dark + Neon Accents
    60:30:10 Rule:
      60% dark backgrounds (bg-deep, bg-surface)
      30% secondary surfaces, text, borders
@@ -15,26 +15,26 @@
   --color-neon-warning: var(--neon-warning, #eab308);
   --color-neon-border: var(--neon-border);
   --color-hover-bg: var(--hover-bg);
-  --color-bg-deep: var(--bg-deep, #06080f);
-  --color-bg-surface: var(--bg-surface, #0c0e18);
-  --color-bg-surface-2: var(--bg-surface-2, #12152a);
-  --color-text: var(--text-primary, #e8ecf4);
-  --color-text-secondary: var(--text-secondary, rgba(232, 236, 244, 0.5));
+  --color-bg-deep: var(--bg-deep, #1e1e1e);
+  --color-bg-surface: var(--bg-surface, #252526);
+  --color-bg-surface-2: var(--bg-surface-2, #2d2d2d);
+  --color-text: var(--text-primary, #cccccc);
+  --color-text-secondary: var(--text-secondary, #858585);
 }
 
-/* --- Dark Mode (Default) --- */
+/* --- Dark Mode (Default — VS Code Dark) --- */
 :root {
   --neon-primary: #3b82f6;
   --neon-success: #22c55e;
   --neon-accent: #ef4444;
   --neon-warning: #eab308;
 
-  --bg-deep: #06080f;
-  --bg-surface: #0c0e18;
-  --bg-surface-2: #12152a;
-  --text-primary: #e8ecf4;
-  --text-secondary: rgba(232, 236, 244, 0.5);
-  --border-color: rgba(255, 255, 255, 0.06);
+  --bg-deep: #1e1e1e;
+  --bg-surface: #252526;
+  --bg-surface-2: #2d2d2d;
+  --text-primary: #cccccc;
+  --text-secondary: #858585;
+  --border-color: #3c3c3c;
 
   /* Neon glow tokens (scaled by intensity system) */
   --neon-glow-sm: 0 0 6px color-mix(in srgb, var(--neon-primary) 25%, transparent);
@@ -462,8 +462,8 @@ body {
 
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.08); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.15); }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
 
 .light ::-webkit-scrollbar-thumb,
 :root.light ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.12); }
@@ -545,6 +545,67 @@ body {
 }
 
 /* ========================================
+   INTERACTIVE ELEMENTS
+   ======================================== */
+
+/* Icon-only button hover (close, pause, play, delete, etc.) */
+.icon-btn {
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.icon-btn:hover {
+  background: var(--hover-bg);
+}
+
+/* Download card hover */
+.download-card {
+  background: var(--bg-surface);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.download-card:hover {
+  background: var(--bg-surface-2);
+}
+
+/* Filter chips / tab buttons hover */
+.filter-chip {
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.filter-chip:hover {
+  background: var(--hover-bg) !important;
+}
+
+/* Labeled action button hover (DetailPanel actions, etc.) */
+.action-btn {
+  transition: background-color 0.15s ease, color 0.15s ease, filter 0.15s ease;
+}
+
+.action-btn:hover {
+  filter: brightness(1.2);
+}
+
+/* Input / textarea focus ring */
+input:not([type="range"]):not([type="checkbox"]):focus,
+textarea:focus,
+select:focus {
+  border-color: var(--neon-primary) !important;
+  outline: none;
+  box-shadow: 0 0 0 1px var(--neon-primary);
+}
+
+/* Placeholder */
+::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.6;
+}
+
+/* Disabled buttons */
+button:disabled {
+  cursor: not-allowed;
+}
+
+/* ========================================
    FOCUS INDICATORS (audit H3)
    ======================================== */
 
@@ -572,6 +633,22 @@ body {
 
 .skip-link:focus {
   top: 0;
+}
+
+/* ========================================
+   SCREEN READER ONLY (audit H7)
+   ======================================== */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
 
 /* ========================================

@@ -1,5 +1,6 @@
 // REST + WebSocket client for amigo-downloader API
 import type { Download } from "./stores";
+import { wsConnected } from "./stores";
 
 const API_BASE = "/api/v1";
 
@@ -43,6 +44,7 @@ export const addDownload = (url: string, filename?: string) => api<{ id: string 
 export const addBatch = (urls: string[]) => api<{ ids: string[] }>("POST", "/downloads/batch", { urls });
 export const pauseDownload = (id: string) => api<void>("PATCH", `/downloads/${id}`, { action: "pause" });
 export const resumeDownload = (id: string) => api<void>("PATCH", `/downloads/${id}`, { action: "resume" });
+export const retryDownload = (id: string) => api<void>("PATCH", `/downloads/${id}`, { action: "retry" });
 export const deleteDownload = (id: string) => api<void>("DELETE", `/downloads/${id}`);
 export const getQueue = () => api<Download[]>("GET", "/queue");
 export const getHistory = () => api<Download[]>("GET", "/history");
@@ -120,7 +122,8 @@ export function connectWebSocket(
     const ws = new WebSocket(`${protocol}//${window.location.host}${API_BASE}/ws`);
 
     ws.onopen = () => {
-      reconnectDelay = 1000; // Reset backoff on successful connect
+      reconnectDelay = 1000;
+      wsConnected.set(true);
     };
 
     ws.onmessage = (event) => {
@@ -133,7 +136,7 @@ export function connectWebSocket(
     };
 
     ws.onclose = () => {
-      // Exponential backoff: 1s, 2s, 4s, 8s, max 30s
+      wsConnected.set(false);
       setTimeout(() => connect(), reconnectDelay);
       reconnectDelay = Math.min(reconnectDelay * 2, 30000);
     };
@@ -226,4 +229,20 @@ export function formatBytes(bytes: number): string {
 
 export function formatSpeed(bytesPerSec: number): string {
   return `${formatBytes(bytesPerSec)}/s`;
+}
+
+export function formatRelativeTime(isoString: string): string {
+  const date = new Date(isoString);
+  const now = Date.now();
+  const diff = now - date.getTime();
+  if (diff < 0) return "just now";
+  const secs = Math.floor(diff / 1000);
+  if (secs < 60) return "just now";
+  const mins = Math.floor(secs / 60);
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  return date.toLocaleDateString();
 }

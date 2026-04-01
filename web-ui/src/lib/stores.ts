@@ -61,9 +61,16 @@ function applyThemeClass(value: ThemeMode) {
   root.classList.toggle("light", value === "light");
 }
 
+function detectSystemTheme(): ThemeMode {
+  if (typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: light)").matches) {
+    return "light";
+  }
+  return "dark";
+}
+
 function createThemeStore() {
   const stored = typeof localStorage !== "undefined" ? localStorage.getItem("theme") : null;
-  const initial: ThemeMode = (stored as ThemeMode) || "dark";
+  const initial: ThemeMode = (stored as ThemeMode) || detectSystemTheme();
   const { subscribe, set, update } = writable<ThemeMode>(initial);
 
   return {
@@ -237,7 +244,6 @@ if (typeof window !== "undefined") {
     if (location.hash !== `#${page}`) {
       history.pushState({ page }, "", `#${page}`);
     }
-    // Dynamic page title (audit L7)
     document.title = `${page.charAt(0).toUpperCase() + page.slice(1)} — amigo-downloader`;
   });
   window.addEventListener("popstate", () => {
@@ -293,6 +299,59 @@ export const stats = writable<Stats>({
   completed: 0,
 });
 
+// Tab badge — show active count in document title
+if (typeof window !== "undefined") {
+  stats.subscribe((s) => {
+    const hash = typeof location !== "undefined" ? location.hash.slice(1) : "downloads";
+    const page = hash || "downloads";
+    const prefix = s.active_downloads > 0 ? `(${s.active_downloads}) ` : "";
+    document.title = `${prefix}${page.charAt(0).toUpperCase() + page.slice(1)} — amigo-downloader`;
+  });
+}
+
+// ========================================
+// SPEED HISTORY (for sparkline graph)
+// ========================================
+
+const MAX_SPEED_HISTORY = 30;
+export const speedHistory = writable<number[]>([]);
+
+export function pushSpeedSample(speed: number) {
+  speedHistory.update((h) => {
+    const next = [...h, speed];
+    return next.length > MAX_SPEED_HISTORY ? next.slice(-MAX_SPEED_HISTORY) : next;
+  });
+}
+
+// ========================================
+// BATCH SELECTION
+// ========================================
+
+export const selectedIds = writable<Set<string>>(new Set());
+
+export function toggleSelection(id: string) {
+  selectedIds.update((s) => {
+    const next = new Set(s);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
+}
+
+export function clearSelection() {
+  selectedIds.set(new Set());
+}
+
+export function selectAll(ids: string[]) {
+  selectedIds.set(new Set(ids));
+}
+
+// ========================================
+// SEARCH
+// ========================================
+
+export const searchQuery = writable<string>("");
+
 // ========================================
 // CAPTCHA
 // ========================================
@@ -317,6 +376,29 @@ export const features = writable<Features>({
 });
 
 // ========================================
+// SIDE PANEL
+// ========================================
+
+export type SidePanelMode = "detail" | "add" | null;
+
+export const sidePanelMode = writable<SidePanelMode>(null);
+
+export function openAddPanel() {
+  selectedDownloadId.set(null);
+  sidePanelMode.set("add");
+}
+
+export function openDetailPanel(id: string) {
+  selectedDownloadId.set(id);
+  sidePanelMode.set("detail");
+}
+
+export function closeSidePanel() {
+  sidePanelMode.set(null);
+  selectedDownloadId.set(null);
+}
+
+// ========================================
 // CRASH REPORT (audit M5 — replaces window.__amigo_report_crash)
 // ========================================
 
@@ -327,3 +409,90 @@ export interface CrashContext {
 }
 
 export const crashReport = writable<CrashContext | null>(null);
+export const showFeedbackDialog = writable<boolean>(false);
+
+// ========================================
+// WEBSOCKET CONNECTION STATUS
+// ========================================
+
+export const wsConnected = writable<boolean>(false);
+
+// ========================================
+// SIDEBAR COLLAPSED
+// ========================================
+
+function createSidebarCollapsedStore() {
+  const stored = typeof localStorage !== "undefined" ? localStorage.getItem("sidebar-collapsed") : null;
+  const initial = stored === "true";
+  const { subscribe, set } = writable<boolean>(initial);
+  return {
+    subscribe,
+    set(value: boolean) {
+      if (typeof localStorage !== "undefined") localStorage.setItem("sidebar-collapsed", String(value));
+      set(value);
+    },
+    toggle() {
+      let current = false;
+      subscribe((v) => { current = v; })();
+      const next = !current;
+      if (typeof localStorage !== "undefined") localStorage.setItem("sidebar-collapsed", String(next));
+      set(next);
+    },
+  };
+}
+
+export const sidebarCollapsed = createSidebarCollapsedStore();
+
+// ========================================
+// FAVICON BADGE
+// ========================================
+
+let originalFavicon: string | null = null;
+
+export function updateFaviconBadge(count: number) {
+  if (typeof document === "undefined") return;
+  const link = document.querySelector("link[rel~='icon']") as HTMLLinkElement | null;
+  if (!link) return;
+
+  if (!originalFavicon) originalFavicon = link.href;
+
+  if (count <= 0) {
+    link.href = originalFavicon;
+    return;
+  }
+
+  const img = new Image();
+  img.crossOrigin = "anonymous";
+  img.onload = () => {
+    const canvas = document.createElement("canvas");
+    canvas.width = 32;
+    canvas.height = 32;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(img, 0, 0, 32, 32);
+    // Red badge circle
+    ctx.fillStyle = "#ef4444";
+    ctx.beginPath();
+    ctx.arc(24, 8, 8, 0, 2 * Math.PI);
+    ctx.fill();
+    // Count text
+    ctx.fillStyle = "white";
+    ctx.font = "bold 10px sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(count > 9 ? "9+" : String(count), 24, 8);
+    link.href = canvas.toDataURL();
+  };
+  img.src = originalFavicon;
+}
+
+// Update favicon when stats change
+if (typeof window !== "undefined") {
+  stats.subscribe((s) => updateFaviconBadge(s.active_downloads));
+}
+
+// ========================================
+// aria-live ANNOUNCER
+// ========================================
+
+export const ariaAnnouncement = writable<string>("");
