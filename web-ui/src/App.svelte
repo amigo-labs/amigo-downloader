@@ -35,6 +35,7 @@
     protocolFilter,
     pushSpeedSample,
     sidebarCollapsed,
+    showFeedbackDialog,
     sidePanelMode,
     speedHistory,
     stats,
@@ -54,7 +55,7 @@
   import Plugins from "./pages/Plugins.svelte";
   import Settings from "./pages/Settings.svelte";
 
-  let showFeedback = $state(false);
+  let showFeedback = $derived($showFeedbackDialog);
   let showShortcuts = $state(false);
   let showPalette = $state(false);
   let mobileMenuOpen = $state(false);
@@ -246,7 +247,7 @@
 
   // Single global keyboard handler
   function handleKeydown(e: KeyboardEvent) {
-    if ((e.ctrlKey || e.metaKey) && (e.key === "n" || e.key === "l")) {
+    if ((e.ctrlKey || e.metaKey) && e.key === "n") {
       e.preventDefault();
       openAddPanel();
     }
@@ -260,7 +261,7 @@
         return;
       }
       if (showFeedback) {
-        showFeedback = false;
+        showFeedbackDialog.set(false);
         return;
       }
       if (showPalette) {
@@ -667,7 +668,7 @@
 {/if}
 
 {#if showFeedback}
-  <FeedbackDialog onclose={() => (showFeedback = false)} />
+  <FeedbackDialog onclose={() => (showFeedbackDialog.set(false))} />
 {/if}
 
 {#if $pendingCaptcha}

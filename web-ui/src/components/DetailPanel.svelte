@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { selectedDownload, closeSidePanel, crashReport } from "../lib/stores";
+  import { selectedDownload, closeSidePanel, crashReport, showFeedbackDialog } from "../lib/stores";
   import { formatBytes, formatSpeed, pauseDownload, resumeDownload, retryDownload, deleteDownload } from "../lib/api";
   import { addToast } from "../lib/toast";
   import ChunkViz from "./ChunkViz.svelte";
@@ -120,7 +120,7 @@
       <div class="flex gap-2">
         {#if dl.status === "downloading"}
           <button
-            onclick={() => pauseDownload(dl.id)}
+            onclick={async () => { try { await pauseDownload(dl.id); } catch { addToast("error", "Failed to pause"); } }}
             class="action-btn flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px]"
             style="background: var(--bg-surface-2); color: var(--neon-warning)"
             aria-label="Pause download"
@@ -129,7 +129,7 @@
           </button>
         {:else if dl.status === "paused" || dl.status === "queued"}
           <button
-            onclick={() => resumeDownload(dl.id)}
+            onclick={async () => { try { await resumeDownload(dl.id); } catch { addToast("error", "Failed to resume"); } }}
             class="action-btn flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px]"
             style="background: var(--bg-surface-2); color: var(--neon-primary)"
             aria-label="Resume download"
@@ -139,7 +139,7 @@
         {/if}
         {#if dl.status === "failed"}
           <button
-            onclick={() => retryDownload(dl.id)}
+            onclick={async () => { try { await retryDownload(dl.id); } catch { addToast("error", "Failed to retry"); } }}
             class="action-btn flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px]"
             style="background: var(--bg-surface-2); color: var(--neon-primary)"
             aria-label="Retry download"
@@ -148,7 +148,7 @@
           </button>
           {#if dl.error}
             <button
-              onclick={() => crashReport.set({ download_id: dl.id, error_message: dl.error ?? undefined })}
+              onclick={() => { crashReport.set({ download_id: dl.id, error_message: dl.error ?? undefined }); showFeedbackDialog.set(true); }}
               class="action-btn flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px]"
               style="background: var(--bg-surface-2); color: var(--neon-warning)"
               aria-label="Report error"
@@ -158,15 +158,14 @@
           {/if}
         {/if}
         <button
-          onclick={() => {
+          onclick={async () => {
             if (!confirmingDelete) {
               confirmingDelete = true;
               confirmTimer = setTimeout(() => { confirmingDelete = false; }, 2000);
             } else {
               clearTimeout(confirmTimer);
               confirmingDelete = false;
-              deleteDownload(dl.id);
-              closeSidePanel();
+              try { await deleteDownload(dl.id); closeSidePanel(); } catch { addToast("error", "Failed to delete"); }
             }
           }}
           class="action-btn flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold min-h-[44px]"

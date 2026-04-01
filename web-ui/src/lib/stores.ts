@@ -409,6 +409,7 @@ export interface CrashContext {
 }
 
 export const crashReport = writable<CrashContext | null>(null);
+export const showFeedbackDialog = writable<boolean>(false);
 
 // ========================================
 // WEBSOCKET CONNECTION STATUS
