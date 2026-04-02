@@ -83,15 +83,17 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install protoc -y
 
-      - name: Install cross-compilation tools
+      - name: Install cross tool
         if: matrix.cross
-        run: |
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-          echo '[target.aarch64-unknown-linux-gnu]' >> ~/.cargo/config.toml
-          echo 'linker = "aarch64-linux-gnu-gcc"' >> ~/.cargo/config.toml
+        run: cargo install cross --git https://github.com/cross-rs/cross
 
       - name: Build CLI and Server
+        if: ${{ !matrix.cross }}
         run: cargo build --release --target ${{ matrix.target }} -p amigo-cli -p amigo-server
+
+      - name: Build CLI and Server (cross)
+        if: ${{ matrix.cross }}
+        run: cross build --release --target ${{ matrix.target }} -p amigo-cli -p amigo-server
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
