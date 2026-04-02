@@ -4,10 +4,17 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-# This crate is NOT part of the workspace build by default.
 # To build the Tauri desktop app:
 #   1. Install Tauri CLI: cargo install tauri-cli
-#   2. cd tauri && cargo tauri build
+#   2. cd web-ui && npm ci && npx vite build && cd ..
+#   3. cd tauri && cargo tauri build
+#
+# Plain `cargo build -p amigo-desktop` builds only the stub (no Tauri feature).
+# `cargo tauri build` enables the "tauri" feature automatically.
+
+[features]
+default = []
+tauri = ["dep:tauri", "dep:tauri-plugin-shell", "dep:tauri-plugin-notification", "dep:tauri-plugin-deep-link", "dep:tauri-plugin-updater"]
 
 [dependencies]
 amigo-core = { workspace = true }
@@ -18,9 +25,9 @@ serde_json = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 
-# Uncomment when building with Tauri CLI:
-# tauri = { version = "2", features = ["tray-icon", "protocol-asset"] }
-# tauri-plugin-shell = "2"
-# tauri-plugin-notification = "2"
-# tauri-plugin-deep-link = "2"
-# tauri-plugin-updater = "2"
+# Tauri dependencies (activated by "tauri" feature, which `cargo tauri build` enables)
+tauri = { version = "2", features = ["tray-icon", "protocol-asset"], optional = true }
+tauri-plugin-shell = { version = "2", optional = true }
+tauri-plugin-notification = { version = "2", optional = true }
+tauri-plugin-deep-link = { version = "2", optional = true }
+tauri-plugin-updater = { version = "2", optional = true }

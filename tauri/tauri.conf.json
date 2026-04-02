@@ -47,10 +47,11 @@
       }
     },
     "updater": {
+      "active": false,
       "endpoints": [
         "https://github.com/amigo-labs/amigo-downloader/releases/latest/download/latest.json"
       ],
-      "pubkey": ""
+      "pubkey": "REPLACE_WITH_REAL_KEY_BEFORE_RELEASE"
     }
   }
 }

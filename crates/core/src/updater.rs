@@ -56,7 +56,9 @@ pub fn detect_distribution() -> Distribution {
     if std::env::var("AMIGO_DOCKER").is_ok() {
         return Distribution::Docker;
     }
-    // TODO: detect Tauri via runtime check
+    if std::env::var("AMIGO_TAURI").is_ok() {
+        return Distribution::Tauri;
+    }
     Distribution::Server
 }
 
@@ -258,10 +260,49 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_detect_distribution() {
-        // Without AMIGO_DOCKER env var, should be Server
+    fn test_detect_distribution_default() {
+        // Clean env for this test
+        std::env::remove_var("AMIGO_DOCKER");
+        std::env::remove_var("AMIGO_TAURI");
         let dist = detect_distribution();
-        assert!(dist == Distribution::Server || dist == Distribution::Cli);
+        assert_eq!(dist, Distribution::Server);
+    }
+
+    #[test]
+    fn test_detect_distribution_docker() {
+        std::env::set_var("AMIGO_DOCKER", "1");
+        std::env::remove_var("AMIGO_TAURI");
+        let dist = detect_distribution();
+        assert_eq!(dist, Distribution::Docker);
+        std::env::remove_var("AMIGO_DOCKER");
+    }
+
+    #[test]
+    fn test_detect_distribution_tauri() {
+        std::env::remove_var("AMIGO_DOCKER");
+        std::env::set_var("AMIGO_TAURI", "1");
+        let dist = detect_distribution();
+        assert_eq!(dist, Distribution::Tauri);
+        std::env::remove_var("AMIGO_TAURI");
+    }
+
+    #[test]
+    fn test_detect_distribution_docker_takes_precedence() {
+        // Docker should take precedence over Tauri if both are set
+        std::env::set_var("AMIGO_DOCKER", "1");
+        std::env::set_var("AMIGO_TAURI", "1");
+        let dist = detect_distribution();
+        assert_eq!(dist, Distribution::Docker);
+        std::env::remove_var("AMIGO_DOCKER");
+        std::env::remove_var("AMIGO_TAURI");
+    }
+
+    #[test]
+    fn test_tauri_cannot_self_update() {
+        // When distribution is Tauri, can_self_update should be false
+        let dist = Distribution::Tauri;
+        let can_self_update = dist == Distribution::Cli || dist == Distribution::Server;
+        assert!(!can_self_update);
     }
 
     #[test]
