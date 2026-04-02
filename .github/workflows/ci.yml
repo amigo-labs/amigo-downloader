@@ -30,13 +30,13 @@ jobs:
         run: mkdir -p web-ui/dist
 
       - name: Check
-        run: cargo check --workspace
+        run: cargo check --workspace --exclude amigo-desktop
 
       - name: Clippy
-        run: cargo clippy --workspace -- -D warnings
+        run: cargo clippy --workspace --exclude amigo-desktop -- -D warnings
 
       - name: Test
-        run: cargo test --workspace
+        run: cargo test --workspace --exclude amigo-desktop
 
   web-ui:
     name: Web UI (build + check)

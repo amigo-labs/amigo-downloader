@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y protobuf-compiler libclang-dev && rm -r
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/
+COPY tauri/ tauri/
 COPY --from=ui-builder /app/web-ui/dist web-ui/dist
 RUN cargo build --release --bin amigo-server --bin amigo-dl
 
