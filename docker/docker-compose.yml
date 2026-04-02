@@ -13,7 +13,13 @@ services:
       - ./downloads:/downloads
     environment:
       - TZ=Europe/Berlin
-      - AMIGO_API_KEY=changeme
+      - AMIGO_API_KEY=${AMIGO_API_KEY:?Set AMIGO_API_KEY in .env or environment}
       - AMIGO_MAX_DOWNLOADS=10
       - AMIGO_BANDWIDTH_LIMIT=0
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:1516/api/v1/status"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped

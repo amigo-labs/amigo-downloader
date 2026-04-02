@@ -19,6 +19,10 @@ tauri/target/
 .DS_Store
 Thumbs.db
 
+# Environment
+.env
+docker/.env
+
 # Runtime
 *.db
 *.sqlite

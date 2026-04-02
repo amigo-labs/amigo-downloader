@@ -56,20 +56,6 @@ struct PluginUpdateEntry {
 }
 
 #[derive(Serialize)]
-#[allow(dead_code)]
-struct PluginInstallResponse {
-    id: String,
-    name: String,
-    version: String,
-}
-
-#[derive(Serialize)]
-#[allow(dead_code)]
-struct UpdateAllResponse {
-    updated: Vec<PluginInstallResponse>,
-}
-
-#[derive(Serialize)]
 struct MarketplaceEntry {
     id: String,
     name: String,
@@ -237,25 +223,23 @@ async fn list_available_plugins(
 async fn update_all_plugins() -> (StatusCode, Json<serde_json::Value>) {
     // TODO: Rune's types aren't Send — needs spawn_blocking wrapper for PluginLoader operations
     (
-        StatusCode::ACCEPTED,
-        Json(
-            serde_json::json!({"message": "Plugin update triggered. Check /api/v1/plugins for results."}),
-        ),
+        StatusCode::NOT_IMPLEMENTED,
+        Json(serde_json::json!({"error": "Plugin bulk update not yet implemented"})),
     )
 }
 
 async fn update_plugin(Path(id): Path<String>) -> (StatusCode, Json<serde_json::Value>) {
     // TODO: Rune's types aren't Send — needs spawn_blocking wrapper
     (
-        StatusCode::ACCEPTED,
-        Json(serde_json::json!({"message": format!("Update for plugin {id} triggered.")})),
+        StatusCode::NOT_IMPLEMENTED,
+        Json(serde_json::json!({"error": format!("Plugin update not yet implemented for {id}")})),
     )
 }
 
 async fn install_plugin(Path(id): Path<String>) -> (StatusCode, Json<serde_json::Value>) {
     // TODO: Rune's types aren't Send — needs spawn_blocking wrapper
     (
-        StatusCode::ACCEPTED,
-        Json(serde_json::json!({"message": format!("Install of plugin {id} triggered.")})),
+        StatusCode::NOT_IMPLEMENTED,
+        Json(serde_json::json!({"error": format!("Plugin install not yet implemented for {id}")})),
     )
 }

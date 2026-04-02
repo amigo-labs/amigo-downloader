@@ -1,5 +1,5 @@
 // Svelte stores for application state
-import { writable, derived } from "svelte/store";
+import { writable, derived, get } from "svelte/store";
 
 // ========================================
 // TYPES (single source of truth — audit M6)
@@ -281,13 +281,6 @@ export function updateDownloadStatus(id: string, status: string) {
   );
 }
 
-export const activeDownloads = derived(downloads, ($d) =>
-  $d.filter((d) => d.status === "downloading")
-);
-export const queuedDownloads = derived(downloads, ($d) =>
-  $d.filter((d) => d.status === "queued")
-);
-
 // ========================================
 // STATS
 // ========================================
@@ -424,7 +417,8 @@ export const wsConnected = writable<boolean>(false);
 function createSidebarCollapsedStore() {
   const stored = typeof localStorage !== "undefined" ? localStorage.getItem("sidebar-collapsed") : null;
   const initial = stored === "true";
-  const { subscribe, set } = writable<boolean>(initial);
+  const store = writable<boolean>(initial);
+  const { subscribe, set } = store;
   return {
     subscribe,
     set(value: boolean) {
@@ -432,9 +426,7 @@ function createSidebarCollapsedStore() {
       set(value);
     },
     toggle() {
-      let current = false;
-      subscribe((v) => { current = v; })();
-      const next = !current;
+      const next = !get(store);
       if (typeof localStorage !== "undefined") localStorage.setItem("sidebar-collapsed", String(next));
       set(next);
     },

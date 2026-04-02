@@ -6,6 +6,14 @@ members = [
     "crates/plugin-runtime",
     "crates/server",
     "crates/cli",
+    "tauri",
+]
+default-members = [
+    "crates/core",
+    "crates/extractors",
+    "crates/plugin-runtime",
+    "crates/server",
+    "crates/cli",
 ]
 
 [workspace.package]

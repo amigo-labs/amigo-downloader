@@ -9,10 +9,10 @@
   import DownloadCard from "../components/DownloadCard.svelte";
   import DownloadCompactRow from "../components/DownloadCompactRow.svelte";
   import Icon from "../components/Icon.svelte";
-  import SkeletonCard from "../components/SkeletonCard.svelte";
+
 
   let filter = $state<string>("all");
-  let loading = $state(false);
+  let confirmingBatchDelete = $state(false);
   let sortBy = $state<string>("status");
   let draggedId = $state<string | null>(null);
   let viewMode = $state<"grid" | "list">(
@@ -79,20 +79,38 @@
   }
 
   async function batchPause() {
-    for (const id of $selectedIds) { await pauseDownload(id); }
-    addToast("info", `Paused ${$selectedIds.size} downloads`);
+    const total = $selectedIds.size;
+    let failed = 0;
+    for (const id of $selectedIds) {
+      try { await pauseDownload(id); } catch { failed++; }
+    }
+    addToast(failed ? "error" : "info", failed ? `Paused ${total - failed}/${total} downloads (${failed} failed)` : `Paused ${total} downloads`);
     clearSelection();
   }
 
   async function batchResume() {
-    for (const id of $selectedIds) { await resumeDownload(id); }
-    addToast("info", `Resumed ${$selectedIds.size} downloads`);
+    const total = $selectedIds.size;
+    let failed = 0;
+    for (const id of $selectedIds) {
+      try { await resumeDownload(id); } catch { failed++; }
+    }
+    addToast(failed ? "error" : "info", failed ? `Resumed ${total - failed}/${total} downloads (${failed} failed)` : `Resumed ${total} downloads`);
     clearSelection();
   }
 
   async function batchDelete() {
-    for (const id of $selectedIds) { await deleteDownload(id); }
-    addToast("info", `Deleted ${$selectedIds.size} downloads`);
+    if (!confirmingBatchDelete) {
+      confirmingBatchDelete = true;
+      setTimeout(() => { confirmingBatchDelete = false; }, 3000);
+      return;
+    }
+    confirmingBatchDelete = false;
+    const total = $selectedIds.size;
+    let failed = 0;
+    for (const id of $selectedIds) {
+      try { await deleteDownload(id); } catch { failed++; }
+    }
+    addToast(failed ? "error" : "info", failed ? `Deleted ${total - failed}/${total} downloads (${failed} failed)` : `Deleted ${total} downloads`);
     clearSelection();
   }
 
@@ -240,7 +258,7 @@
         <Icon name="play" size={14} /> Resume
       </button>
       <button onclick={batchDelete} class="action-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold" style="background: var(--bg-surface-2); color: var(--neon-accent)">
-        <Icon name="trash" size={14} /> Delete
+        <Icon name="trash" size={14} /> {confirmingBatchDelete ? "Sure?" : "Delete"}
       </button>
       <button onclick={clearSelection} class="icon-btn p-1.5 rounded-lg" style="color: var(--text-secondary)" aria-label="Clear selection">
         <Icon name="x" size={14} />
@@ -249,11 +267,7 @@
   {/if}
 
   <!-- Download list -->
-  {#if loading}
-    <div class="grid gap-3">
-      <SkeletonCard count={3} />
-    </div>
-  {:else if filtered.length === 0}
+  {#if filtered.length === 0}
     <div class="flex flex-col items-center justify-center py-20">
       <img src="/amigo-logo.png" alt="" width="64" height="64" class="rounded-lg opacity-30" />
       <p class="mt-4 text-sm" style="color: var(--text-secondary)">No downloads yet</p>

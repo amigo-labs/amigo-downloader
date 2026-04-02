@@ -111,7 +111,7 @@
     loadData();
     const interval = setInterval(loadData, 10000);
 
-    connectWebSocket((msg) => {
+    const ws = connectWebSocket((msg) => {
       if (msg.type === "progress") {
         const p = msg.data?.progress as
           | {
@@ -160,7 +160,10 @@
       loadData();
     });
 
-    return () => clearInterval(interval);
+    return () => {
+      clearInterval(interval);
+      ws.close();
+    };
   });
 
   function handleShareTarget() {

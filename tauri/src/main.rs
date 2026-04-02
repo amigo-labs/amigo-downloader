@@ -24,6 +24,14 @@ fn main() {
     use std::path::PathBuf;
     use std::sync::Arc;
 
+    // Signal to amigo-core that we are running inside Tauri.
+    // This must be set before any core initialization so that
+    // detect_distribution() returns Distribution::Tauri.
+    // SAFETY: Called at the very start of main, before any threads are spawned.
+    unsafe {
+        std::env::set_var("AMIGO_TAURI", "1");
+    }
+
     // Initialize logging
     tracing_subscriber::fmt()
         .with_env_filter("info")
@@ -122,10 +130,9 @@ fn main() {
     eprintln!("amigo-downloader desktop app");
     eprintln!();
     eprintln!("This binary must be built with the Tauri CLI:");
-    eprintln!("  1. Uncomment tauri dependencies in tauri/Cargo.toml");
-    eprintln!("  2. cargo install tauri-cli");
-    eprintln!("  3. cd web-ui && npm ci && npx vite build && cd ..");
-    eprintln!("  4. cd tauri && cargo tauri build");
+    eprintln!("  1. cargo install tauri-cli");
+    eprintln!("  2. cd web-ui && npm ci && npx vite build && cd ..");
+    eprintln!("  3. cd tauri && cargo tauri build");
     eprintln!();
     eprintln!("For headless/server use, run `amigo-server` instead.");
 }
