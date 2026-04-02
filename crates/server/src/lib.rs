@@ -1,4 +1,5 @@
 //! amigo-server library — exposes API router and types for integration tests.
+#![allow(dead_code)]
 
 pub mod api;
 mod background;

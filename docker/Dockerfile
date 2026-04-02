@@ -1,11 +1,11 @@
 # Stage 1: Build Web-UI
-FROM node:22.14.0-alpine3.21 AS ui-builder
+FROM node:22-alpine3.21 AS ui-builder
 WORKDIR /app/web-ui
 COPY web-ui/ .
 RUN npm ci && npm run build
 
 # Stage 2: Build Rust
-FROM rust:1.85.1-bookworm AS rust-builder
+FROM rust:1-bookworm AS rust-builder
 RUN apt-get update && apt-get install -y protobuf-compiler libclang-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
@@ -15,7 +15,7 @@ COPY --from=ui-builder /app/web-ui/dist web-ui/dist
 RUN cargo build --release --bin amigo-server --bin amigo-dl
 
 # Stage 3: Runtime
-FROM debian:bookworm-20250317-slim
+FROM debian:bookworm-slim
 
 # Install runtime dependencies (ca-certificates for TLS, wget for healthcheck)
 RUN apt-get update && apt-get install -y ca-certificates wget && rm -rf /var/lib/apt/lists/*
