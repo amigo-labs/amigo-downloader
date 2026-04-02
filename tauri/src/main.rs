@@ -27,7 +27,10 @@ fn main() {
     // Signal to amigo-core that we are running inside Tauri.
     // This must be set before any core initialization so that
     // detect_distribution() returns Distribution::Tauri.
-    std::env::set_var("AMIGO_TAURI", "1");
+    // SAFETY: Called at the very start of main, before any threads are spawned.
+    unsafe {
+        std::env::set_var("AMIGO_TAURI", "1");
+    }
 
     // Initialize logging
     tracing_subscriber::fmt()

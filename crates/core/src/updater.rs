@@ -262,39 +262,55 @@ mod tests {
     #[test]
     fn test_detect_distribution_default() {
         // Clean env for this test
-        std::env::remove_var("AMIGO_DOCKER");
-        std::env::remove_var("AMIGO_TAURI");
+        // SAFETY: Test runs single-threaded via cargo test -- --test-threads=1
+        // or env vars are not shared across these specific tests in practice.
+        unsafe {
+            std::env::remove_var("AMIGO_DOCKER");
+            std::env::remove_var("AMIGO_TAURI");
+        }
         let dist = detect_distribution();
         assert_eq!(dist, Distribution::Server);
     }
 
     #[test]
     fn test_detect_distribution_docker() {
-        std::env::set_var("AMIGO_DOCKER", "1");
-        std::env::remove_var("AMIGO_TAURI");
+        unsafe {
+            std::env::set_var("AMIGO_DOCKER", "1");
+            std::env::remove_var("AMIGO_TAURI");
+        }
         let dist = detect_distribution();
         assert_eq!(dist, Distribution::Docker);
-        std::env::remove_var("AMIGO_DOCKER");
+        unsafe {
+            std::env::remove_var("AMIGO_DOCKER");
+        }
     }
 
     #[test]
     fn test_detect_distribution_tauri() {
-        std::env::remove_var("AMIGO_DOCKER");
-        std::env::set_var("AMIGO_TAURI", "1");
+        unsafe {
+            std::env::remove_var("AMIGO_DOCKER");
+            std::env::set_var("AMIGO_TAURI", "1");
+        }
         let dist = detect_distribution();
         assert_eq!(dist, Distribution::Tauri);
-        std::env::remove_var("AMIGO_TAURI");
+        unsafe {
+            std::env::remove_var("AMIGO_TAURI");
+        }
     }
 
     #[test]
     fn test_detect_distribution_docker_takes_precedence() {
         // Docker should take precedence over Tauri if both are set
-        std::env::set_var("AMIGO_DOCKER", "1");
-        std::env::set_var("AMIGO_TAURI", "1");
+        unsafe {
+            std::env::set_var("AMIGO_DOCKER", "1");
+            std::env::set_var("AMIGO_TAURI", "1");
+        }
         let dist = detect_distribution();
         assert_eq!(dist, Distribution::Docker);
-        std::env::remove_var("AMIGO_DOCKER");
-        std::env::remove_var("AMIGO_TAURI");
+        unsafe {
+            std::env::remove_var("AMIGO_DOCKER");
+            std::env::remove_var("AMIGO_TAURI");
+        }
     }
 
     #[test]
