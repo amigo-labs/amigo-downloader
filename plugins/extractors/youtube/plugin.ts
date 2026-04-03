@@ -5,7 +5,7 @@ function extractVideoId(url: string): string | null {
     if (m) return m;
     m = amigo.regexMatch("youtu\\.be/([a-zA-Z0-9_-]{11})", url);
     if (m) return m;
-    m = amigo.regexMatch("/(embed|shorts|v)/([a-zA-Z0-9_-]{11})", url);
+    m = amigo.regexMatch("/(?:embed|shorts|v)/([a-zA-Z0-9_-]{11})", url);
     return m;
 }
 

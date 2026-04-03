@@ -136,8 +136,8 @@ export function connectWebSocket(
       try {
         const msg = JSON.parse(event.data) as WsMessage;
         onMessage(msg);
-      } catch {
-        // ignore parse errors
+      } catch (e) {
+        console.warn("WebSocket: failed to parse message:", e);
       }
     };
 

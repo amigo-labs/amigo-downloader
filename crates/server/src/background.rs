@@ -77,7 +77,7 @@ async fn check_nzb_watch_folder(coordinator: &Arc<Coordinator>) -> Result<(), am
         match tokio::fs::read_to_string(&path).await {
             Ok(nzb_data) => {
                 // Validate NZB
-                if amigo_core::protocol::usenet::nzb::parse_nzb(&nzb_data).is_ok() {
+                if let Ok(nzb) = amigo_core::protocol::usenet::nzb::parse_nzb(&nzb_data) {
                     let filename = path
                         .file_stem()
                         .and_then(|s| s.to_str())
@@ -90,7 +90,6 @@ async fn check_nzb_watch_folder(coordinator: &Arc<Coordinator>) -> Result<(), am
                     {
                         Ok(id) => {
                             // Store NZB metadata
-                            let nzb = amigo_core::protocol::usenet::nzb::parse_nzb(&nzb_data).unwrap();
                             let metadata = serde_json::json!({
                                 "file_count": nzb.files.len(),
                                 "total_bytes": nzb.files.iter().map(|f| f.total_bytes()).sum::<u64>(),

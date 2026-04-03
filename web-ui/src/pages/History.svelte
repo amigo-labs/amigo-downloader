@@ -9,7 +9,7 @@
   onMount(async () => {
     try {
       history = await getHistory();
-    } catch { /* offline */ }
+    } catch (e) { console.error("Failed to load history:", e); }
     loading = false;
   });
 </script>

@@ -140,23 +140,27 @@ fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
     let mut zip = zip::ZipArchive::new(file)
         .map_err(|e| crate::Error::Other(format!("Invalid ZIP: {e}")))?;
 
-    let canonical_output = output_dir
-        .canonicalize()
-        .unwrap_or_else(|_| output_dir.to_path_buf());
-
     for i in 0..zip.len() {
         let mut entry = zip
             .by_index(i)
             .map_err(|e| crate::Error::Other(format!("ZIP entry error: {e}")))?;
 
         let name = entry.name().to_string();
-        let out_path = output_dir.join(&name);
 
-        // Zip Slip protection: ensure extracted path stays within output_dir
-        let canonical_out = out_path
-            .canonicalize()
-            .unwrap_or_else(|_| output_dir.join(crate::sanitize_filename(&name)));
-        if !canonical_out.starts_with(&canonical_output) {
+        // Zip Slip protection: reject entries with path traversal components
+        // We sanitize *before* joining to prevent directory escape, since
+        // canonicalize() cannot work on paths that don't exist yet.
+        let sanitized = name
+            .replace('\\', "/")
+            .split('/')
+            .filter(|c| !c.is_empty() && *c != "." && *c != "..")
+            .collect::<Vec<_>>()
+            .join("/");
+        if sanitized.is_empty() {
+            continue;
+        }
+        let out_path = output_dir.join(&sanitized);
+        if !out_path.starts_with(output_dir) {
             warn!(
                 "ZIP entry {:?} escapes output directory — skipping (path traversal blocked)",
                 name
