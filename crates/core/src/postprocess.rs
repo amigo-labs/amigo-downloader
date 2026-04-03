@@ -147,13 +147,13 @@ fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
 
         let name = entry.name().to_string();
 
-        // Zip Slip protection: reject entries with path traversal components
-        // We sanitize *before* joining to prevent directory escape, since
-        // canonicalize() cannot work on paths that don't exist yet.
+        // Zip Slip protection: reject traversal components and sanitize each
+        // path segment for platform-invalid characters (NUL, ':', etc.).
         let sanitized = name
             .replace('\\', "/")
             .split('/')
             .filter(|c| !c.is_empty() && *c != "." && *c != "..")
+            .map(|c| crate::sanitize_filename(c))
             .collect::<Vec<_>>()
             .join("/");
         if sanitized.is_empty() {
