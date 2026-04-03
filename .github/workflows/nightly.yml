@@ -24,25 +24,25 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            binary: amigo-dl
-            archive: amigo-dl-linux-x86_64.tar.gz
+            cli_archive: amigo-dl-linux-x86_64.tar.gz
+            server_archive: amigo-server-linux-x86_64.tar.gz
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            binary: amigo-dl
-            archive: amigo-dl-linux-aarch64.tar.gz
+            cli_archive: amigo-dl-linux-aarch64.tar.gz
+            server_archive: amigo-server-linux-aarch64.tar.gz
             cross: true
           - target: x86_64-apple-darwin
             os: macos-latest
-            binary: amigo-dl
-            archive: amigo-dl-macos-x86_64.tar.gz
+            cli_archive: amigo-dl-macos-x86_64.tar.gz
+            server_archive: amigo-server-macos-x86_64.tar.gz
           - target: aarch64-apple-darwin
             os: macos-latest
-            binary: amigo-dl
-            archive: amigo-dl-macos-aarch64.tar.gz
+            cli_archive: amigo-dl-macos-aarch64.tar.gz
+            server_archive: amigo-server-macos-aarch64.tar.gz
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            binary: amigo-dl.exe
-            archive: amigo-dl-windows-x86_64.zip
+            cli_archive: amigo-dl-windows-x86_64.zip
+            server_archive: amigo-server-windows-x86_64.zip
 
     steps:
       - uses: actions/checkout@v4
@@ -78,39 +78,53 @@ jobs:
         if: runner.os == 'Windows'
         run: choco install protoc -y
 
+      - name: Create web-ui dist stub
+        run: mkdir -p web-ui/dist
+
       - name: Install cross tool
         if: matrix.cross
         run: cargo install cross --git https://github.com/cross-rs/cross
 
-      - name: Build CLI
+      - name: Build CLI and Server
         if: ${{ !matrix.cross }}
-        run: cargo build --release --target ${{ matrix.target }} -p amigo-cli
+        run: cargo build --release --target ${{ matrix.target }} -p amigo-cli -p amigo-server
 
-      - name: Build CLI (cross)
+      - name: Build CLI and Server (cross)
         if: ${{ matrix.cross }}
-        run: cross build --release --target ${{ matrix.target }} -p amigo-cli
+        run: cross build --release --target ${{ matrix.target }} -p amigo-cli -p amigo-server
 
       - name: Package (Unix)
         if: runner.os != 'Windows'
         run: |
           cd target/${{ matrix.target }}/release
-          tar czf ../../../${{ matrix.archive }} ${{ matrix.binary }}
+
+          tar czf ../../../${{ matrix.cli_archive }} amigo-dl
           cd ../../..
-          sha256sum ${{ matrix.archive }} > ${{ matrix.archive }}.sha256
+          sha256sum ${{ matrix.cli_archive }} > ${{ matrix.cli_archive }}.sha256
+
+          cd target/${{ matrix.target }}/release
+          tar czf ../../../${{ matrix.server_archive }} amigo-server
+          cd ../../..
+          sha256sum ${{ matrix.server_archive }} > ${{ matrix.server_archive }}.sha256
 
       - name: Package (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path target/${{ matrix.target }}/release/${{ matrix.binary }} -DestinationPath ${{ matrix.archive }}
-          (Get-FileHash ${{ matrix.archive }} -Algorithm SHA256).Hash.ToLower() + "  ${{ matrix.archive }}" | Out-File -Encoding ascii ${{ matrix.archive }}.sha256
+          Compress-Archive -Path target/${{ matrix.target }}/release/amigo-dl.exe -DestinationPath ${{ matrix.cli_archive }}
+          (Get-FileHash ${{ matrix.cli_archive }} -Algorithm SHA256).Hash.ToLower() + "  ${{ matrix.cli_archive }}" | Out-File -Encoding ascii ${{ matrix.cli_archive }}.sha256
+
+          Compress-Archive -Path target/${{ matrix.target }}/release/amigo-server.exe -DestinationPath ${{ matrix.server_archive }}
+          (Get-FileHash ${{ matrix.server_archive }} -Algorithm SHA256).Hash.ToLower() + "  ${{ matrix.server_archive }}" | Out-File -Encoding ascii ${{ matrix.server_archive }}.sha256
 
       - uses: actions/upload-artifact@v4
         with:
           name: cli-${{ matrix.target }}
           path: |
-            ${{ matrix.archive }}
-            ${{ matrix.archive }}.sha256
+            ${{ matrix.cli_archive }}
+            ${{ matrix.cli_archive }}.sha256
+            ${{ matrix.server_archive }}
+            ${{ matrix.server_archive }}.sha256
 
   # ─── Docker Image (multi-arch) ─────────────────────────────────────
   docker:
@@ -282,7 +296,7 @@ jobs:
             docker pull ghcr.io/amigo-labs/amigo-downloader:nightly
             docker pull ghcr.io/amigo-labs/amigo-downloader:nightly-${{ env.NIGHTLY_DATE }}
             ```
-          artifacts: "artifacts/*"
+          artifacts: "artifacts/**"
           allowUpdates: true
           prerelease: true
           makeLatest: false
@@ -295,6 +309,6 @@ jobs:
           body: |
             **Version:** `${{ env.NIGHTLY_VERSION }}`
             **Commit:** `${{ github.sha }}`
-          artifacts: "artifacts/*"
+          artifacts: "artifacts/**"
           prerelease: true
           makeLatest: false
