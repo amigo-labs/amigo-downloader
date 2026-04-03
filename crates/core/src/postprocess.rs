@@ -153,7 +153,7 @@ fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
             .replace('\\', "/")
             .split('/')
             .filter(|c| !c.is_empty() && *c != "." && *c != "..")
-            .map(|c| crate::sanitize_filename(c))
+            .map(crate::sanitize_filename)
             .collect::<Vec<_>>()
             .join("/");
         if sanitized.is_empty() {
