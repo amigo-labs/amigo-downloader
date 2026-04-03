@@ -76,22 +76,21 @@ module.exports = {
 
         // Extract file size
         let filesize: number | null = null;
-        const sizeMatch = amigo.regexMatch("([\\d.]+)\\s*(KB|MB|GB|TB)", page1.body);
-        if (sizeMatch) {
-            // regexMatch returns the first capture group (the number)
-            // We need the full match to get the unit too
-            const fullMatch = amigo.regexMatchAll("([\\d.]+)\\s*(KB|MB|GB|TB)", page1.body);
-            if (fullMatch.length >= 1) {
-                const num = parseFloat(sizeMatch);
-                const unitMatch = amigo.regexMatch("[\\d.]\\s*(KB|MB|GB|TB)", fullMatch[0]);
-                const unit = unitMatch ? unitMatch.toUpperCase() : "MB";
+        // Use a single capture group for "number + unit" together so regexMatch
+        // returns both parts (regexMatch returns the first capture group only).
+        const sizeFullMatch = amigo.regexMatch("(\\d[\\d.]*\\s*(?:KB|MB|GB|TB))", page1.body);
+        if (sizeFullMatch) {
+            const num = parseFloat(sizeFullMatch);
+            const unitMatch = amigo.regexMatch("(KB|MB|GB|TB)", sizeFullMatch);
+            if (!isNaN(num) && unitMatch) {
                 const multipliers: Record<string, number> = {
                     "KB": 1024,
                     "MB": 1024 * 1024,
                     "GB": 1024 * 1024 * 1024,
                     "TB": 1024 * 1024 * 1024 * 1024,
                 };
-                if (!isNaN(num) && multipliers[unit]) {
+                const unit = unitMatch.toUpperCase();
+                if (multipliers[unit]) {
                     filesize = Math.round(num * multipliers[unit]);
                 }
             }

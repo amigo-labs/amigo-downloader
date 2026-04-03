@@ -112,7 +112,10 @@
     const interval = setInterval(loadData, 10000);
 
     const ws = connectWebSocket((msg) => {
-      if (!msg.type || (msg.type !== "plugin_notification" && !msg.id)) return;
+      if (!msg.type) return;
+      // Some events (plugin_notification, queue_empty) have no id field
+      const idlessTypes = ["plugin_notification", "queue_empty"];
+      if (!msg.id && !idlessTypes.includes(msg.type)) return;
 
       if (msg.type === "progress") {
         const p = msg.data?.progress as
