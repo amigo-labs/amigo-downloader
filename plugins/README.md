@@ -32,7 +32,7 @@ module.exports = {
     urlPattern: "https?://(www\\.)?my-hoster\\.com/.+",
 
     resolve(url: string): DownloadPackage {
-        const resp: HttpResponse = JSON.parse(amigo.httpGet(url));
+        const resp = amigo.httpGet(url);
         const downloadUrl = amigo.regexMatch('href="([^"]+\\.zip)"', resp.body);
 
         return {
@@ -129,9 +129,9 @@ All access goes through `amigo.*` — plugins run sandboxed with no direct netwo
 
 | Function | Description |
 |---|---|
-| `amigo.httpGet(url)` | GET → JSON string `{status, body, headers}` |
-| `amigo.httpPost(url, body, contentType)` | POST → JSON string |
-| `amigo.httpHead(url)` | HEAD → JSON string `{status, headers}` |
+| `amigo.httpGet(url)` | GET → `HttpResponse {status, body, headers}` |
+| `amigo.httpPost(url, body, contentType)` | POST → `HttpResponse` |
+| `amigo.httpHead(url)` | HEAD → `HttpResponse {status, headers}` |
 | `amigo.setCookie(domain, name, value)` | Set cookie |
 | `amigo.getCookie(domain, name)` | Get cookie value |
 | `amigo.clearCookies(domain)` | Clear domain cookies |
