@@ -112,6 +112,8 @@
     const interval = setInterval(loadData, 10000);
 
     const ws = connectWebSocket((msg) => {
+      if (!msg.type || (msg.type !== "plugin_notification" && !msg.id)) return;
+
       if (msg.type === "progress") {
         const p = msg.data?.progress as
           | {

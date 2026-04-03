@@ -128,6 +128,11 @@ impl HttpDownloader {
         num_chunks: u32,
         progress_tx: watch::Sender<DownloadProgress>,
     ) -> Result<u64, crate::Error> {
+        if num_chunks == 0 {
+            return Err(crate::Error::Other(
+                "num_chunks must be greater than 0".into(),
+            ));
+        }
         let chunk_size = total_size / num_chunks as u64;
         let mut handles = Vec::with_capacity(num_chunks as usize);
 

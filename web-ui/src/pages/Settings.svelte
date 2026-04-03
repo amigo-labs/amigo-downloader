@@ -24,7 +24,7 @@
       config = cfg;
       webhooks = wh;
       if (cfg.features) features.set(cfg.features);
-    } catch { /* server offline */ }
+    } catch (e) { console.error("Failed to load config:", e); }
   });
 
   async function saveConfig() {

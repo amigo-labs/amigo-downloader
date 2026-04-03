@@ -20,8 +20,8 @@ FROM debian:bookworm-slim
 # Install runtime dependencies (ca-certificates for TLS, wget for healthcheck)
 RUN apt-get update && apt-get install -y ca-certificates wget && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user (UID 1000)
-RUN groupadd -r amigo && useradd -r -g amigo -d /config -s /sbin/nologin amigo
+# Create non-root user with explicit UID/GID 1000 for predictable volume permissions
+RUN groupadd -r -g 1000 amigo && useradd -r -u 1000 -g amigo -d /config -s /sbin/nologin amigo
 
 COPY --from=rust-builder /app/target/release/amigo-server /usr/local/bin/
 COPY --from=rust-builder /app/target/release/amigo-dl /usr/local/bin/

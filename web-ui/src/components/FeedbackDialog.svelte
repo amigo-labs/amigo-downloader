@@ -16,7 +16,7 @@
     try {
       const res = await fetch("/api/v1/system-info");
       if (res.ok) systemInfo = await res.json();
-    } catch { /* offline */ }
+    } catch (e) { console.error("Failed to fetch system info:", e); }
 
     // Auto-report crash if error_context provided via store (audit M5)
     if ($crashReport && systemInfo?.feedback_enabled) {
@@ -48,7 +48,7 @@
           addToast("info", `Crash reported as #${data.issue_number}`);
         }
       }
-    } catch { /* silent */ }
+    } catch (e) { console.error("Auto crash report failed:", e); }
   }
 
   function bugUrl() {

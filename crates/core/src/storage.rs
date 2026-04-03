@@ -271,15 +271,26 @@ impl Storage {
     ) -> Result<(), crate::Error> {
         let db = self.db.lock().await;
         let status_str = status.as_str();
-        let extra = match status {
-            QueueStatus::Downloading => ", started_at = datetime('now')",
-            QueueStatus::Completed => ", completed_at = datetime('now')",
-            _ => "",
-        };
-        db.execute(
-            &format!("UPDATE downloads SET status = ?1{extra} WHERE id = ?2"),
-            rusqlite::params![status_str, id],
-        )?;
+        match status {
+            QueueStatus::Downloading => {
+                db.execute(
+                    "UPDATE downloads SET status = ?1, started_at = datetime('now') WHERE id = ?2",
+                    rusqlite::params![status_str, id],
+                )?;
+            }
+            QueueStatus::Completed => {
+                db.execute(
+                    "UPDATE downloads SET status = ?1, completed_at = datetime('now') WHERE id = ?2",
+                    rusqlite::params![status_str, id],
+                )?;
+            }
+            _ => {
+                db.execute(
+                    "UPDATE downloads SET status = ?1 WHERE id = ?2",
+                    rusqlite::params![status_str, id],
+                )?;
+            }
+        }
         Ok(())
     }
 
