@@ -58,6 +58,8 @@ fn main() {
                 .path()
                 .app_data_dir()
                 .unwrap_or_else(|_| PathBuf::from("."));
+            std::fs::create_dir_all(&data_dir)
+                .expect("Failed to create app data directory");
             let db_path = data_dir.join("amigo.db");
             let download_dir = PathBuf::from(&config.download_dir);
             let temp_dir = PathBuf::from(&config.temp_dir);

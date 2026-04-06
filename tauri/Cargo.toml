@@ -14,11 +14,10 @@ license.workspace = true
 
 [features]
 default = []
-tauri = ["dep:tauri", "dep:tauri-plugin-shell", "dep:tauri-plugin-notification", "dep:tauri-plugin-deep-link", "dep:tauri-plugin-updater"]
+tauri = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-shell", "dep:tauri-plugin-notification", "dep:tauri-plugin-deep-link", "dep:tauri-plugin-updater", "dep:amigo-server"]
 
 [dependencies]
 amigo-core = { workspace = true }
-amigo-server = { path = "../crates/server" }
 amigo-plugin-runtime = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
@@ -32,6 +31,7 @@ tauri-plugin-shell = { version = "2", optional = true }
 tauri-plugin-notification = { version = "2", optional = true }
 tauri-plugin-deep-link = { version = "2", optional = true }
 tauri-plugin-updater = { version = "2", optional = true }
+amigo-server = { path = "../crates/server", optional = true }
 
 [build-dependencies]
-tauri-build = { version = "2", features = ["codegen"] }
+tauri-build = { version = "2", features = ["codegen"], optional = true }

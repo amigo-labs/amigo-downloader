@@ -24,7 +24,7 @@ pub async fn start_clicknload(coordinator: Arc<Coordinator>) -> anyhow::Result<(
         .route("/flash/addcrypted2", post(flash_addcrypted2))
         .with_state(coordinator);
 
-    let bind = "0.0.0.0:9666";
+    let bind = "127.0.0.1:9666";
     info!("Click'n'Load listener on {bind}");
 
     let listener = tokio::net::TcpListener::bind(bind).await?;
