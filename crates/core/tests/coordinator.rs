@@ -11,8 +11,10 @@ fn test_coordinator() -> Coordinator {
     let storage = Storage::open_memory().expect("Failed to open in-memory storage");
     // Set max_concurrent_downloads to 0 to prevent auto-start in tests
     // (avoids network calls and filesystem side effects)
-    let mut config = Config::default();
-    config.max_concurrent_downloads = 0;
+    let config = Config {
+        max_concurrent_downloads: 0,
+        ..Config::default()
+    };
     Coordinator::new(config, storage)
 }
 

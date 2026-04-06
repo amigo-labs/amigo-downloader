@@ -9,9 +9,11 @@ use amigo_core::config::Config;
 
 /// Spawn a test server on a random port. Returns the bound address.
 async fn spawn_test_server() -> SocketAddr {
-    let mut config = Config::default();
     // Prevent auto-start of downloads during tests
-    config.max_concurrent_downloads = 0;
+    let config = Config {
+        max_concurrent_downloads: 0,
+        ..Config::default()
+    };
 
     let state = amigo_server::build_test_state(config);
     let app = amigo_server::build_test_router(state);
