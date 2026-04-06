@@ -79,6 +79,15 @@ fn main() {
             std::thread::spawn(move || {
                 rt.block_on(async {
                     let _ = coord.recover_downloads().await;
+
+                    // Start Click'n'Load listener on port 9666
+                    let cnl_coord = coord.clone();
+                    tokio::spawn(async move {
+                        if let Err(e) = amigo_server::clicknload::start_clicknload(cnl_coord).await {
+                            tracing::warn!("Click'n'Load failed to start: {e}");
+                        }
+                    });
+
                     tracing::info!("Desktop app: core engine running");
                     tokio::signal::ctrl_c().await.ok();
                 });
