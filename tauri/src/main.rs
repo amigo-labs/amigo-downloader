@@ -23,6 +23,7 @@
 fn main() {
     use std::path::PathBuf;
     use std::sync::Arc;
+    use tauri::Manager;
 
     // Signal to amigo-core that we are running inside Tauri.
     // This must be set before any core initialization so that
@@ -40,54 +41,56 @@ fn main() {
     // Load config
     let config = amigo_core::config::Config::load_auto();
 
-    // Initialize storage
-    let data_dir = tauri::api::path::app_data_dir(&tauri::Config::default())
-        .unwrap_or_else(|| PathBuf::from("."));
-    let db_path = data_dir.join("amigo.db");
-    let download_dir = PathBuf::from(&config.download_dir);
-    let temp_dir = PathBuf::from(&config.temp_dir);
-
-    let storage = amigo_core::storage::Storage::open(db_path, download_dir, temp_dir)
-        .expect("Failed to initialize storage");
-
-    let coordinator = Arc::new(amigo_core::coordinator::Coordinator::new(
-        config.clone(),
-        storage,
-    ));
-
-    // Build Tauri app
+    // Build Tauri app — storage is initialized in setup() where we have
+    // access to the app handle for resolving platform-specific data dirs.
     tauri::Builder::default()
-        // System tray
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_notification::init())
-        // Deep links: magnet:, nzb://
         .plugin(tauri_plugin_deep_link::init())
-        // Auto-updater via Tauri's built-in mechanism
         .plugin(tauri_plugin_updater::Builder::new().build())
-        // Share coordinator state with Tauri commands
-        .manage(coordinator.clone())
-        // Tauri commands callable from the frontend
         .invoke_handler(tauri::generate_handler![
             cmd_add_download,
             cmd_get_stats,
         ])
-        .setup(|app| {
-            // Start the Axum API server in the background
+        .setup(move |app| {
+            // Resolve platform data dir via Tauri v2 API
+            let data_dir = app
+                .path()
+                .app_data_dir()
+                .unwrap_or_else(|_| PathBuf::from("."));
+            std::fs::create_dir_all(&data_dir)
+                .expect("Failed to create app data directory");
+            let db_path = data_dir.join("amigo.db");
+            let download_dir = PathBuf::from(&config.download_dir);
+            let temp_dir = PathBuf::from(&config.temp_dir);
+
+            let storage = amigo_core::storage::Storage::open(db_path, download_dir, temp_dir)
+                .expect("Failed to initialize storage");
+
+            let coordinator = Arc::new(amigo_core::coordinator::Coordinator::new(
+                config.clone(),
+                storage,
+            ));
+
+            // Share coordinator state with Tauri commands
+            app.manage(coordinator.clone());
+
+            // Start the core engine in the background
             let coord = coordinator.clone();
             let rt = tokio::runtime::Runtime::new().unwrap();
             std::thread::spawn(move || {
                 rt.block_on(async {
-                    // Recover interrupted downloads
                     let _ = coord.recover_downloads().await;
 
-                    // Start Click'n'Load listener
+                    // Start Click'n'Load listener on port 9666
                     let cnl_coord = coord.clone();
                     tokio::spawn(async move {
-                        let _ = amigo_core::clicknload::start_clicknload(cnl_coord).await;
+                        if let Err(e) = amigo_server::clicknload::start_clicknload(cnl_coord).await {
+                            tracing::warn!("Click'n'Load failed to start: {e}");
+                        }
                     });
 
                     tracing::info!("Desktop app: core engine running");
-                    // Keep the runtime alive
                     tokio::signal::ctrl_c().await.ok();
                 });
             });
