@@ -31,3 +31,6 @@ tauri-plugin-shell = { version = "2", optional = true }
 tauri-plugin-notification = { version = "2", optional = true }
 tauri-plugin-deep-link = { version = "2", optional = true }
 tauri-plugin-updater = { version = "2", optional = true }
+
+[build-dependencies]
+tauri-build = { version = "2", features = ["codegen"] }
