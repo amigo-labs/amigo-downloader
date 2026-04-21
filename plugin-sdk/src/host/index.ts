@@ -20,6 +20,8 @@ export type {
   HostHttpResponse,
   HostJavascriptApi,
   HostJavascriptEvalOptions,
+  HostPermission,
+  HostPermissionsApi,
   HostUtilApi,
   HttpMethod,
 } from "./types.js";

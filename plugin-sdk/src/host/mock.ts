@@ -6,6 +6,7 @@ import type {
   HostHttpRequest,
   HostHttpResponse,
   HostJavascriptApi,
+  HostPermissionsApi,
   HostUtilApi,
 } from "./types.js";
 
@@ -20,6 +21,7 @@ export interface MockHostApiOptions {
   readonly util?: Partial<HostUtilApi>;
   readonly javascript?: HostJavascriptApi;
   readonly captcha?: HostCaptchaApi;
+  readonly permissions?: HostPermissionsApi | readonly string[];
 }
 
 export interface MockHostApiController {
@@ -152,6 +154,16 @@ export function createMockHostApi(options: MockHostApiOptions = {}): MockHostApi
   const javascript = options.javascript ?? defaultJavascript();
   const captcha = options.captcha ?? defaultCaptcha();
   const html = options.html ?? defaultHtml();
+  const permissions: HostPermissionsApi = (() => {
+    if (!options.permissions) {
+      return { has: () => true };
+    }
+    if (Array.isArray(options.permissions)) {
+      const granted = new Set(options.permissions);
+      return { has: (permission) => granted.has(permission) };
+    }
+    return options.permissions as HostPermissionsApi;
+  })();
 
   const api: HostApi = {
     async http(request) {
@@ -170,6 +182,7 @@ export function createMockHostApi(options: MockHostApiOptions = {}): MockHostApi
     util,
     javascript,
     captcha,
+    permissions,
   };
 
   return {

@@ -5,6 +5,7 @@ import type {
   HostHttpRequest,
   HostHttpResponse,
   HostJavascriptApi,
+  HostPermissionsApi,
   HostUtilApi,
 } from "./types.js";
 
@@ -17,4 +18,5 @@ export interface HostApi {
   util: HostUtilApi;
   javascript: HostJavascriptApi;
   captcha: HostCaptchaApi;
+  permissions: HostPermissionsApi;
 }

@@ -98,6 +98,17 @@ export interface HostCaptchaApi {
   reportFailed?(jobId: string): void | Promise<void>;
 }
 
+export type HostPermission =
+  | "javascript_eval"
+  | "captcha"
+  | "account"
+  | "container"
+  | "http_external";
+
+export interface HostPermissionsApi {
+  has(permission: HostPermission | string): boolean;
+}
+
 export type HostErrorCode =
   | "TimeoutError"
   | "AbortError"
