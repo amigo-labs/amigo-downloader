@@ -68,6 +68,36 @@ export interface HostJavascriptApi {
   eval<T = unknown>(code: string, options?: HostJavascriptEvalOptions): Promise<T>;
 }
 
+export type HostCaptchaKind =
+  | "recaptcha_v2"
+  | "recaptcha_v3"
+  | "hcaptcha"
+  | "turnstile"
+  | "image"
+  | "interactive";
+
+export interface HostCaptchaRequest {
+  readonly kind: HostCaptchaKind;
+  readonly siteKey?: string;
+  readonly pageUrl?: string;
+  readonly action?: string;
+  readonly imageUrl?: string;
+  readonly prompt?: string;
+  readonly mode?: "text" | "math";
+  readonly invisible?: boolean;
+  readonly signal?: AbortSignal;
+}
+
+export interface HostCaptchaResult {
+  readonly token: string;
+  readonly jobId?: string;
+}
+
+export interface HostCaptchaApi {
+  solve(request: HostCaptchaRequest): Promise<HostCaptchaResult>;
+  reportFailed?(jobId: string): void | Promise<void>;
+}
+
 export type HostErrorCode =
   | "TimeoutError"
   | "AbortError"

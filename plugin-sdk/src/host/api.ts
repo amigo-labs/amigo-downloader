@@ -1,4 +1,5 @@
 import type {
+  HostCaptchaApi,
   HostCryptoApi,
   HostHtmlDocument,
   HostHttpRequest,
@@ -15,4 +16,5 @@ export interface HostApi {
   crypto: HostCryptoApi;
   util: HostUtilApi;
   javascript: HostJavascriptApi;
+  captcha: HostCaptchaApi;
 }

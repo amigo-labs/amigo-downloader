@@ -1,5 +1,6 @@
 import type { HostApi } from "./api.js";
 import type {
+  HostCaptchaApi,
   HostCryptoApi,
   HostHtmlDocument,
   HostHttpRequest,
@@ -18,6 +19,7 @@ export interface MockHostApiOptions {
   readonly crypto?: Partial<HostCryptoApi>;
   readonly util?: Partial<HostUtilApi>;
   readonly javascript?: HostJavascriptApi;
+  readonly captcha?: HostCaptchaApi;
 }
 
 export interface MockHostApiController {
@@ -125,6 +127,14 @@ function defaultJavascript(): HostJavascriptApi {
   };
 }
 
+function defaultCaptcha(): HostCaptchaApi {
+  return {
+    solve: () => {
+      throw new Error("MockHostApi.captcha.solve not configured");
+    },
+  };
+}
+
 function defaultHtml(): HostApi["html"] {
   return {
     parse: (): HostHtmlDocument => {
@@ -140,6 +150,7 @@ export function createMockHostApi(options: MockHostApiOptions = {}): MockHostApi
   const util: HostUtilApi = { ...defaultUtil(), ...options.util };
   const cryptoApi: HostCryptoApi = { ...defaultCrypto(), ...options.crypto };
   const javascript = options.javascript ?? defaultJavascript();
+  const captcha = options.captcha ?? defaultCaptcha();
   const html = options.html ?? defaultHtml();
 
   const api: HostApi = {
@@ -158,6 +169,7 @@ export function createMockHostApi(options: MockHostApiOptions = {}): MockHostApi
     crypto: cryptoApi,
     util,
     javascript,
+    captcha,
   };
 
   return {

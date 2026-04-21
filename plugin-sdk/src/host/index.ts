@@ -7,6 +7,10 @@ export {
 } from "./injection.js";
 export type {
   HeaderMap,
+  HostCaptchaApi,
+  HostCaptchaKind,
+  HostCaptchaRequest,
+  HostCaptchaResult,
   HostCryptoApi,
   HostErrorCode,
   HostErrorShape,
