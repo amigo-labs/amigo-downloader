@@ -120,6 +120,7 @@ version = "0.1.0"
 dependencies = [
  "amigo-core",
  "amigo-plugin-runtime",
+ "amigo-server",
  "serde",
  "serde_json",
  "tauri",
