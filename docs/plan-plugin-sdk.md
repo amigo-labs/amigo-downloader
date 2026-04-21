@@ -142,3 +142,99 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
 - JSON-Parse auf Non-JSON-Body wirft strukturierten Error.
 
 ---
+
+## Phase 3: Regex, JSON, HTML, Encoding
+
+**Ziel:** Die kleinen Helpers, ohne die kein Plugin auskommt. JDownloader-Äquivalenz.
+
+**Aufgaben:**
+
+**Regex:**
+
+- Standalone `regex(input, pattern): RegexResult` — für das JDownloader-Pattern `new Regex(str, "...").getMatch(0)` bei beliebigen Strings.
+- `RegexResult`-Interface: `getMatch(groupIndex): string | null`, `getMatches(): string[][]`, `getColumn(index): string[]`, `matches(): boolean`.
+- Leere Matches sauber: null/leeres Array, kein Throw.
+
+**JSON:**
+
+- `json.parse<T>(source): T`.
+- `json.walk(object, path)` mit Path wie `"a/b/c"` — verschachtelter Zugriff, null wenn irgendwo unterwegs nicht vorhanden.
+- Typ-sichere Getter: `json.getString`, `json.getNumber`, `json.getBool`, `json.getArray`, `json.getObject`.
+- `json.extract(source, key)` — Regex-basierte Extraktion von JSON-Werten aus HTML/Text, Äquivalent zu JDownloaders `PluginJSonUtils.getJson`. Muss verschiedene Quote-Styles und Escape-Sequenzen handhaben.
+
+**Encoding:**
+
+- `encoding.urlEncode`, `encoding.urlDecode`.
+- `encoding.htmlDecode` mit vollständiger Entity-Tabelle, `encoding.htmlEncode`.
+- `encoding.unicodeDecode` — `\uXXXX` und `\xXX` Sequenzen in Strings auflösen.
+- `encoding.base64Encode`, `encoding.base64Decode`, `encoding.hexEncode`, `encoding.hexDecode`.
+- Alle Funktionen akzeptieren String oder Uint8Array wo sinnvoll.
+
+**HTML-Helpers:**
+
+- Parse-Funktion: `html.parse(htmlString, baseUrl?): Document` (intern via Host-API).
+- Document-Interface mit den gleichen Methoden wie Page (find, findFirst, forms).
+- Strip-HTML-Helper: `html.stripTags(source): string`.
+
+**Deliverable:** Alle Extraction-Helpers funktionsfähig, gut getestet mit realen Fixtures aus JDownloader-Plugin-Szenarien.
+
+**Tests:**
+
+- Regex-Extraktion auf realen HTML-Snippets (Fixtures aus echten Hostern).
+- HTML-Entity-Decoding: `&#x1F600;`, `&nbsp;`, numerische Entities, benannte Entities.
+- JSON-Walk mit fehlenden Zwischenschritten gibt null.
+- `json.extract` auf typischen Patterns: `"token":"abc"`, `'token': 'abc'`, `token: "abc"`.
+- Base64-Roundtrip mit Binary-Daten (nicht nur ASCII).
+- Unicode-Decode mit gemischten Escape-Styles.
+
+---
+
+## Phase 4: Form-Handling
+
+**Ziel:** Das häufigste Szenario: Formular finden, Feld ändern, submitten.
+
+**Aufgaben:**
+
+- Klasse `Form` mit: `action`, `method`, `inputs: Record<string, string>`, `put(name, value)`, `get(name)`, `remove(name)`, `submit(overrides?): Promise<Page>`.
+- Form wird aus HTML-Element extrahiert: action-URL resolved gegen Page-URL, Method extrahiert, alle `input`-, `select`- und `textarea`-Felder mit aktuellen Values gesammelt.
+- `form.submit()` macht intern HTTP-Call über den zugehörigen Browser. Form behält Browser-Referenz.
+- Multipart-Forms unterstützen, wenn Host-API das kann.
+- CSS-Selektor-basierte Suche: `page.getForm("#login")` oder Index-basiert: `page.getForm(0)`. Ohne Argument: erstes Form-Element.
+- Edge Cases: Forms ohne action (resolved auf aktuelle URL), Forms ohne method (Default GET), relative URLs in action (gegen Page-Base-URL resolven).
+
+**Deliverable:** Form-Handling funktioniert für Login-Flows, Captcha-Submit-Flows, Multi-Step-Wizards.
+
+**Tests:**
+
+- Form-Extraktion aus HTML mit versteckten Feldern, Selects mit selected-Option, Checkboxes.
+- Submit mit Overrides: vorhandenes Feld wird überschrieben, neues Feld wird hinzugefügt.
+- Relative action-URL wird korrekt gegen Page-URL resolved.
+- Form kann submitted werden, Browser-State wird danach aktualisiert.
+- Form mit method="GET" appended Params an URL statt Body.
+- Form ohne action submitted auf aktuelle URL.
+
+---
+
+## Phase 5: Error-System
+
+**Ziel:** Typisierte, vom Host interpretierbare Errors mit Mapping auf JDownloader-LinkStatus-Semantik.
+
+**Aufgaben:**
+
+- Basisklasse `PluginError extends Error` mit `code: ErrorCode`, `retryAfterMilliseconds?: number`, `cause?: unknown`.
+- Vollständiger `ErrorCode`-Union-Type: `"FileNotFound"`, `"PluginDefect"`, `"PremiumOnly"`, `"TemporarilyUnavailable"`, `"IpBlocked"`, `"CaptchaFailed"`, `"CaptchaUnsolvable"`, `"HosterUnavailable"`, `"DownloadLimitReached"`, `"AuthFailed"`, `"AuthRequired"`, `"Fatal"`, `"Retry"`, `"HttpError"`, `"TimeoutError"`, `"AbortError"`, `"ParseError"`, `"BudgetExceeded"`, `"PermissionDenied"`, `"BodyTooLarge"`, `"EvalError"`, `"ContainerDecryptionFailed"`, `"ManifestParseError"`.
+- Factory-Funktionen im `errors`-Namespace, typisiert als `never`-returning. Das erlaubt `if (condition) errors.fileNotFound();` ohne explizites `throw`.
+- Jede Factory akzeptiert optional Message und Zusatz-Infos (z.B. `retryAfterMilliseconds`).
+- Serialisierung: Error muss über Host-Grenze hinweg serialisierbar sein. Der Rust-Host mappt `code` auf UI-Actions.
+- Nicht-PluginError-Errors (echte Bugs, unbekannte Exceptions) werden vom Host in `PluginDefect` mit Stack-Trace-Attachment konvertiert.
+
+**Deliverable:** Plugin-Code kann idiomatisch Errors werfen, die vom Host korrekt kategorisiert werden.
+
+**Tests:**
+
+- Jede Factory erzeugt Error mit korrektem Code.
+- `retryAfterMilliseconds` wird korrekt serialisiert.
+- Error-Cause-Chain funktioniert.
+- Unbekannte Throws werden zu `PluginDefect` mit Original-Message und Stack.
+
+---
