@@ -49,7 +49,7 @@ tokio-native-tls = "0.3"
 rusqlite = { version = "0.32", features = ["bundled"] }
 
 # Web framework
-axum = { version = "0.8", features = ["ws"] }
+axum = { version = "0.8", features = ["ws", "multipart"] }
 tower-http = { version = "0.6", features = ["cors", "fs"] }
 
 # CLI

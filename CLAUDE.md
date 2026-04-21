@@ -2,7 +2,7 @@
 
 ## Projekt-Vision
 
-**amigo-downloader** ist ein performanter, modularer Download-Manager in Rust mit TypeScript-Plugin-System (QuickJS + SWC), responsiver Web-UI und nativen Apps via Tauri. Ziel: das beste Download-Tool das es gibt — schneller als JDownloader, leichter als pyLoad, erweiterbar für HTTP, Usenet und Torrent.
+**amigo-downloader** ist ein performanter, modularer Download-Manager in Rust mit TypeScript-Plugin-System (QuickJS + SWC), responsiver Web-UI und nativen Apps via Tauri. Ziel: das beste Download-Tool das es gibt — schneller als JDownloader, leichter als pyLoad, mit Built-in-Support für HTTP, Usenet, HLS und DASH.
 
 Organisation: `amigo-labs` auf GitHub.
 
@@ -91,7 +91,12 @@ Organisation: `amigo-labs` auf GitHub.
 ```
 amigo-downloader/
 ├── CLAUDE.md
+├── README.md
+├── LICENSE
 ├── Cargo.toml                   # Workspace root
+├── Cargo.lock
+├── Cross.toml                   # cross-rs build config
+├── release-please-config.json
 ├── crates/
 │   ├── core/
 │   │   ├── Cargo.toml
@@ -103,6 +108,7 @@ amigo-downloader/
 │   │       ├── queue.rs
 │   │       ├── retry.rs
 │   │       ├── postprocess.rs
+│   │       ├── captcha.rs       # Captcha manager (pending requests)
 │   │       ├── container.rs     # DLC Import/Export
 │   │       ├── i18n.rs          # Internationalization
 │   │       ├── updater.rs       # Self-update logic
@@ -132,7 +138,7 @@ amigo-downloader/
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── engine.rs        # QuickJS VM execution
-│   │       ├── host_api.rs
+│   │       ├── host_api.rs      # amigo.* host functions
 │   │       ├── loader.rs
 │   │       ├── registry.rs      # Plugin marketplace
 │   │       ├── sandbox.rs
@@ -143,12 +149,17 @@ amigo-downloader/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── main.rs
-│   │       ├── api.rs
-│   │       ├── ws.rs
+│   │       ├── lib.rs
+│   │       ├── api.rs           # REST API routes
+│   │       ├── background.rs    # Background tasks (RSS, etc.)
+│   │       ├── ws.rs            # WebSocket endpoint
 │   │       ├── clicknload.rs    # Click'n'Load on port 9666
+│   │       ├── nzbget_api.rs    # NZBGet JSON-RPC compat layer
+│   │       ├── resolver.rs      # URL → plugin resolver
+│   │       ├── webhooks.rs      # Outbound webhook dispatcher
 │   │       ├── feedback.rs      # Bug/crash reporting
 │   │       ├── update_api.rs    # Self-update endpoints
-│   │       └── static_files.rs
+│   │       └── static_files.rs  # Embedded Web UI
 │   └── cli/
 │       ├── Cargo.toml
 │       └── src/
@@ -165,26 +176,45 @@ amigo-downloader/
 │       │   ├── stores.ts
 │       │   └── toast.ts
 │       ├── components/
-│       │   ├── AddDialog.svelte
+│       │   ├── AddPanel.svelte
+│       │   ├── CaptchaDialog.svelte
 │       │   ├── ChunkViz.svelte
+│       │   ├── ContextMenu.svelte
+│       │   ├── DetailPanel.svelte
 │       │   ├── DownloadCard.svelte
-│       │   ├── DownloadRow.svelte
+│       │   ├── DownloadCompactRow.svelte
 │       │   ├── DropZone.svelte
 │       │   ├── FeedbackDialog.svelte
+│       │   ├── Icon.svelte
 │       │   ├── Mascot.svelte
+│       │   ├── ProgressRing.svelte
+│       │   ├── ShortcutsDialog.svelte
+│       │   ├── SidePanel.svelte
+│       │   ├── SkeletonCard.svelte
 │       │   ├── Sparkline.svelte
-│       │   └── Toasts.svelte
+│       │   ├── Toasts.svelte
+│       │   └── settings/         # Settings subpanels
 │       └── pages/
 │           ├── Downloads.svelte
 │           ├── History.svelte
 │           ├── Plugins.svelte
-│           ├── Queue.svelte
-│           └── Settings.svelte
+│           ├── Settings.svelte
+│           └── UsenetServers.svelte
 ├── tauri/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
 │   └── src/
 │       └── main.rs
+├── plugin-sdk/                   # @amigo/plugin-sdk — TS SDK for plugin authors
+│   ├── package.json
+│   ├── tsconfig.json
+│   ├── vitest.config.ts
+│   ├── src/
+│   ├── test/
+│   └── docs/
+│       ├── cookbook.md
+│       ├── jdownloader-mapping.md
+│       └── tutorial.md
 ├── plugins/
 │   ├── README.md
 │   ├── template/
@@ -192,7 +222,12 @@ amigo-downloader/
 │   ├── types/
 │   │   └── amigo.d.ts           # TypeScript type definitions
 │   ├── hosters/
-│   │   └── generic-http/
+│   │   ├── generic-http/
+│   │   └── xfilesharing/
+│   ├── multi-hosters/           # Premium aggregator plugins
+│   │   ├── alldebrid/
+│   │   ├── premiumize/
+│   │   └── real-debrid/
 │   └── extractors/
 │       └── youtube/
 ├── locales/
@@ -202,7 +237,10 @@ amigo-downloader/
 │   └── install.sh
 ├── docker/
 │   ├── Dockerfile
-│   └── docker-compose.yml
+│   ├── Dockerfile.dev
+│   ├── docker-compose.yml       # Pulls the published image
+│   ├── docker-compose.local.yml # Builds from source
+│   └── docker-compose.dev.yml
 ├── tests/
 │   ├── integration/
 │   └── plugins/
@@ -210,7 +248,9 @@ amigo-downloader/
     ├── plugin-api.md
     ├── architecture.md
     ├── plan-youtube-hls-dash.md
-    └── protocol-backends.md
+    ├── plan-plugin-sdk.md
+    ├── protocol-backends.md
+    └── specs/                    # Spec-driven development
 ```
 
 ---
@@ -254,11 +294,10 @@ amigo-downloader/
 - HTTPS mit nativer TLS (rustls)
 - Streaming-Downloads für unbekannte Dateigröße
 
-#### BitTorrent
-- Magnetlink- und .torrent-Datei-Support
-- DHT, PEX, Selektiver Datei-Download
-- Seeding mit konfigurierbarem Ratio-Limit
-- Encryption (PE/MSE), IPv6, UPnP/NAT-PMP
+#### HLS & DASH
+- HLS-Manifest-Parsing (m3u8-rs) inkl. Varianten- und Audio-Track-Auswahl
+- DASH/MPD-Manifest-Parsing (dash-mpd), Segment-Downloads
+- Nutzbar sowohl von Built-in-Extractors (YouTube) als auch aus Plugins via `protocol: "hls" | "dash"` im `DownloadInfo`
 
 #### Usenet (NNTP/NNTPS)
 - SSL/TLS, Multi-Server mit Prioritäten
@@ -310,63 +349,125 @@ amigo-downloader/
 
 Plugins sind TypeScript-Dateien (`.ts`), die zur Ladezeit via SWC nach JavaScript transpiliert und in einer sandboxed QuickJS VM ausgeführt werden.
 
-### Host-API
-
-```typescript
-// Netzwerk
-async function http_get(url: string, headers?: Record<string, string>): Promise<Response>;
-async function http_post(url: string, body: string, content_type: string): Promise<Response>;
-async function http_head(url: string): Promise<Response>;
-
-// Cookie Management
-function set_cookie(domain: string, name: string, value: string): void;
-function get_cookie(domain: string, name: string): string | null;
-function clear_cookies(domain: string): void;
-
-// Parsing Helpers
-function regex_match(pattern: string, text: string): string | null;
-function regex_match_all(pattern: string, text: string): string[];
-function html_select(html: string, css_selector: string): string[];
-function html_attr(element: string, attr: string): string | null;
-function json_parse(text: string): any;
-function base64_decode(input: string): string;
-function base64_encode(input: string): string;
-
-// Crypto
-function aes_decrypt(data: string, key: string, iv: string): string;
-function md5(input: string): string;
-function sha256(input: string): string;
-
-// Logging, Storage, Captcha, Notifications
-function log_info(msg: string): void;
-function storage_get(key: string): string | null;
-function storage_set(key: string, value: string): void;
-async function captcha_solve_image(image_url: string): Promise<string>;
-function notify(title: string, message: string): void;
-function set_filename(name: string): void;
-function set_filesize(bytes: number): void;
-function set_wait(seconds: number): void;
-```
+Die autoritative Plugin-API-Referenz ist `docs/plugin-api.md`; die vollständigen TypeScript-Typen liegen in `plugins/types/amigo.d.ts`. Dieser Abschnitt ist nur eine Zusammenfassung.
 
 ### Plugin-Interface
 
-```typescript
-// REQUIRED
-export function plugin_id(): string;
-export function plugin_name(): string;
-export function plugin_version(): string;
-export function url_pattern(): string;
-export async function resolve(url: string): Promise<DownloadInfo>;
+Ein Plugin exportiert ein Objekt über `module.exports` (CommonJS-Stil, QuickJS ist synchron):
 
-// OPTIONAL
-export function supports_premium(): boolean;
-export async function login(username: string, password: string): Promise<boolean>;
-export async function decrypt_container(data: string): Promise<string[]>;
-export async function resolve_folder(url: string): Promise<string[]>;
-export async function check_online(url: string): Promise<OnlineStatus>;
+```typescript
+/// <reference path="../types/amigo.d.ts" />
+
+module.exports = {
+    // Required
+    id: "my-hoster",
+    name: "My Hoster",
+    version: "1.0.0",
+    urlPattern: "https?://my-hoster\\.com/.+",
+
+    resolve(url: string): DownloadPackage {
+        const page = amigo.httpGet(url);
+        const link = amigo.htmlQueryAttr(page.body, "a.download-btn", "href");
+        return {
+            name: amigo.htmlExtractTitle(page.body) || "Download",
+            downloads: [{
+                url: amigo.urlResolve(url, link!),
+                filename: null, filesize: null,
+                chunks_supported: true, max_chunks: null,
+                headers: null, cookies: null, wait_seconds: null,
+                mirrors: [],
+            }],
+        };
+    },
+
+    // Optional
+    description: "...", author: "...",
+    pluginType: "hoster",                 // "multi-hoster" | "hoster" | "generic"
+    checkOnline(url): "online" | "offline" | "unknown" { /* ... */ },
+    login(username, password): boolean { /* ... */ },
+    supportsPremium(): boolean { /* ... */ },
+    decryptContainer(data): string[] { /* ... */ },
+    resolveFolder(url): string[] { /* ... */ },
+    postProcess(context): PostProcessResult { /* ... */ },
+} satisfies AmigoPlugin;
 ```
 
-Type definitions for IDE support: `plugins/types/amigo.d.ts`
+Wichtig: `resolve()` und alle Plugin-Callbacks sind **synchron**. Die Host-API blockiert intern (via `spawn_blocking` in der Runtime). Kein `await`, kein `async`.
+
+### Host-API (`amigo.*`)
+
+Alle Funktionen sind unter dem globalen `amigo`-Objekt verfügbar. camelCase-Namen, synchron, gehen durch die Sandbox.
+
+```typescript
+// HTTP (keine direkten Netz-Calls)
+amigo.httpGet(url, opts?): HttpResponse
+amigo.httpPost(url, body, contentType, opts?): HttpResponse
+amigo.httpHead(url, opts?): HeadResponse
+amigo.httpGetJson(url, opts?): HttpJsonResponse
+amigo.httpPostForm(url, fields, opts?): HttpResponse
+amigo.httpGetBinary(url, opts?): string          // base64
+amigo.httpFollowRedirects(url, opts?): string
+
+// Cookies
+amigo.setCookie(domain, name, value): void
+amigo.getCookie(domain, name): string | null
+amigo.clearCookies(domain): void
+
+// URL helpers
+amigo.urlResolve(base, relative): string
+amigo.urlParse(url): ParsedUrl
+amigo.urlFilename(url): string | null
+
+// HTML helpers (scraper crate)
+amigo.htmlQueryAll(html, selector): string[]
+amigo.htmlQueryText(html, selector): string | null
+amigo.htmlQueryAttr(html, selector, attr): string | null
+amigo.htmlQueryAllAttrs(html, selector, attr): string[]
+amigo.htmlSearchMeta(html, names): string | null
+amigo.htmlExtractTitle(html): string | null
+amigo.htmlHiddenInputs(html): Record<string, string>
+amigo.searchJson(startPattern, html): any | null
+
+// Regex
+amigo.regexMatch(pattern, text): string | null
+amigo.regexMatchAll(pattern, text): string[]
+amigo.regexReplace(pattern, text, replacement): string | null
+amigo.regexTest(pattern, text): boolean
+amigo.regexSplit(pattern, text): string[]
+
+// Encoding & crypto
+amigo.base64Encode(input): string
+amigo.base64Decode(input): string
+amigo.md5(input): string                         // hex
+amigo.sha1(input): string                        // hex
+amigo.sha256(input): string                      // hex
+amigo.hmacSha256(key, data): string              // hex
+amigo.aesEncryptCbc(data, key, iv): string       // base64 in/out, hex key/iv
+amigo.aesDecryptCbc(data, key, iv): string
+
+// Utility
+amigo.parseDuration(input): number | null        // "1:23:45" / "PT2H30M" → seconds
+amigo.sanitizeFilename(name): string
+amigo.traverse(obj, path): any | null            // safe deep access
+
+// Captcha (blocks until solved in Web UI, throws on timeout/skip)
+amigo.solveCaptcha(imageUrl, type?): string      // "image" | "recaptcha" | "hcaptcha"
+
+// Notifications, logging, per-plugin storage
+amigo.notify(title, message): void
+amigo.logInfo / logWarn / logError / logDebug(msg): void
+amigo.storageGet(key): string | null
+amigo.storageSet(key, value): void
+amigo.storageDelete(key): void
+```
+
+Ebenfalls verfügbar: `console.log` / `console.warn` / `console.error`.
+
+Dateiname/Dateigröße/Wait werden **nicht** über Setter-Funktionen gemeldet — sie gehören ins zurückgegebene `DownloadInfo` (`filename`, `filesize`, `wait_seconds`).
+
+### TypeScript-SDK (`plugin-sdk/`)
+
+Für komplexere Plugins existiert das separate Package `@amigo/plugin-sdk` mit höheren Abstraktionen (Browser, Page, Form, CookieJar, Captcha-Helpers, HLS/DASH-Manifest-Parser, Container-Helpers). Der Plan ist in `docs/plan-plugin-sdk.md` dokumentiert, Tutorials in `plugin-sdk/docs/`.
 
 ### Plugin Registry & Updates
 - Marketplace: Plugins aus der Registry installieren/suchen
@@ -382,67 +483,121 @@ Type definitions for IDE support: `plugins/types/amigo.d.ts`
 
 ## REST API
 
+Alle Routen unter `/api/v1/`. DLC-Import per HTTP geht über `POST /downloads/container` (multipart, Feld `file`); DLC-Export läuft aktuell nur über die CLI (`amigo-dl export-dlc`).
+
 ```
-GET    /api/v1/status
-GET    /api/v1/stats
+# Server status
+GET    /status
+GET    /stats
+GET    /system-info
 
-POST   /api/v1/downloads
-GET    /api/v1/downloads
-GET    /api/v1/downloads/:id
-PATCH  /api/v1/downloads/:id
-DELETE /api/v1/downloads/:id
+# Downloads
+POST   /downloads                         # single URL
+GET    /downloads
+GET    /downloads/{id}
+PATCH  /downloads/{id}                    # pause / resume
+DELETE /downloads/{id}                    # cancel + remove
+POST   /downloads/batch                   # multiple URLs
+POST   /downloads/nzb                     # upload NZB
+POST   /downloads/container               # import DLC (multipart, field "file")
+GET    /downloads/usenet                  # list usenet downloads only
 
-POST   /api/v1/downloads/batch
-POST   /api/v1/downloads/nzb
-POST   /api/v1/downloads/torrent
-POST   /api/v1/downloads/container       # DLC/CCF Import
-GET    /api/v1/downloads/export/dlc       # DLC Export
+# Queue & history
+GET    /queue
+PATCH  /queue/reorder
+GET    /history
+DELETE /history
 
-GET    /api/v1/queue
-PATCH  /api/v1/queue/reorder
-POST   /api/v1/queue/packages
+# Usenet servers
+GET    /usenet/servers
+POST   /usenet/servers
+DELETE /usenet/servers/{id}
+GET    /usenet/watch-dir
+POST   /usenet/watch-dir
 
-GET    /api/v1/plugins
-PATCH  /api/v1/plugins/:id
-POST   /api/v1/plugins/:id/login
+# Plugins
+GET    /plugins
+PATCH  /plugins/{id}
+POST   /plugins/suggest                   # suggest a plugin for a URL
 
-GET    /api/v1/usenet/servers
-POST   /api/v1/usenet/servers
-DELETE /api/v1/usenet/servers/:id
+# Captcha (manual solving via Web UI)
+GET    /captcha/pending
+POST   /captcha/{id}/solve
+POST   /captcha/{id}/cancel
 
-GET    /api/v1/torrent/:id/peers
-GET    /api/v1/torrent/:id/trackers
+# Webhooks
+GET    /webhooks
+POST   /webhooks
+DELETE /webhooks/{id}
+POST   /webhooks/{id}/test
 
-GET    /api/v1/history
-DELETE /api/v1/history
+# RSS feeds
+GET    /rss
+POST   /rss
+DELETE /rss/{id}
 
-GET    /api/v1/config
-PATCH  /api/v1/config
+# Self-update (core + plugins)
+GET    /updates/check
+POST   /updates/core
+POST   /updates/plugins/{id}
+POST   /updates/plugins/{id}/install
 
-WS     /api/v1/ws
+# Config (single unified TOML resource)
+GET    /config
+PUT    /config
+
+# Feedback (in-app crash/bug reporting → GitHub Issues)
+POST   /feedback
+
+# Real-time events
+WS     /ws
+
+# NZBGet JSON-RPC compatibility (root path, not under /api/v1)
+POST   /jsonrpc
+POST   /{username}/jsonrpc
 ```
 
 ---
 
 ## CLI
 
-```bash
-# Direct download — just pass URLs (like yt-dlp)
-amigo-dl <URL> [URL...]
-amigo-dl <URL> -o ./downloads --chunks 8
+Tatsächlich unterstützte Sub-Commands (aus `crates/cli/src/main.rs`):
 
-# Queue-based (adds to DB, used with server)
-amigo-dl add <URL>
-amigo-dl add --nzb <file.nzb>
-amigo-dl add --torrent <file.torrent>
-amigo-dl add --magnet "<magnet:?...>"
-amigo-dl add --dlc <file.dlc>              # DLC Import
-amigo-dl export-dlc [--ids <id1,id2,...>]   # DLC Export
-amigo-dl list / pause / resume / cancel / queue / status / speed
-amigo-dl config get/set <key> <value>
-amigo-dl plugins list / enable / login
+```bash
+# Direct download — bare URLs (like yt-dlp) or explicit `get`
+amigo-dl <URL> [URL...]
+amigo-dl get <URL> -o ./downloads --chunks 8
+
+# Queue-based (requires server/DB)
+amigo-dl add <URL>                          # queue a URL
+amigo-dl add --nzb <file.nzb>               # import NZB
+amigo-dl add --dlc <file.dlc>               # import DLC container
+amigo-dl export-dlc [--ids <id1,id2,...>]   # export DLC container
+amigo-dl list / pause <id> / resume <id> / cancel <id>
+amigo-dl queue / status / speed
+
+# Config
+amigo-dl config get <key>
+amigo-dl config set <key> <value>
+
+# Plugins
+amigo-dl plugins list
+amigo-dl plugins enable <id>
+amigo-dl plugins login <id>
+amigo-dl plugins install <id>
+amigo-dl plugins search <query>
+amigo-dl plugins update [id]
+amigo-dl plugins test <plugin.ts> [url]     # run spec or resolve a URL
+
+# Self-update
+amigo-dl update check
+amigo-dl update apply [--yes]
+
+# Server
 amigo-dl serve [--port 1516 --bind 0.0.0.0]
 ```
+
+Torrent/Magnet sind aktuell nicht implementiert. `crates/core/src/protocol/` enthält nur `http`, `hls`, `dash`, `usenet`.
 
 ---
 

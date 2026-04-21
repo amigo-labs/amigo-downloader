@@ -1,5 +1,7 @@
 # Plan: YouTube + HLS/DASH Streaming Support
 
+> **Status:** largely implemented — `crates/extractors/youtube/` exists with `url_parser`, `innertube`, `n_challenge`, `formats`; `crates/core/src/protocol/{hls,dash}.rs` are in place. This file is kept as a historical record of the design; for the current state see `crates/extractors/src/youtube/` and the protocol backends.
+
 ## Context
 
 YouTube-Downloads funktionieren nicht, weil der aktuelle `ANDROID` innertube-Client keine direkten URLs mehr liefert. Außerdem fehlen HLS- und DASH-Downloader komplett — ohne die kann amigo-dl keine Streaming-Formate laden. Die YouTube-Logik liegt aktuell falsch im Core-Crate statt in einem eigenen Extractor.
