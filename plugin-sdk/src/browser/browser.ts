@@ -60,7 +60,8 @@ export class Browser {
   private maxRedirectsDefault: number;
   private timeoutDefault: number;
   private currentPage: Page | null = null;
-  private explicitReferer: string | null | undefined = undefined;
+  private refererMode: "auto" | "forced" | "disabled" = "auto";
+  private forcedReferer: string | null = null;
 
   constructor(options: BrowserOptions = {}) {
     this.hostApi = options.hostApi ?? getHostApi();
@@ -136,11 +137,26 @@ export class Browser {
   }
 
   setReferer(referer: string | null): void {
-    this.explicitReferer = referer;
     if (referer === null) {
+      this.refererMode = "disabled";
+      this.forcedReferer = null;
       this.defaultHeaders.delete("Referer");
     } else {
+      this.refererMode = "forced";
+      this.forcedReferer = referer;
       this.defaultHeaders.set("Referer", referer);
+    }
+  }
+
+  resetReferer(): void {
+    this.refererMode = "auto";
+    this.forcedReferer = null;
+    this.defaultHeaders.delete("Referer");
+  }
+
+  private updateAutoReferer(nextReferer: string): void {
+    if (this.refererMode === "auto") {
+      this.defaultHeaders.set("Referer", nextReferer);
     }
   }
 
@@ -230,15 +246,20 @@ export class Browser {
         response.redirectLocation !== null
       ) {
         const nextUrl = resolveRedirect(currentUrl, response.redirectLocation);
-        const nextMethod: HttpMethod = response.status === 303 ? "GET" : currentMethod;
-        if (response.status === 303 || response.status === 301 || response.status === 302) {
-          currentBody = nextMethod === "GET" || nextMethod === "HEAD" ? undefined : currentBody;
-          currentMethod = nextMethod === "POST" ? "GET" : nextMethod;
-        } else {
-          currentMethod = nextMethod;
+        let nextMethod: HttpMethod = currentMethod;
+        if (response.status === 303) {
+          nextMethod = "GET";
+        } else if (
+          (response.status === 301 || response.status === 302) &&
+          currentMethod === "POST"
+        ) {
+          nextMethod = "GET";
         }
-        this.explicitReferer = currentUrl;
-        this.defaultHeaders.set("Referer", currentUrl);
+        if (nextMethod === "GET" || nextMethod === "HEAD") {
+          currentBody = undefined;
+        }
+        currentMethod = nextMethod;
+        this.updateAutoReferer(currentUrl);
         currentUrl = nextUrl;
         redirectsLeft -= 1;
         continue;
@@ -253,8 +274,7 @@ export class Browser {
       };
       const page = new Page(this.hostApi, snapshot, this);
       this.currentPage = page;
-      this.explicitReferer = currentUrl;
-      this.defaultHeaders.set("Referer", currentUrl);
+      this.updateAutoReferer(currentUrl);
       return page;
     }
   }

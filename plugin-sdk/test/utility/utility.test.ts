@@ -12,7 +12,7 @@ describe("parseSize", () => {
     expect(parseSize("1 KB")).toBe(1000);
     expect(parseSize("1 KiB")).toBe(1024);
     expect(parseSize("1.5 GB")).toBe(1_500_000_000);
-    expect(parseSize("2 TiB")).toBe(2n === 2n ? 2 * 1024 ** 4 : 0);
+    expect(parseSize("2 TiB")).toBe(2 * 1024 ** 4);
   });
 
   it("strips thousands separators", () => {

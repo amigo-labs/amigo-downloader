@@ -1,3 +1,9 @@
+import {
+  base64Decode,
+  base64Encode,
+  hexDecode,
+  hexEncode,
+} from "../extraction/encoding.js";
 import type { HostApi } from "./api.js";
 import type {
   HostCaptchaApi,
@@ -31,52 +37,12 @@ export interface MockHostApiController {
   setHttpDispatcher(dispatcher: MockHttpDispatcher): void;
 }
 
-function bytesToBase64(data: Uint8Array): string {
-  let binary = "";
-  for (let index = 0; index < data.length; index += 1) {
-    binary += String.fromCharCode(data[index]!);
-  }
-  return btoa(binary);
-}
-
-function base64ToBytes(data: string): Uint8Array {
-  const binary = atob(data);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
-  }
-  return bytes;
-}
-
-function bytesToHex(data: Uint8Array): string {
-  let hex = "";
-  for (let index = 0; index < data.length; index += 1) {
-    hex += data[index]!.toString(16).padStart(2, "0");
-  }
-  return hex;
-}
-
-function hexToBytes(data: string): Uint8Array {
-  if (data.length % 2 !== 0) {
-    throw new Error("hexDecode: odd-length input");
-  }
-  const bytes = new Uint8Array(data.length / 2);
-  for (let index = 0; index < bytes.length; index += 1) {
-    const byte = Number.parseInt(data.slice(index * 2, index * 2 + 2), 16);
-    if (Number.isNaN(byte)) {
-      throw new Error(`hexDecode: invalid byte at index ${index}`);
-    }
-    bytes[index] = byte;
-  }
-  return bytes;
-}
-
 function defaultUtil(): HostUtilApi {
   return {
-    base64Encode: bytesToBase64,
-    base64Decode: base64ToBytes,
-    hexEncode: bytesToHex,
-    hexDecode: hexToBytes,
+    base64Encode,
+    base64Decode,
+    hexEncode: (data) => hexEncode(data),
+    hexDecode,
     textEncode: (data) => new TextEncoder().encode(data),
     textDecode: (data) => new TextDecoder("utf-8").decode(data),
     urlEncode: (data) => encodeURIComponent(data),

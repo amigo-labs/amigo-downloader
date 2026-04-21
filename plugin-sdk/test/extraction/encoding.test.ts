@@ -55,6 +55,17 @@ describe("base64", () => {
     const encoded = base64Encode(bytes);
     expect(Array.from(base64Decode(encoded))).toEqual(Array.from(bytes));
   });
+
+  it("produces canonical padding for short inputs", () => {
+    expect(base64Encode("f")).toBe("Zg==");
+    expect(base64Encode("fo")).toBe("Zm8=");
+    expect(base64Encode("foo")).toBe("Zm9v");
+  });
+
+  it("tolerates whitespace and missing padding on decode", () => {
+    expect(new TextDecoder().decode(base64Decode("Zm9v\nYg=="))).toBe("foob");
+    expect(new TextDecoder().decode(base64Decode("Zm9v"))).toBe("foo");
+  });
 });
 
 describe("hex", () => {

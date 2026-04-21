@@ -1,3 +1,4 @@
+import { pathToFileURL } from "node:url";
 import { parseArgs } from "./args.js";
 import { runNew, runTest, runValidate } from "./commands.js";
 
@@ -68,7 +69,19 @@ export async function main(argv: readonly string[]): Promise<void> {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+const invokedDirectly = (() => {
+  const entry = process.argv[1];
+  if (!entry) {
+    return false;
+  }
+  try {
+    return import.meta.url === pathToFileURL(entry).href;
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedDirectly) {
   main(process.argv.slice(2)).catch((error) => {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exit(1);

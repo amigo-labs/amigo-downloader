@@ -109,6 +109,17 @@ describe("defineDecrypter", () => {
   });
 });
 
+describe("PluginConfig", () => {
+  it("distinguishes stored null from absent key", async () => {
+    const { pluginConfig } = await import("../../src/types/plugin-config.js");
+    const config = pluginConfig({ present: null });
+    expect(config.get("present", "default")).toBeNull();
+    expect(config.get("missing", "default")).toBe("default");
+    expect(config.has("present")).toBe(true);
+    expect(config.has("missing")).toBe(false);
+  });
+});
+
 describe("PluginContext helpers", () => {
   it("link() accepts strings", () => {
     const controller = createMockHostApi();

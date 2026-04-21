@@ -7,7 +7,8 @@ export interface RegexResult {
 
 function toRegExp(pattern: string | RegExp, flagsFallback: string): RegExp {
   if (pattern instanceof RegExp) {
-    return pattern.flags.includes("g") ? pattern : new RegExp(pattern.source, `${pattern.flags}g`);
+    const flags = pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`;
+    return new RegExp(pattern.source, flags);
   }
   return new RegExp(pattern, flagsFallback.includes("g") ? flagsFallback : `${flagsFallback}g`);
 }
@@ -41,7 +42,8 @@ export function regex(source: string, pattern: string | RegExp, flags = "g"): Re
 
 export function sourceContains(source: string, pattern: string | RegExp): boolean {
   if (pattern instanceof RegExp) {
-    return pattern.test(source);
+    const cloned = new RegExp(pattern.source, pattern.flags);
+    return cloned.test(source);
   }
   return source.includes(pattern);
 }

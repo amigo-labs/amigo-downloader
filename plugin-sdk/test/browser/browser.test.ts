@@ -96,6 +96,73 @@ describe("Browser basic GET", () => {
     await browser.getPage("https://example.test/b");
     expect(seen[1]?.headers?.["Referer"]).toBeUndefined();
   });
+
+  it("setReferer(null) persists across redirects", async () => {
+    const responses: HostHttpResponse[] = [
+      redirect("https://example.test/a", "https://example.test/b"),
+      ok({ url: "https://example.test/b", body: new Uint8Array() }),
+      ok({ url: "https://example.test/c", body: new Uint8Array() }),
+    ];
+    const seen: HostHttpRequest[] = [];
+    let index = 0;
+    const controller = createMockHostApi({
+      http: (request) => {
+        seen.push(request);
+        return responses[index++]!;
+      },
+    });
+    const browser = new Browser({ hostApi: controller.api });
+    browser.setReferer(null);
+    await browser.getPage("https://example.test/a");
+    await browser.getPage("https://example.test/c");
+    for (const request of seen) {
+      expect(request.headers?.["Referer"]).toBeUndefined();
+    }
+  });
+
+  it("setReferer(value) keeps the forced value across redirects", async () => {
+    const responses: HostHttpResponse[] = [
+      redirect("https://example.test/a", "https://example.test/b"),
+      ok({ url: "https://example.test/b", body: new Uint8Array() }),
+    ];
+    const seen: HostHttpRequest[] = [];
+    let index = 0;
+    const controller = createMockHostApi({
+      http: (request) => {
+        seen.push(request);
+        return responses[index++]!;
+      },
+    });
+    const browser = new Browser({ hostApi: controller.api });
+    browser.setReferer("https://pinned.test/");
+    await browser.getPage("https://example.test/a");
+    for (const request of seen) {
+      expect(request.headers?.["Referer"]).toBe("https://pinned.test/");
+    }
+  });
+});
+
+describe("Browser redirect-body handling", () => {
+  it("drops the POST body when 303 switches method to GET", async () => {
+    const seen: HostHttpRequest[] = [];
+    const responses: HostHttpResponse[] = [
+      { status: 303, url: "https://example.test/a", redirectLocation: "https://example.test/b", headers: {}, body: new Uint8Array() },
+      ok({ url: "https://example.test/b", body: new Uint8Array() }),
+    ];
+    let index = 0;
+    const controller = createMockHostApi({
+      http: (request) => {
+        seen.push(request);
+        return responses[index++]!;
+      },
+    });
+    const browser = new Browser({ hostApi: controller.api });
+    await browser.postPage("https://example.test/a", { k: "v" });
+    expect(seen[0]?.method).toBe("POST");
+    expect(seen[0]?.body).toBe("k=v");
+    expect(seen[1]?.method).toBe("GET");
+    expect(seen[1]?.body).toBeUndefined();
+  });
 });
 
 describe("Browser redirects", () => {

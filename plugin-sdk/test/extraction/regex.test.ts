@@ -28,6 +28,13 @@ describe("regex", () => {
     const result = regex("aaa", "a");
     expect(result.getMatches()).toHaveLength(3);
   });
+
+  it("is safe when caller reuses a global regex with non-zero lastIndex", () => {
+    const pattern = /\w+/g;
+    pattern.lastIndex = 5;
+    expect(regex("foo bar", pattern).getMatches()).toHaveLength(2);
+    expect(regex("foo bar", pattern).getMatches()).toHaveLength(2);
+  });
 });
 
 describe("sourceContains", () => {
@@ -35,5 +42,11 @@ describe("sourceContains", () => {
     expect(sourceContains("hello world", "world")).toBe(true);
     expect(sourceContains("foo 42 bar", /\d+/)).toBe(true);
     expect(sourceContains("abc", "xyz")).toBe(false);
+  });
+
+  it("is safe with shared global regex (no lastIndex leak)", () => {
+    const pattern = /foo/g;
+    expect(sourceContains("foo bar", pattern)).toBe(true);
+    expect(sourceContains("foo bar", pattern)).toBe(true);
   });
 });

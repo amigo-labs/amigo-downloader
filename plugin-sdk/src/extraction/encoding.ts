@@ -71,22 +71,55 @@ export function urlDecode(input: string): string {
   return decodeURIComponent(input);
 }
 
+const BASE64_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const BASE64_REVERSE: Record<string, number> = (() => {
+  const table: Record<string, number> = {};
+  for (let index = 0; index < BASE64_ALPHABET.length; index += 1) {
+    table[BASE64_ALPHABET[index]!] = index;
+  }
+  return table;
+})();
+
 export function base64Encode(input: string | Uint8Array): string {
   const bytes = typeof input === "string" ? new TextEncoder().encode(input) : input;
-  let binary = "";
-  for (let index = 0; index < bytes.length; index += 1) {
-    binary += String.fromCharCode(bytes[index]!);
+  let output = "";
+  for (let index = 0; index < bytes.length; index += 3) {
+    const b0 = bytes[index]!;
+    const b1 = index + 1 < bytes.length ? bytes[index + 1]! : -1;
+    const b2 = index + 2 < bytes.length ? bytes[index + 2]! : -1;
+    const triplet =
+      (b0 << 16) | ((b1 >= 0 ? b1 : 0) << 8) | (b2 >= 0 ? b2 : 0);
+    output += BASE64_ALPHABET[(triplet >> 18) & 0x3f]!;
+    output += BASE64_ALPHABET[(triplet >> 12) & 0x3f]!;
+    output += b1 >= 0 ? BASE64_ALPHABET[(triplet >> 6) & 0x3f]! : "=";
+    output += b2 >= 0 ? BASE64_ALPHABET[triplet & 0x3f]! : "=";
   }
-  return btoa(binary);
+  return output;
 }
 
 export function base64Decode(input: string): Uint8Array {
-  const binary = atob(input);
-  const bytes = new Uint8Array(binary.length);
-  for (let index = 0; index < binary.length; index += 1) {
-    bytes[index] = binary.charCodeAt(index);
+  const cleaned = input.replace(/\s+/g, "");
+  const unpadded = cleaned.replace(/=+$/, "");
+  const bytes = new Uint8Array(Math.floor((unpadded.length * 3) / 4));
+  let writeIndex = 0;
+  for (let index = 0; index < unpadded.length; index += 4) {
+    const a = BASE64_REVERSE[unpadded[index]!];
+    const b = BASE64_REVERSE[unpadded[index + 1]!];
+    const c = unpadded[index + 2] !== undefined ? BASE64_REVERSE[unpadded[index + 2]!] : 0;
+    const d = unpadded[index + 3] !== undefined ? BASE64_REVERSE[unpadded[index + 3]!] : 0;
+    if (a === undefined || b === undefined) {
+      throw new Error("base64Decode: invalid character");
+    }
+    const chunk = (a << 18) | (b << 12) | ((c ?? 0) << 6) | (d ?? 0);
+    bytes[writeIndex++] = (chunk >> 16) & 0xff;
+    if (unpadded[index + 2] !== undefined) {
+      bytes[writeIndex++] = (chunk >> 8) & 0xff;
+    }
+    if (unpadded[index + 3] !== undefined) {
+      bytes[writeIndex++] = chunk & 0xff;
+    }
   }
-  return bytes;
+  return bytes.slice(0, writeIndex);
 }
 
 export function base64DecodeToString(input: string): string {
