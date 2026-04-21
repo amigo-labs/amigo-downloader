@@ -773,7 +773,10 @@ async fn main() -> anyhow::Result<()> {
                     OutputMode::Fancy => {
                         tui.header("Downloads");
                         for d in &downloads {
-                            let pct = d.filesize.map(|s| if s > 0 { d.bytes_downloaded * 100 / s } else { 0 });
+                            let pct = d
+                                .filesize
+                                .and_then(|s| (d.bytes_downloaded * 100).checked_div(s))
+                                .or_else(|| d.filesize.map(|_| 0));
                             let status_icon = match d.status.as_str() {
                                 "downloading" => style("⬇").cyan(),
                                 "completed" => style("✔").green(),
@@ -793,7 +796,10 @@ async fn main() -> anyhow::Result<()> {
                     }
                     OutputMode::Plain => {
                         for d in &downloads {
-                            let pct = d.filesize.map(|s| if s > 0 { d.bytes_downloaded * 100 / s } else { 0 });
+                            let pct = d
+                                .filesize
+                                .and_then(|s| (d.bytes_downloaded * 100).checked_div(s))
+                                .or_else(|| d.filesize.map(|_| 0));
                             println!(
                                 "[{}] {} — {} {}",
                                 d.status,
