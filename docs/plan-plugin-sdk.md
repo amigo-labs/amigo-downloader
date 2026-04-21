@@ -1,5 +1,7 @@
 # Plan: amigo-plugin-sdk
 
+> **Status:** SDK-Skeleton in `plugin-sdk/` ist gelandet (Phase 0–1, siehe Commit `12fb9fc`). Tutorials und Cookbook in `plugin-sdk/docs/`. Die folgenden Phasen sind teilweise umgesetzt; dieses Dokument bleibt als Designgrundlage und Roadmap stehen.
+
 Ein Implementierungsplan für ein TypeScript-SDK, mit dem rund 90% aller JDownloader-artigen Plugins nachgebaut werden können, aufbauend auf der amigo-downloader Host-API (Tier 1 + 2).
 
 ## Scope & Non-Goals

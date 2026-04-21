@@ -155,16 +155,18 @@ amigo-downloader/
 │   ├── server/            # Axum REST API, WebSocket, Click'n'Load, embedded UI
 │   └── cli/               # Command-line interface
 ├── web-ui/                # Svelte 5 + Tailwind PWA
+├── plugin-sdk/            # @amigo/plugin-sdk — TS SDK for plugin authors
 ├── plugins/               # TypeScript plugin files (.ts)
-│   ├── extractors/        # Site-specific extractors (YouTube)
-│   ├── hosters/           # Hoster plugins (generic-http)
+│   ├── extractors/        # Site-specific extractors (youtube)
+│   ├── hosters/           # Hoster plugins (generic-http, xfilesharing)
+│   ├── multi-hosters/     # Premium aggregators (alldebrid, premiumize, real-debrid)
 │   ├── template/          # Plugin template
 │   └── types/             # TypeScript type definitions (amigo.d.ts)
 ├── tauri/                 # Tauri v2 desktop app
 ├── locales/               # i18n translation files (en, de)
 ├── scripts/               # Install script
-├── docker/                # Dockerfile + compose
-└── docs/                  # Architecture docs
+├── docker/                # Dockerfile(s) + compose files
+└── docs/                  # Architecture docs + specs
 ```
 
 ### Core Crate
@@ -202,22 +204,35 @@ Built-in extractors for sites that need special handling beyond simple HTTP:
 
 ### Plugin System
 
-Plugins are TypeScript files (`.ts`) that run in a sandboxed QuickJS VM. TypeScript is transpiled to JavaScript at load time via SWC.
+Plugins are TypeScript files (`.ts`) that run in a sandboxed QuickJS VM. TypeScript is transpiled to JavaScript at load time via SWC. A plugin exports an object via `module.exports`; all Host-API calls are **synchronous** (the runtime blocks internally) — no `async`/`await` inside plugin code.
 
 ```typescript
-export function plugin_id() { return "my-hoster"; }
-export function plugin_name() { return "My Hoster"; }
-export function plugin_version() { return "1.0.0"; }
-export function url_pattern() { return "https?://my-hoster\\.com/.+"; }
+/// <reference path="../types/amigo.d.ts" />
 
-export async function resolve(url: string): Promise<DownloadInfo> {
-    const html = await http_get(url);
-    const link = regex_match(/href="(https:\/\/dl\..+?)"/, html.body);
-    return { url: link, filename: "file.bin", chunks_supported: true };
-}
+module.exports = {
+    id: "my-hoster",
+    name: "My Hoster",
+    version: "1.0.0",
+    urlPattern: "https?://my-hoster\\.com/.+",
+
+    resolve(url: string): DownloadPackage {
+        const page = amigo.httpGet(url);
+        const link = amigo.htmlQueryAttr(page.body, "a.download-btn", "href");
+        return {
+            name: amigo.htmlExtractTitle(page.body) || "Download",
+            downloads: [{
+                url: amigo.urlResolve(url, link!),
+                filename: null, filesize: null,
+                chunks_supported: true, max_chunks: null,
+                headers: null, cookies: null, wait_seconds: null,
+                mirrors: [],
+            }],
+        };
+    },
+} satisfies AmigoPlugin;
 ```
 
-**Sandbox limits:** 30s timeout, 64MB RAM, 20 HTTP requests, 1MB storage per plugin. No direct network/filesystem access — everything proxied through the Host API.
+**Sandbox limits:** 30s timeout, 64MB RAM, 20 HTTP requests, 1MB storage per plugin. No direct network/filesystem access — everything proxied through the `amigo.*` Host API.
 
 The plugin runtime includes:
 - **Registry** — discover and install plugins from the marketplace
@@ -241,19 +256,60 @@ The plugin runtime includes:
 ```
 GET    /api/v1/status              Server status + version
 GET    /api/v1/stats               Speed, queue size, active count
+GET    /api/v1/system-info         System information
+
 POST   /api/v1/downloads           Add download (URL)
 GET    /api/v1/downloads           List all downloads
-PATCH  /api/v1/downloads/:id       Pause/resume
-DELETE /api/v1/downloads/:id       Cancel + remove
+GET    /api/v1/downloads/{id}      Single download
+PATCH  /api/v1/downloads/{id}      Pause/resume
+DELETE /api/v1/downloads/{id}      Cancel + remove
 POST   /api/v1/downloads/batch     Add multiple URLs
 POST   /api/v1/downloads/nzb       Upload NZB file
+GET    /api/v1/downloads/usenet    List Usenet downloads
+
 GET    /api/v1/queue               View queue
+PATCH  /api/v1/queue/reorder       Reorder queue
+
 GET    /api/v1/history             Download history
+DELETE /api/v1/history             Clear history
+
+GET    /api/v1/usenet/servers      List NNTP servers
+POST   /api/v1/usenet/servers      Add NNTP server
+DELETE /api/v1/usenet/servers/{id} Delete NNTP server
+GET    /api/v1/usenet/watch-dir    Get NZB watch directory
+POST   /api/v1/usenet/watch-dir    Set NZB watch directory
+
 GET    /api/v1/plugins             List plugins
-GET    /api/v1/updates/check       Check for updates
+PATCH  /api/v1/plugins/{id}        Update plugin config
+POST   /api/v1/plugins/suggest     Suggest a plugin for a URL
+
+GET    /api/v1/captcha/pending     Pending captcha requests
+POST   /api/v1/captcha/{id}/solve  Submit captcha solution
+POST   /api/v1/captcha/{id}/cancel Cancel captcha request
+
+GET    /api/v1/webhooks            List outbound webhooks
+POST   /api/v1/webhooks            Create webhook
+DELETE /api/v1/webhooks/{id}       Delete webhook
+POST   /api/v1/webhooks/{id}/test  Fire a test event
+
+GET    /api/v1/rss                 List RSS feeds
+POST   /api/v1/rss                 Add RSS feed
+DELETE /api/v1/rss/{id}            Delete RSS feed
+
+GET    /api/v1/config              Read full config (TOML)
+PUT    /api/v1/config              Replace full config
+
+GET    /api/v1/updates/check       Check for core + plugin updates
+POST   /api/v1/updates/core        Apply core self-update
+POST   /api/v1/updates/plugins/{id}         Update a plugin
+POST   /api/v1/updates/plugins/{id}/install Install a plugin
+
 POST   /api/v1/feedback            Submit bug/crash report
-GET    /api/v1/system-info         System information
 WS     /api/v1/ws                  Live progress events
+
+# NZBGet JSON-RPC compatibility (root path, not /api/v1)
+POST   /jsonrpc
+POST   /{username}/jsonrpc
 ```
 
 ## Web UI
@@ -275,11 +331,11 @@ The web interface is a Svelte 5 PWA with:
 
 | Page | Description |
 |------|-------------|
-| Downloads | Active/completed downloads with progress |
-| Queue | Priority queue management |
-| Plugins | Plugin list, install, update, configure |
+| Downloads | Active/completed downloads with progress; side panel for details |
 | History | Past downloads with search/filter |
-| Settings | Config, theming, bandwidth schedules |
+| Plugins | Plugin list, install, update, configure |
+| Usenet Servers | NNTP server configuration |
+| Settings | Config, theming, bandwidth schedules, feedback |
 
 ## Mobile / PWA
 
@@ -349,7 +405,7 @@ docker compose -f docker/docker-compose.local.yml up -d --build
 ## Plugin Development
 
 1. Copy `plugins/template/plugin.ts`
-2. Implement `plugin_id`, `plugin_name`, `plugin_version`, `url_pattern`, `resolve`
+2. Set `id`, `name`, `version`, `urlPattern` and implement `resolve()` on the exported object
 3. Drop the `.ts` file into `plugins/hosters/` or `plugins/extractors/`
 4. It's auto-detected and loaded (hot-reload supported)
 
