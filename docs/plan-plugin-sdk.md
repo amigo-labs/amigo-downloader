@@ -238,3 +238,104 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
 - Unbekannte Throws werden zu `PluginDefect` mit Original-Message und Stack.
 
 ---
+
+## Phase 6: Captcha-Abstraktion
+
+**Ziel:** Plugin-Autor muss sich nicht um Solver-Backends kümmern. Host routet an konfigurierten Service oder UI-Prompt.
+
+**Aufgaben:**
+
+- Namespace `captcha` mit Funktionen:
+  - `captcha.recaptchaV2(page, options?): Promise<string>`
+  - `captcha.recaptchaV3(page, options): Promise<string>` (erfordert action)
+  - `captcha.hcaptcha(page, options?): Promise<string>`
+  - `captcha.turnstile(page, options?): Promise<string>`
+  - `captcha.image(imageUrl, options?): Promise<string>` (mit Mode "text" oder "math")
+  - `captcha.interactive(prompt, imageUrl?): Promise<string>` (User-Prompt)
+  - `captcha.auto(page): Promise<CaptchaResult>` — Auto-Detection bekannter Widgets auf der Page
+- Auto-Detection: scannt Page nach reCaptcha-iframe, hCaptcha-div, Turnstile-Marker, erkennt siteKey aus data-Attributen.
+- Host-seitig wird der tatsächliche Solver konfiguriert (2Captcha, CapMonster, manuell via UI). SDK kennt nur das abstrakte Interface.
+- Retry-Handling: `captcha.failed()` markiert den letzten Solve als inkorrekt für Service-Feedback.
+
+**Deliverable:** Plugin-Autor löst Captchas mit einem Einzeiler. Kein Boilerplate.
+
+**Tests:**
+
+- Mock-Host liefert vordefinierten Token.
+- Auto-Detection erkennt reCaptcha v2 aus Standard-HTML.
+- Auto-Detection priorisiert spezifische Typen vor generischen.
+- Failed-Feedback wird korrekt an Host propagiert.
+
+---
+
+## Phase 7: Plugin-Definitionen
+
+**Ziel:** Top-Level-API, mit der ein Plugin geschrieben wird. Klare Trennung zwischen Hoster- und Decrypter-Plugins (wie JDownloader).
+
+**Aufgaben:**
+
+**Hoster-Plugin:**
+
+- Funktion `definePlugin(config): Plugin` mit:
+  - `id`, `version`, `match` (Array aus RegExp oder Glob-Pattern)
+  - `checkAvailable(context): Promise<FileInfo>` — optionaler schneller Existence/Size-Check
+  - `extract(context): Promise<FormatInfo[]>` — der Haupt-Extraktions-Flow
+  - `account?: AccountConfig` — optional für Premium-Hoster
+- `PluginContext` enthält: `url`, `browser: Browser`, `account?: AccountContext`, `config: PluginConfig`, `log`, `wait`, `link(url): DownloadLink` (createDownloadlink-Äquivalent), `format(info): FormatInfo`, `formats(infos): FormatInfo[]`, `abortSignal`.
+
+**Decrypter/Crawler-Plugin:**
+
+- Funktion `defineDecrypter(config): Plugin` mit:
+  - `id`, `version`, `match`
+  - `decrypt(context): Promise<string[] | DownloadLink[]>` — gibt URLs oder vorbereitete DownloadLinks zurück
+
+**Shared Types:**
+
+- `FileInfo`: filename, size, hash, availability, mimeType.
+- `FormatInfo`: url, filename, size, headers, quality, codec, mediaType (für HLS/DASH siehe Phase 9).
+- `DownloadLink`: url, filename, referer, properties (Key-Value-Bag für plugin-spezifische Metadaten).
+- `PluginConfig`: typisierter Zugriff auf plugin-spezifische User-Settings (im Manifest deklariert).
+
+**Manifest-Integration:**
+
+- Plugin-Manifest (TOML) deklariert id, version, permissions, host_patterns, config-Schema, sdk_version.
+- SDK validiert zur Load-Time gegen Manifest.
+
+**Deliverable:** Ein vollständiges Hoster-Plugin und ein Decrypter-Plugin lassen sich als Ende-zu-Ende-Beispiel bauen und gegen Mock-Host ausführen.
+
+**Tests:**
+
+- Plugin-Definition wird korrekt exportiert.
+- URL-Matching gegen Regex und Glob.
+- Context-Injection funktioniert.
+- Result-Type-Konvertierung (string[] vs DownloadLink[]) ist korrekt.
+
+---
+
+## Phase 8: Account- und Session-System
+
+**Ziel:** Login-Flows, Session-Persistenz, Premium-Account-Handling — JDownloader-kompatibel.
+
+**Aufgaben:**
+
+- `AccountConfig` im Hoster-Plugin mit:
+  - `login(context, credentials): Promise<Session>` — führt Login durch, gibt Session zurück.
+  - `check(context, session): Promise<AccountStatus>` — validiert Session, gibt Status inklusive Ablaufdatum und Premium-Flag zurück.
+  - `logout?(context, session): Promise<void>` — optional.
+- `Session`-Struktur: `cookies`, `headers` (für Auth-Header wie Bearer-Tokens), `metadata` (Key-Value für plugin-spezifisches wie Refresh-Token, UserId).
+- `AccountContext` im Plugin-Context: `session: Session`, `status: AccountStatus`, `credentials` (nur während Login verfügbar).
+- Host-seitige Persistenz: SDK ruft `account.persist(session)` auf, Host speichert in SQLite. Automatisches Rehydrate beim nächsten Plugin-Call.
+- Mehrfach-Accounts: Host kann mehrere Accounts pro Hoster haben, SDK bekommt den aktuell ausgewählten im Context.
+- Rate-Limiting pro Account: Host trackt Requests pro Account, SDK kann `context.account.canRequest()` prüfen.
+
+**Deliverable:** Hoster-Plugin mit Premium-Login, das Session zwischen Runs persistiert.
+
+**Tests:**
+
+- Login mit gültigen Credentials gibt Session zurück.
+- Login mit falschen Credentials wirft `AuthFailed`.
+- Check mit abgelaufener Session gibt `valid: false`.
+- Session-Export/Import-Roundtrip ist verlustfrei.
+- Mehrere Accounts pro Hoster funktionieren parallel ohne State-Kollision.
+
+---
