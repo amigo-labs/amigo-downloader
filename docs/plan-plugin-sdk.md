@@ -576,3 +576,33 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
 - Dokumentation wird auf Build-Time gegen die echte API geprüft (kein Drift).
 
 ---
+
+## Versionierung und Stabilitäts-Garantien
+
+- SDK folgt SemVer. Public API in `src/index.ts` explizit re-exportiert, alles andere gilt als privat.
+- Plugin-Manifest deklariert `sdk_version`. Host prüft Major-Version-Compatibility beim Laden.
+- Minor-Versionen können Features addieren (neue Helpers, neue Captcha-Typen), die Plugin-Autoren optional nutzen.
+- Major-Versionen erfordern Plugin-Migration und werden mit Migrationsleitfaden begleitet.
+- Tier-2-Features (`javascript.eval`) sind separat manifestiert — Plugin ohne Permission kann den Wrapper nicht instantiieren.
+
+## Offene Design-Entscheidungen (müssen vor Phase 2 geklärt sein)
+
+1. **Page als Snapshot vs. Browser als Single-Source-of-Truth:** JDownloader-Style bedeutet, der Browser ist der State-Holder und Page ist nur ein Snapshot. Dieser Plan folgt dieser Konvention. Alternative wäre ein React-artiges Model mit immutable Pages als State — ergonomisch schwieriger für Plugin-Autoren, die aus JDownloader-Welt kommen.
+
+2. **DLC-Service-Strategie:** JDownloaders Service ist proprietär. Optionen: a) eigener Key-Exchange-Service betreiben, b) nur vorentschlüsselte DLCs unterstützen, c) Service-Endpoint komplett user-konfigurierbar lassen, Default auf Community-Service. Empfehlung ist Option c, aber braucht rechtliche/ethische Klärung.
+
+3. **Cookie-Persistenz-Granularität:** Pro Plugin-Run frisch (konservativ, sicher, aber bei jedem Hoster-Call Re-Login nötig), pro Account persistent (typisch für Premium), oder pro Hoster-Domain persistent (möglich, aber Datenschutz-fragwürdig). Empfehlung: pro Account persistent, pro Run bei anonymen Hostern.
+
+4. **Format-Auswahl bei HLS/DASH:** Plugin wählt oder gibt Master zurück und User/Engine wählt? Empfehlung: Plugin gibt Master-Manifest zurück, Engine wählt mit User-Präferenz. Plugin kann optional vorselektieren wenn ein Hoster mehrere Qualitäten in verschiedenen URLs serviert (kein echtes Master).
+
+5. **Container-Datei-Zugriff:** Host-API braucht kontrollierten File-Read. Vorschlag: nur User-ausgewählte Files, über File-Picker-Flow, einmaliger Token pro geöffneter Datei. Keine generelle fs-Lese-Permission.
+
+6. **Plugin-Permission-Flatness:** Ein-Level-Permissions (`"javascript_eval"`, `"account"`) vs. hierarchisch (`"http.post"`, `"http.external"`). Empfehlung: flach, da UI-verständlicher und ausreichend fein.
+
+## Reihenfolge-Hinweis für die Ausführung
+
+Phasen 0 bis 7 sollten in Reihenfolge durchgeführt werden — sie bauen aufeinander auf und ein erstes Plugin lässt sich nach Phase 7 schreiben.
+
+Phasen 8 (Account), 9 (Media), 10 (Container), 11 (JS-Eval), 12 (Utilities) sind unabhängig voneinander und können parallel oder je nach Bedarf priorisiert werden.
+
+Phasen 13 (DX), 14 (Integration-Tests) und 15 (Docs) sind laufende Arbeiten und sollten früh beginnen — idealerweise wird zu jeder Core-Phase schon Doku geschrieben und ein Integration-Test hinzugefügt. Die CLI kann rudimentär ab Phase 7 existieren und mit jeder weiteren Phase mehr Features bekommen.
