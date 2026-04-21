@@ -21,6 +21,7 @@ describe("plugin-sdk smoke", () => {
       "container",
       "javascript",
       "types",
+      "utility",
     ] as const;
     for (const name of expected) {
       expect(sdk).toHaveProperty(name);
