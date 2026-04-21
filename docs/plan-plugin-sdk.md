@@ -339,3 +339,133 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
 - Mehrere Accounts pro Hoster funktionieren parallel ohne State-Kollision.
 
 ---
+
+## Phase 9: Media-Manifest-Support (HLS und DASH)
+
+**Ziel:** Plugin kann HLS-Master-Playlists und DASH-Manifeste parsen, Varianten enumerieren, Qualität selektieren und eine fertige FormatInfo an die Download-Engine übergeben. Das SDK parst nur — der tatsächliche Segment-Download und das Muxing sind Sache der Rust-Engine.
+
+**Aufgaben:**
+
+**HLS (M3U8):**
+
+- `media.hls.parseMaster(content, baseUrl?): HlsMasterPlaylist` — parst Master-Playlist.
+- `HlsMasterPlaylist` enthält: `variants: HlsVariant[]`, `audioTracks: HlsAudioTrack[]`, `subtitleTracks: HlsSubtitleTrack[]`.
+- `HlsVariant` mit: `url`, `bandwidth`, `resolution: { width, height }?`, `codecs: string[]`, `frameRate?`, `audioGroup?`, `subtitleGroup?`.
+- `media.hls.parseMedia(content, baseUrl?): HlsMediaPlaylist` — parst Variant-Playlist (Liste von Segmenten). Meist nicht nötig im Plugin, aber für Debugging und Spezialfälle verfügbar.
+- Alle URLs in Parse-Ergebnissen werden gegen `baseUrl` absolut gemacht.
+- Unterstützt: `#EXT-X-STREAM-INF`, `#EXT-X-MEDIA`, `#EXT-X-I-FRAME-STREAM-INF`, `#EXT-X-VERSION`, `#EXT-X-INDEPENDENT-SEGMENTS`.
+- Encrypted Streams: parsiert `#EXT-X-KEY`-Tag, aber Decryption ist Engine-Sache.
+
+**DASH (MPD):**
+
+- `media.dash.parse(content, baseUrl?): DashManifest` — parst MPD-XML.
+- `DashManifest` mit: `periods: DashPeriod[]`, `type: "static" | "dynamic"`, `duration?`.
+- `DashPeriod` mit: `adaptationSets: DashAdaptationSet[]`.
+- `DashAdaptationSet` mit: `mimeType`, `contentType: "video" | "audio" | "text"`, `representations: DashRepresentation[]`.
+- `DashRepresentation` mit: `id`, `bandwidth`, `width?`, `height?`, `codecs?`, `baseUrl?`, `segmentTemplate?`.
+- Unterstützt: SegmentTemplate, SegmentList, SegmentBase. BaseURL-Resolution über verschachtelte Elemente.
+
+**Selection-Helpers:**
+
+- `media.selectBestVariant(variants, criteria?): Variant` — default: höchste Bandwidth. Criteria optional: `maxHeight`, `preferCodec`, `maxBandwidth`.
+- `media.selectWorstVariant(variants, criteria?): Variant`.
+- `media.filterByResolution(variants, { min?, max? }): Variant[]`.
+- `media.filterByCodec(variants, codecPattern: RegExp): Variant[]`.
+- Helpers funktionieren sowohl für HLS-Variants als auch DASH-Representations über ein gemeinsames Mini-Interface.
+
+**FormatInfo-Integration:**
+
+- `FormatInfo.mediaType` kann sein: `"direct"`, `"hls"`, `"dash"`.
+- Für HLS/DASH enthält FormatInfo die Manifest-URL und optional eine vorselektierte Variant-URL.
+- Plugin-Autor kann entweder das komplette Master-Manifest zurückgeben (Engine/User wählt) oder eine konkrete Variant (Plugin wählt).
+
+**Deliverable:** Plugin-Autor kann ein Vimeo-artiges Plugin schreiben, das ein Master-M3U8 aus einer API holt, die Varianten parst, die beste auswählt und als FormatInfo zurückgibt.
+
+**Tests:**
+
+- Parse-Tests mit echten Master-Playlists von Vimeo, YouTube-kompatiblen Quellen, Brightcove, generischen HLS-Samples.
+- DASH-Parse mit Samples von typischen Anbietern (akamai-style, bbc-style, youtube-style).
+- BaseURL-Resolution: relative Segment-URLs gegen Master-URL.
+- Selection-Helpers: korrekte Variante wird nach Bandwidth/Resolution-Criteria ausgewählt.
+- Encrypted Stream: `#EXT-X-KEY` wird erkannt und in Metadaten aufgenommen, Parsing schlägt nicht fehl.
+- Malformed Manifest wirft `ManifestParseError` mit Kontext.
+
+---
+
+## Phase 10: Container-Format-Support (DLC, CCF, RSDF)
+
+**Ziel:** Built-in Decrypter für die drei klassischen Link-Container-Formate. SDK stellt Parser bereit, und Amigo shipped mit built-in Decrypter-Plugins, die diese Parser nutzen.
+
+**Wichtige Design-Entscheidung:** DLC erfordert historisch einen externen Key-Exchange-Service (original von jdownloader.org betrieben, proprietär). Der Plan unterstützt DLC nur in Verbindung mit einem konfigurierbaren Service-Endpoint. RSDF und CCF haben öffentlich bekannte feste Schlüssel und funktionieren offline.
+
+**Aufgaben:**
+
+**RSDF (einfachster Fall, öffentlicher fester Schlüssel):**
+
+- `container.rsdf.parse(content: Uint8Array | string): string[]` — liefert Liste der entschlüsselten URLs.
+- Implementation: Base64-dekodieren, mit bekanntem AES-128-CBC-Schlüssel und bekanntem IV entschlüsseln, zeilenweise splitten.
+- Feste Konstanten als interne Module-Level-Werte.
+
+**CCF (öffentlicher fester Schlüssel, XML-Format):**
+
+- `container.ccf.parse(content: Uint8Array): CcfContainer` mit `packageName?`, `links: CcfLink[]`.
+- `CcfLink` mit: `url`, `filename?`, `size?`, `password?`.
+- AES-128-entschlüsselt, dann XML-Parse.
+
+**DLC (erfordert Service):**
+
+- `container.dlc.parse(content: string | Uint8Array, options: DlcOptions): Promise<DlcContainer>`.
+- `DlcOptions` erfordert `keyExchangeEndpoint: string` — URL eines DLC-Key-Service. Host-Config stellt Default-Endpoint bereit (konfigurierbar durch User).
+- Flow: letzte 88 Zeichen als Service-Key extrahieren, an Endpoint POSTen, AES-Key zurückbekommen, Rest des Inhalts entschlüsseln (AES-CBC), als XML parsen.
+- `DlcContainer` mit: `packageName?`, `uploadDate?`, `maxMirrors?`, `links: DlcLink[]`.
+- Fehler-Fälle: Service nicht erreichbar, Service lehnt Key ab, Entschlüsselung schlägt fehl, XML malformed — alle sauber mit `ContainerDecryptionFailed` gehandhabt.
+- Dokumentation macht klar, dass DLC-Support vom gewählten Service abhängt und User gegebenenfalls einen eigenen Endpoint konfigurieren muss.
+
+**Auto-Detection:**
+
+- `container.detect(content: Uint8Array): "dlc" | "ccf" | "rsdf" | null` — Heuristik basierend auf Dateiendung, Magic-Bytes und Content-Struktur.
+- Built-in Decrypter-Plugin `amigo-container` matched `.dlc`, `.ccf`, `.rsdf`-URLs und Dateipfade, dispatched intern an die richtige Parser-Funktion.
+
+**File-Input-Handling:**
+
+- Container-Dateien kommen üblicherweise als lokale Datei, nicht als URL. Host-API muss `util.readFile(path)` exposen (eingeschränkt auf vom User ausgewählte Files).
+- Alternativ können Container als Base64-inline-Content übergeben werden.
+
+**Deliverable:** Built-in Decrypter-Plugin `amigo-container`, das alle drei Formate unterstützt, plus dokumentierte SDK-Helper für Custom-Container-Plugins.
+
+**Tests:**
+
+- RSDF-Parse mit echten Sample-Dateien aus JDownloader-Test-Suite (oder reproduzierbaren Testvektoren).
+- CCF-Parse mit Sample-Dateien.
+- DLC-Parse gegen Mock-Service, der vordefinierte Keys liefert.
+- Malformed Container wirft `ContainerDecryptionFailed` mit verständlicher Message.
+- Auto-Detection über Magic-Bytes und Content.
+- End-to-End: Built-in-Plugin akzeptiert URL zu `.rsdf`, liefert URL-Liste.
+
+---
+
+## Phase 11: JavaScript-Eval-Wrapper (Tier 2)
+
+**Ziel:** Dünner, sicherer Wrapper um die Host-js.eval-Funktion. Für obfuscated JS-Snippets, die Download-Links client-seitig berechnen.
+
+**Aufgaben:**
+
+- Namespace `javascript` mit:
+  - `javascript.run<T>(code, input?, options?): Promise<T>` — evaluiert Code in separatem Sub-Context. `input` wird als globale Variable gesetzt.
+  - `javascript.unpackDeanEdwards(code): string` — unpackt Dean-Edwards-Packer-Output (häufigster Case bei Filehostern). Ruft intern `javascript.run` auf und extrahiert den unpacked Source.
+  - `javascript.unpackEval(code): string` — generische Unwrap-Logik für `eval(...)`-wrapped Code.
+- Jeder Call bekommt eigene Memory- und CPU-Limits, die über Host-API konfiguriert werden können. Default: 16 MB, 5 Sekunden.
+- Timeout und Memory-Overflow geben `EvalError` zurück.
+- Plugin-Permission `javascript_eval` muss im Manifest deklariert sein, sonst wirft der Wrapper `PermissionDenied`.
+
+**Deliverable:** Plugin-Autor kann obfuscated JS aus einer Page extrahieren, unpacken und das Ergebnis als Link weiterverwenden.
+
+**Tests:**
+
+- Einfaches `javascript.run("return 1+1")` liefert 2.
+- Dean-Edwards-Unpack mit realem Packer-Output aus Filehoster-Sample.
+- Timeout wird getriggert bei Endlosschleife.
+- Memory-Limit wird bei Overflow getriggert.
+- Ohne Permission: `PermissionDenied`.
+
+---
