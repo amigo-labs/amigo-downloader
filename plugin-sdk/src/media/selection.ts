@@ -2,7 +2,18 @@ export interface SelectableVariant {
   readonly bandwidth: number;
   readonly width?: number | null;
   readonly height?: number | null;
+  readonly resolution?: { readonly width: number; readonly height: number } | null;
   readonly codecs?: readonly string[] | string | null;
+}
+
+function variantHeight(variant: SelectableVariant): number | null {
+  if (variant.height !== null && variant.height !== undefined) {
+    return variant.height;
+  }
+  if (variant.resolution) {
+    return variant.resolution.height;
+  }
+  return null;
 }
 
 export interface SelectionCriteria {
@@ -44,15 +55,12 @@ function applyCriteria<T extends SelectableVariant>(
     return variants.slice();
   }
   return variants.filter((variant) => {
-    if (criteria.maxHeight !== undefined && variant.height !== null && variant.height !== undefined) {
-      if (variant.height > criteria.maxHeight) {
-        return false;
-      }
+    const height = variantHeight(variant);
+    if (criteria.maxHeight !== undefined && height !== null && height > criteria.maxHeight) {
+      return false;
     }
-    if (criteria.minHeight !== undefined && variant.height !== null && variant.height !== undefined) {
-      if (variant.height < criteria.minHeight) {
-        return false;
-      }
+    if (criteria.minHeight !== undefined && height !== null && height < criteria.minHeight) {
+      return false;
     }
     if (criteria.maxBandwidth !== undefined && variant.bandwidth > criteria.maxBandwidth) {
       return false;
@@ -97,7 +105,7 @@ export function filterByResolution<T extends SelectableVariant>(
   bounds: { min?: number; max?: number },
 ): T[] {
   return variants.filter((variant) => {
-    const height = variant.height ?? null;
+    const height = variantHeight(variant);
     if (height === null) {
       return false;
     }
