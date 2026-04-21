@@ -1,0 +1,1 @@
+# Plan: amigo-plugin-sdk
