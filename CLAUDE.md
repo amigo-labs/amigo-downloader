@@ -483,7 +483,7 @@ Für komplexere Plugins existiert das separate Package `@amigo/plugin-sdk` mit h
 
 ## REST API
 
-Alle Routen unter `/api/v1/`. DLC-Import und -Export laufen über die CLI (`amigo-dl add --dlc`, `amigo-dl export-dlc`), nicht über dedizierte HTTP-Endpoints.
+Alle Routen unter `/api/v1/`. DLC-Import per HTTP geht über `POST /downloads/container` (multipart, Feld `file`); DLC-Export läuft aktuell nur über die CLI (`amigo-dl export-dlc`).
 
 ```
 # Server status
@@ -499,6 +499,7 @@ PATCH  /downloads/{id}                    # pause / resume
 DELETE /downloads/{id}                    # cancel + remove
 POST   /downloads/batch                   # multiple URLs
 POST   /downloads/nzb                     # upload NZB
+POST   /downloads/container               # import DLC (multipart, field "file")
 GET    /downloads/usenet                  # list usenet downloads only
 
 # Queue & history

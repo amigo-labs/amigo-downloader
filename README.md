@@ -265,6 +265,7 @@ PATCH  /api/v1/downloads/{id}      Pause/resume
 DELETE /api/v1/downloads/{id}      Cancel + remove
 POST   /api/v1/downloads/batch     Add multiple URLs
 POST   /api/v1/downloads/nzb       Upload NZB file
+POST   /api/v1/downloads/container Import DLC (multipart, field "file")
 GET    /api/v1/downloads/usenet    List Usenet downloads
 
 GET    /api/v1/queue               View queue

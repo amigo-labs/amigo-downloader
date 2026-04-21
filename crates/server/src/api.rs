@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::{
     Json, Router,
-    extract::{Path, State},
+    extract::{Multipart, Path, State},
     http::StatusCode,
     routing::{delete, get, patch, post, put},
 };
@@ -39,6 +39,7 @@ pub fn router(state: AppState) -> Router {
         // Specific download routes MUST come before {id} routes
         .route("/api/v1/downloads/batch", post(add_batch))
         .route("/api/v1/downloads/nzb", post(upload_nzb))
+        .route("/api/v1/downloads/container", post(upload_container))
         .route("/api/v1/downloads/usenet", get(list_usenet_downloads))
         .route("/api/v1/downloads/{id}", get(get_download))
         .route("/api/v1/downloads/{id}", patch(update_download))
@@ -531,6 +532,88 @@ async fn upload_nzb(
             }),
         )),
     }
+}
+
+#[derive(Serialize)]
+struct ContainerImportResponse {
+    packages: usize,
+    added: Vec<String>,
+}
+
+async fn upload_container(
+    State(state): State<AppState>,
+    mut multipart: Multipart,
+) -> Result<(StatusCode, Json<ContainerImportResponse>), (StatusCode, Json<ErrorResponse>)> {
+    let mut data: Option<Vec<u8>> = None;
+    while let Some(field) = multipart.next_field().await.map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid multipart body: {e}"),
+            }),
+        )
+    })? {
+        if field.name() == Some("file") {
+            let bytes = field.bytes().await.map_err(|e| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: format!("Failed to read file field: {e}"),
+                    }),
+                )
+            })?;
+            data = Some(bytes.to_vec());
+            break;
+        }
+    }
+
+    let data = data.ok_or_else(|| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Missing 'file' field in multipart body".into(),
+            }),
+        )
+    })?;
+
+    let packages = amigo_core::container::import_dlc(&data).map_err(|e| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: format!("Invalid DLC: {e}"),
+            }),
+        )
+    })?;
+
+    let mut added = Vec::new();
+    for pkg in &packages {
+        for link in &pkg.links {
+            match state
+                .coordinator
+                .add_download(&link.url, link.filename.clone())
+                .await
+            {
+                Ok(id) => added.push(id),
+                Err(e) => {
+                    tracing::warn!("DLC link {} failed to queue: {e}", link.url);
+                }
+            }
+        }
+    }
+
+    tracing::info!(
+        "DLC imported: {} package(s), {} download(s) queued",
+        packages.len(),
+        added.len()
+    );
+
+    Ok((
+        StatusCode::CREATED,
+        Json(ContainerImportResponse {
+            packages: packages.len(),
+            added,
+        }),
+    ))
 }
 
 async fn list_usenet_downloads(
