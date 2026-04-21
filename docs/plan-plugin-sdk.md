@@ -469,3 +469,110 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
 - Ohne Permission: `PermissionDenied`.
 
 ---
+
+## Phase 12: Utility-Helpers
+
+**Ziel:** Die kleinen Helfer, die Plugin-Autoren ständig brauchen und sonst selbst implementieren müssten.
+
+**Aufgaben:**
+
+- `parseSize(input: string): number` — versteht `"1.5 GB"`, `"500 MiB"`, `"1,024 KB"`, gibt Bytes.
+- `parseDuration(input: string): number` — `"2h 30m"`, `"1:30:00"`, gibt Millisekunden.
+- `parseDate(input: string, locale?: string): Date` — akzeptiert relative Zeitangaben (`"2 hours ago"`, `"yesterday"`) und absolute Daten in verschiedenen Locales.
+- `formatFilename(unsafe: string, options?): string` — sanitized für Dateisystem (entfernt/ersetzt ungültige Zeichen), kürzt auf maximale Länge, optional Diakritika-Normalisierung.
+- `Context.wait(milliseconds)` — respektiert AbortSignal, im Context bereits verfügbar.
+- `Context.log(level, message, metadata?)` — strukturiertes Logging in die Plugin-Log-Kapsel.
+- `Context.progress(current, total, message?)` — für lange Operationen.
+
+**Deliverable:** Plugin-Autoren müssen weniger eigenen Code schreiben.
+
+**Tests:**
+
+- Parse-Funktionen mit einer Sammlung realer Input-Strings aus verschiedenen Hostern.
+- Filename-Sanitization mit Unicode, reservierten Windows-Namen, Überlangem Input.
+- `wait` bricht bei Abort korrekt ab.
+
+---
+
+## Phase 13: Entwickler-Experience und CLI
+
+**Ziel:** Plugin-Entwicklung soll sich gut anfühlen. Local-Testing ohne die ganze amigo-downloader-App starten zu müssen.
+
+**Aufgaben:**
+
+- CLI-Befehl `amigo plugin new <id>` — scaffolded Plugin-Projekt mit Template, Manifest, passendem `tsconfig.json`, Test-Setup.
+- `amigo plugin test <url>` — spawnt einen minimalen Runner mit Host-API-Mock (oder Real-Host mit Sandbox), lädt das Plugin, ruft extract/decrypt mit der URL auf, printed strukturiertes Result plus Log-Output.
+- `amigo plugin build` — SWC-Transpilation, Manifest-Validation, Bundle in `.amigoplugin`-Tarball.
+- `amigo plugin install <path>` — lädt lokal in laufende amigo-downloader-Instanz.
+- `amigo plugin validate <path>` — statische Checks: Manifest-Schema, SDK-Version-Compatibility, Permission-Consistency.
+- Watch-Mode für `test`: Hot-Reload bei Code-Changes.
+
+**Deliverable:** Plugin-Autor kann in unter 2 Minuten von `plugin new` zu funktionierendem Plugin gegen eine echte URL kommen.
+
+**Tests:**
+
+- Scaffolding generiert Plugin, das direkt buildbar ist.
+- Test-CLI liefert strukturiertes Result oder verständlichen Error.
+- Build erzeugt valides Tarball.
+- Watch-Mode detected Änderungen korrekt.
+
+---
+
+## Phase 14: Integrations-Test-Suite
+
+**Ziel:** Ende-zu-Ende-Tests, die echte Plugin-Szenarien gegen Mock-Server durchspielen. Verhindert Regressions bei API-Änderungen.
+
+**Aufgaben:**
+
+- Test-Fixture-Server (lokal, mit vitest): simuliert typische Filehoster-Flows (Landing-Page, Countdown, Captcha, Final-Link), API-basierte Crawler (JSON-Endpoints mit Pagination), HLS-Streaming-Seite, RSDF-Container-Download.
+- Für jedes relevante JDownloader-Pattern eine Integration-Test-Suite:
+  - Simpler Filehoster mit Countdown und Captcha.
+  - API-Crawler mit Pagination und Account-Auth.
+  - Folder-Decrypter mit mehreren Levels.
+  - Streaming-Seite mit HLS-Master und Variant-Selection.
+  - RSDF/CCF/DLC-Container-Flows.
+  - Redirect-Shortener (Ouo.io-Style).
+- Tests laufen gegen den Mock-Server, validieren erwartetes Plugin-Verhalten Ende-zu-Ende.
+- Performance-Budget: jeder Test unter 5 Sekunden.
+
+**Deliverable:** Robuste Test-Suite, die jedes Mal läuft, wenn SDK-Code geändert wird. Garantiert, dass Änderungen keine bestehenden Plugin-Patterns brechen.
+
+**Tests:** Die Suite ist der Test. Zusätzliche Meta-Tests validieren, dass der Mock-Server korrekt funktioniert.
+
+---
+
+## Phase 15: Dokumentation und Beispiel-Plugins
+
+**Ziel:** Plugin-Autoren können ohne Code-Reading des SDK-Source sofort loslegen.
+
+**Aufgaben:**
+
+- API-Referenz aus JSDoc/TSDoc generiert.
+- Tutorial: "Dein erstes Plugin in 10 Minuten" — Schritt-für-Schritt für einen einfachen Hoster.
+- Cookbook: 15+ Standard-Rezepte:
+  - Hoster mit Countdown und reCaptcha
+  - API-basierter Crawler mit Pagination
+  - Folder-Decrypter
+  - Premium-Account-Login und Session-Persistenz
+  - HLS-Streaming-Extraktion
+  - RSDF-Container-Import
+  - Obfuscated-JS-Link-Derivation
+  - Shortener-Resolver
+  - URL-Regex-Match mit mehreren Varianten
+  - Multipart-Form-Submit (z.B. Datei-Upload-Seiten)
+  - Session-Rehydrate mit abgelaufenem Token (Refresh-Flow)
+  - Redirect-Chain-Follow
+  - Rate-Limited API mit Backoff
+  - Response-Validierung und typsichere Parsing
+  - Debug-Logging-Patterns
+- Mapping-Tabelle: JDownloader-API zu amigo-plugin-sdk-API, als Referenz für Porting.
+- Migrationsleitfaden für Leute, die JDownloader-Plugins portieren wollen.
+
+**Deliverable:** Ein Plugin-Autor mit JDownloader-Erfahrung kann ein bestehendes Plugin in unter einer Stunde portieren.
+
+**Tests:**
+
+- Jedes Cookbook-Beispiel hat einen Integration-Test in Phase 14.
+- Dokumentation wird auf Build-Time gegen die echte API geprüft (kein Drift).
+
+---
