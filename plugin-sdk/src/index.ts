@@ -14,3 +14,4 @@ export * as container from "./container/index.js";
 export * as javascript from "./javascript/index.js";
 export * as types from "./types/index.js";
 export * as utility from "./utility/index.js";
+export * as cli from "./cli/index.js";
