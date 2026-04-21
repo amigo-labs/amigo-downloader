@@ -1,0 +1,16 @@
+export {
+  auto,
+  detect,
+  hcaptcha,
+  image,
+  interactive,
+  recaptchaV2,
+  recaptchaV3,
+  turnstile,
+  type AutoDetection,
+  type CaptchaImageOptions,
+  type CaptchaResult,
+  type CaptchaSolveOptions,
+  type CaptchaV2Options,
+  type CaptchaV3Options,
+} from "./captcha.js";
