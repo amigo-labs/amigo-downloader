@@ -6,6 +6,7 @@ import type {
   HostHttpResponse,
   HttpMethod,
 } from "../host/types.js";
+import type { Form, FormSubmitOptions } from "../form/form.js";
 import { CookieJar } from "./cookies.js";
 import { Headers } from "./headers.js";
 import { Page, type PageSnapshot } from "./page.js";
@@ -250,12 +251,16 @@ export class Browser {
         headers: new Headers(response.headers),
         bodyBytes: response.body,
       };
-      const page = new Page(this.hostApi, snapshot);
+      const page = new Page(this.hostApi, snapshot, this);
       this.currentPage = page;
       this.explicitReferer = currentUrl;
       this.defaultHeaders.set("Referer", currentUrl);
       return page;
     }
+  }
+
+  submitForm(form: Form, overrides?: Readonly<Record<string, string>>, options?: FormSubmitOptions): Promise<Page> {
+    return form.submit(overrides, options);
   }
 
   clone(): Browser {

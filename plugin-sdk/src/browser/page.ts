@@ -1,8 +1,10 @@
 import type { HostApi } from "../host/api.js";
 import type { HostHtmlDocument } from "../host/types.js";
+import { buildFormFromHtml, Form } from "../form/form.js";
 import { Element } from "./element.js";
 import { Headers } from "./headers.js";
 import { matchRegex, sourceContains, type RegexResult } from "./regex-result.js";
+import type { Browser } from "./browser.js";
 
 export interface PageSnapshot {
   readonly url: string;
@@ -19,6 +21,7 @@ export class Page {
   constructor(
     private readonly hostApi: HostApi,
     private readonly snapshot: PageSnapshot,
+    private readonly browser: Browser,
   ) {}
 
   get url(): string {
@@ -76,5 +79,34 @@ export class Page {
   findFirst(selector: string): Element | null {
     const node = this.document().selectFirst(selector);
     return node ? new Element(node) : null;
+  }
+
+  getForms(): Form[] {
+    return this.document()
+      .select("form")
+      .map((node) => buildFormFromHtml(this.hostApi, this.browser, this.snapshot.url, node.html));
+  }
+
+  getForm(selector?: string | number): Form | null {
+    const forms = this.document().select("form");
+    if (selector === undefined) {
+      const first = forms[0];
+      if (!first) {
+        return null;
+      }
+      return buildFormFromHtml(this.hostApi, this.browser, this.snapshot.url, first.html);
+    }
+    if (typeof selector === "number") {
+      const target = forms[selector];
+      if (!target) {
+        return null;
+      }
+      return buildFormFromHtml(this.hostApi, this.browser, this.snapshot.url, target.html);
+    }
+    const matched = this.document().selectFirst(selector);
+    if (!matched) {
+      return null;
+    }
+    return buildFormFromHtml(this.hostApi, this.browser, this.snapshot.url, matched.html);
   }
 }
