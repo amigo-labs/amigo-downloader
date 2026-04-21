@@ -1,3 +1,4 @@
+import type { AccountConfig } from "../account/config.js";
 import type { PluginContext } from "../context/context.js";
 import type { DownloadLink } from "../types/download-link.js";
 import type { FileInfo } from "../types/file-info.js";
@@ -17,6 +18,7 @@ export interface HosterPluginDefinition {
   readonly id: string;
   readonly version: string;
   readonly match: readonly UrlPattern[];
+  readonly account?: AccountConfig;
   checkAvailable?(context: PluginContext): Promise<FileInfo>;
   extract(context: PluginContext): Promise<FormatInfo[]>;
 }
@@ -33,6 +35,7 @@ export interface Plugin {
   readonly version: string;
   readonly kind: PluginKind;
   readonly match: readonly UrlPattern[];
+  readonly account: AccountConfig | null;
   matches(url: string): boolean;
   checkAvailable?(context: PluginContext): Promise<FileInfo>;
   extract?(context: PluginContext): Promise<FormatInfo[]>;
@@ -81,6 +84,7 @@ export function definePlugin(definition: HosterPluginDefinition): Plugin {
     version: definition.version,
     kind: "hoster",
     match: definition.match,
+    account: definition.account ?? null,
     matches: (url) => matchesAny(definition.match, url),
     extract: (context) => definition.extract(context),
     manifest: () => ({
@@ -103,6 +107,7 @@ export function defineDecrypter(definition: DecrypterPluginDefinition): Plugin {
     version: definition.version,
     kind: "decrypter",
     match: definition.match,
+    account: null,
     matches: (url) => matchesAny(definition.match, url),
     decrypt: async (context) => normaliseDecryptResult(await definition.decrypt(context)),
     manifest: () => ({

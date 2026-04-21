@@ -1,3 +1,4 @@
+import type { AccountCredentials, AccountStatus, Session } from "../account/types.js";
 import { Browser } from "../browser/browser.js";
 import { CookieJar } from "../browser/cookies.js";
 import { getHostApi } from "../host/injection.js";
@@ -27,8 +28,9 @@ export interface ProgressRecord {
 
 export interface AccountContext {
   readonly id: string;
-  readonly premium: boolean;
-  readonly session: Readonly<Record<string, unknown>>;
+  readonly status: AccountStatus;
+  readonly session: Session;
+  readonly credentials: AccountCredentials | null;
 }
 
 export interface PluginContextInit {
