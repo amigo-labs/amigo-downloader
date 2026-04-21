@@ -2,9 +2,10 @@
 /target/
 
 # Node
-web-ui/node_modules/
+node_modules/
 web-ui/dist/
 web-ui/.svelte-kit/
+plugin-sdk/dist/
 
 # Tauri
 tauri/target/
