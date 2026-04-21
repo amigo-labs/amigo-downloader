@@ -1,5 +1,3 @@
-import { Buffer } from "node:buffer";
-import { webcrypto } from "node:crypto";
 import type { HostApi } from "./api.js";
 import type {
   HostCryptoApi,
@@ -29,12 +27,52 @@ export interface MockHostApiController {
   setHttpDispatcher(dispatcher: MockHttpDispatcher): void;
 }
 
+function bytesToBase64(data: Uint8Array): string {
+  let binary = "";
+  for (let index = 0; index < data.length; index += 1) {
+    binary += String.fromCharCode(data[index]!);
+  }
+  return btoa(binary);
+}
+
+function base64ToBytes(data: string): Uint8Array {
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+function bytesToHex(data: Uint8Array): string {
+  let hex = "";
+  for (let index = 0; index < data.length; index += 1) {
+    hex += data[index]!.toString(16).padStart(2, "0");
+  }
+  return hex;
+}
+
+function hexToBytes(data: string): Uint8Array {
+  if (data.length % 2 !== 0) {
+    throw new Error("hexDecode: odd-length input");
+  }
+  const bytes = new Uint8Array(data.length / 2);
+  for (let index = 0; index < bytes.length; index += 1) {
+    const byte = Number.parseInt(data.slice(index * 2, index * 2 + 2), 16);
+    if (Number.isNaN(byte)) {
+      throw new Error(`hexDecode: invalid byte at index ${index}`);
+    }
+    bytes[index] = byte;
+  }
+  return bytes;
+}
+
 function defaultUtil(): HostUtilApi {
   return {
-    base64Encode: (data) => Buffer.from(data).toString("base64"),
-    base64Decode: (data) => new Uint8Array(Buffer.from(data, "base64")),
-    hexEncode: (data) => Buffer.from(data).toString("hex"),
-    hexDecode: (data) => new Uint8Array(Buffer.from(data, "hex")),
+    base64Encode: bytesToBase64,
+    base64Decode: base64ToBytes,
+    hexEncode: bytesToHex,
+    hexDecode: hexToBytes,
     textEncode: (data) => new TextEncoder().encode(data),
     textDecode: (data) => new TextDecoder("utf-8").decode(data),
     urlEncode: (data) => encodeURIComponent(data),
@@ -43,16 +81,22 @@ function defaultUtil(): HostUtilApi {
     sleep: (milliseconds, signal) =>
       new Promise<void>((resolve, reject) => {
         if (signal?.aborted) {
-          reject(new DOMException("Aborted", "AbortError"));
+          reject(makeAbortError());
           return;
         }
         const timer = setTimeout(() => resolve(), milliseconds);
         signal?.addEventListener("abort", () => {
           clearTimeout(timer);
-          reject(new DOMException("Aborted", "AbortError"));
+          reject(makeAbortError());
         });
       }),
   };
+}
+
+function makeAbortError(): Error {
+  const error = new Error("Aborted");
+  error.name = "AbortError";
+  return error;
 }
 
 function defaultCrypto(): HostCryptoApi {
@@ -67,7 +111,7 @@ function defaultCrypto(): HostCryptoApi {
     sha256: notConfigured("sha256"),
     randomBytes: (length) => {
       const bytes = new Uint8Array(length);
-      webcrypto.getRandomValues(bytes);
+      crypto.getRandomValues(bytes);
       return bytes;
     },
   };
@@ -94,7 +138,7 @@ export function createMockHostApi(options: MockHostApiOptions = {}): MockHostApi
   let dispatcher: MockHttpDispatcher | undefined = options.http;
 
   const util: HostUtilApi = { ...defaultUtil(), ...options.util };
-  const crypto: HostCryptoApi = { ...defaultCrypto(), ...options.crypto };
+  const cryptoApi: HostCryptoApi = { ...defaultCrypto(), ...options.crypto };
   const javascript = options.javascript ?? defaultJavascript();
   const html = options.html ?? defaultHtml();
 
@@ -111,7 +155,7 @@ export function createMockHostApi(options: MockHostApiOptions = {}): MockHostApi
       return result;
     },
     html,
-    crypto,
+    crypto: cryptoApi,
     util,
     javascript,
   };
