@@ -3,8 +3,11 @@ mod auth;
 mod background;
 mod clicknload;
 mod feedback;
+mod login;
 mod nzbget_api;
+mod password;
 mod resolver;
+mod setup;
 mod static_files;
 mod update_api;
 pub mod webhooks;
@@ -211,9 +214,14 @@ async fn main() -> anyhow::Result<()> {
         .merge(feedback::feedback_router(state.clone(), feedback_limiter))
         .layer(auth_layer);
 
+    // Public / partially-authenticated routes (login, /me, setup wizard).
+    let open = setup::setup_router(state.clone(), auth_state.clone())
+        .merge(login::login_router(state.clone(), auth_state.clone()));
+
     // NZBGet JSON-RPC has its own HTTP Basic Auth layer (Sonarr/Radarr
     // compatibility) and static files are public.
     let app = protected
+        .merge(open)
         .merge(nzbget_api::nzbget_router(state.clone()))
         .merge(static_files::static_router())
         .layer(setup_guard_layer)

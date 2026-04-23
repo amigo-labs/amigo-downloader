@@ -37,6 +37,7 @@ regex = "1"
 async-trait = { workspace = true }
 argon2 = { workspace = true }
 rand = { workspace = true }
+cookie = "0.18"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
