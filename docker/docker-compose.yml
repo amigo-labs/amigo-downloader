@@ -13,9 +13,20 @@ services:
       - ./downloads:/downloads
     environment:
       - TZ=Europe/Berlin
-      - AMIGO_API_KEY=${AMIGO_API_KEY:?Set AMIGO_API_KEY in .env or environment}
-      - AMIGO_MAX_DOWNLOADS=10
-      - AMIGO_BANDWIDTH_LIMIT=0
+      # Listen on all interfaces so the first-run setup wizard is reachable
+      # from the host / LAN. Default without this override is loopback-only.
+      - AMIGO_BIND=0.0.0.0:1516
+      # Optional hardening for public-internet deployments — when set the
+      # setup wizard requires the PIN as `X-Setup-Pin: <value>` before it
+      # will let anyone claim the admin account.
+      # - AMIGO_SETUP_PIN=${AMIGO_SETUP_PIN}
+      # Headless provisioning — when both are set the wizard is skipped and
+      # the admin account is created at startup.
+      # - AMIGO_SETUP_USER=${AMIGO_SETUP_USER}
+      # - AMIGO_SETUP_PASSWORD=${AMIGO_SETUP_PASSWORD}
+      # Behind a reverse proxy? Enable this so `X-Forwarded-For` /
+      # `X-Forwarded-Proto` are trusted.
+      # - AMIGO_TRUST_PROXY=true
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:1516/api/v1/status"]
       interval: 30s

@@ -13,7 +13,11 @@ services:
       - ./downloads:/downloads
     environment:
       - TZ=Europe/Berlin
-      - AMIGO_API_KEY=changeme
-      - AMIGO_MAX_DOWNLOADS=10
-      - AMIGO_BANDWIDTH_LIMIT=0
+      - AMIGO_BIND=0.0.0.0:1516
+      # Uncomment for paranoid deployments / public VPS:
+      # - AMIGO_SETUP_PIN=${AMIGO_SETUP_PIN}
+      # Or for headless provisioning:
+      # - AMIGO_SETUP_USER=${AMIGO_SETUP_USER}
+      # - AMIGO_SETUP_PASSWORD=${AMIGO_SETUP_PASSWORD}
+      # - AMIGO_TRUST_PROXY=true
     restart: unless-stopped

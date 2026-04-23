@@ -41,6 +41,21 @@ async fn main() -> anyhow::Result<()> {
     let config_path = Config::resolve_path();
     let mut config = Config::load(&config_path).unwrap_or_default();
 
+    // Env overrides — useful for Docker / IaC where flipping `bind` or
+    // enabling reverse-proxy awareness shouldn't require editing a TOML
+    // file that also lives in a volume.
+    if let Ok(bind) = std::env::var("AMIGO_BIND") {
+        if !bind.trim().is_empty() {
+            config.server.bind = bind;
+        }
+    }
+    if std::env::var("AMIGO_TRUST_PROXY")
+        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false)
+    {
+        config.server.trust_proxy = true;
+    }
+
     // Reject misconfigured bind/token combinations early.
     let validation_errors = config.validate();
     if !validation_errors.is_empty() {
