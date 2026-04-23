@@ -50,7 +50,7 @@ async fn status(
     State((_app, auth)): State<(AppState, AuthState)>,
 ) -> Json<SetupStatus> {
     Json(SetupStatus {
-        needs_setup: !auth.setup_complete,
+        needs_setup: !auth.setup_complete().await,
         needs_pin: auth.setup_pin.is_some(),
     })
 }
@@ -59,7 +59,7 @@ async fn complete(
     State((app, auth)): State<(AppState, AuthState)>,
     Json(req): Json<CompleteRequest>,
 ) -> Response {
-    if auth.setup_complete {
+    if auth.setup_complete().await {
         return (StatusCode::GONE, "setup already complete").into_response();
     }
     if req.username.trim().is_empty() || req.password.len() < 8 {

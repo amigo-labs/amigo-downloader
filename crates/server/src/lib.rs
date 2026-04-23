@@ -80,3 +80,34 @@ pub fn build_test_router(state: api::AppState) -> axum::Router {
     api::router(state.clone())
         .merge(ws::ws_router(state.clone()))
 }
+
+/// Build the full router including setup / login / pairing routes and the
+/// auth + setup-guard middleware, matching production wiring. Used by the
+/// end-to-end integration tests.
+pub async fn build_full_test_router(
+    state: api::AppState,
+    setup_pin: Option<String>,
+    bind_is_loopback: bool,
+) -> axum::Router {
+    let config = state.coordinator.config().await;
+    let auth_state = auth::AuthState::new(
+        state.clone(),
+        config.server.api_token.clone(),
+        setup_pin,
+        config.server.setup_complete,
+        bind_is_loopback,
+    );
+    let auth_layer = axum::middleware::from_fn_with_state(auth_state.clone(), auth::require_auth);
+    let setup_guard_layer =
+        axum::middleware::from_fn_with_state(auth_state.clone(), auth::setup_guard);
+
+    let protected = api::router(state.clone())
+        .merge(ws::ws_router(state.clone()))
+        .layer(auth_layer);
+
+    let open = setup::setup_router(state.clone(), auth_state.clone())
+        .merge(login::login_router(state.clone(), auth_state.clone()))
+        .merge(pairing::pairing_router(state.clone(), auth_state.clone()));
+
+    protected.merge(open).layer(setup_guard_layer)
+}

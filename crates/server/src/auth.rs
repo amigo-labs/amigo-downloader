@@ -34,16 +34,16 @@ use crate::api::AppState;
 /// Shared auth configuration.
 #[derive(Clone)]
 pub struct AuthState {
-    /// App state handle — used to look up sessions and API tokens.
+    /// App state handle — used to look up sessions, API tokens, and the
+    /// current `setup_complete` flag from config.
     pub app: AppState,
     /// Optional pre-shared bearer token from `server.api_token`.
     pub preshared_token: Option<Arc<String>>,
     /// Optional setup-mode PIN (from `AMIGO_SETUP_PIN`). Only consulted by
     /// [`require_setup_pin`].
     pub setup_pin: Option<Arc<String>>,
-    /// Whether the first-run wizard has completed. Driven from config.
-    pub setup_complete: bool,
     /// `true` if the server bind is loopback; setup-mode is suppressed there.
+    /// This is captured at startup because the bind cannot change at runtime.
     pub bind_is_loopback: bool,
 }
 
@@ -52,16 +52,21 @@ impl AuthState {
         app: AppState,
         preshared_token: Option<String>,
         setup_pin: Option<String>,
-        setup_complete: bool,
+        _setup_complete_initial: bool,
         bind_is_loopback: bool,
     ) -> Self {
         Self {
             app,
             preshared_token: preshared_token.filter(|t| !t.is_empty()).map(Arc::new),
             setup_pin: setup_pin.filter(|t| !t.is_empty()).map(Arc::new),
-            setup_complete,
             bind_is_loopback,
         }
+    }
+
+    /// Current value of `setup_complete` — read through the coordinator so
+    /// the setup wizard flipping it takes effect in-flight.
+    pub async fn setup_complete(&self) -> bool {
+        self.app.coordinator.config().await.server.setup_complete
     }
 }
 
@@ -254,7 +259,7 @@ pub async fn setup_guard(
     req: Request<Body>,
     next: Next,
 ) -> Response {
-    if auth.setup_complete || auth.bind_is_loopback {
+    if auth.bind_is_loopback || auth.setup_complete().await {
         return next.run(req).await;
     }
     // Allow the setup and pairing-poll endpoints through while in setup mode.
@@ -281,7 +286,7 @@ pub async fn require_setup_pin(
     req: Request<Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    if auth.setup_complete {
+    if auth.setup_complete().await {
         return Err(StatusCode::GONE);
     }
     let Some(expected) = auth.setup_pin.as_ref() else {
