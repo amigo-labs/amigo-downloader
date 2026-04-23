@@ -2,6 +2,7 @@
 #![allow(dead_code)]
 
 pub mod api;
+pub mod auth;
 mod background;
 pub mod clicknload;
 mod feedback;

@@ -60,6 +60,36 @@ pub struct Config {
     pub features: FeatureFlags,
     #[serde(default)]
     pub nzbget_api: NzbGetApiConfig,
+    #[serde(default)]
+    pub server: ServerConfig,
+}
+
+/// HTTP server binding and authentication.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerConfig {
+    /// Socket address to bind the REST API + Web UI server to.
+    /// Defaults to `127.0.0.1:1516` (local-only). Set to `0.0.0.0:1516` to expose
+    /// on the LAN — requires `api_token` to be set.
+    pub bind: String,
+    /// Bearer token required in `Authorization: Bearer <token>` for /api/v1/* routes.
+    /// WebSocket clients may also pass it as `?token=<token>`. `None` disables auth
+    /// (only safe on loopback binds).
+    #[serde(default)]
+    pub api_token: Option<String>,
+    /// Explicit CORS allowlist. Empty = no CORS layer (same-origin only, which is the
+    /// default because the Web UI is served from the same origin).
+    #[serde(default)]
+    pub cors_origins: Vec<String>,
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            bind: "127.0.0.1:1516".into(),
+            api_token: None,
+            cors_origins: Vec::new(),
+        }
+    }
 }
 
 /// NZBGet-compatible JSON-RPC API credentials for Sonarr/Radarr integration.
@@ -187,6 +217,7 @@ impl Default for Config {
             webhooks: Vec::new(),
             features: FeatureFlags::default(),
             nzbget_api: NzbGetApiConfig::default(),
+            server: ServerConfig::default(),
         }
     }
 }
@@ -305,6 +336,23 @@ impl Config {
         }
         if self.retry.max_delay_secs < self.retry.base_delay_secs {
             errors.push("retry.max_delay_secs must be >= retry.base_delay_secs".into());
+        }
+        if self.server.bind.is_empty() {
+            errors.push("server.bind must not be empty".into());
+        }
+        // Refuse non-loopback binds without a token — this would expose the API
+        // to the network without authentication.
+        let bind_host = self
+            .server
+            .bind
+            .rsplit_once(':')
+            .map(|(h, _)| h)
+            .unwrap_or(self.server.bind.as_str());
+        let is_loopback = matches!(bind_host, "127.0.0.1" | "::1" | "localhost" | "[::1]");
+        if !is_loopback && self.server.api_token.as_deref().unwrap_or("").is_empty() {
+            errors.push(format!(
+                "server.bind is {bind_host} but server.api_token is empty — refusing to expose an unauthenticated API on the network"
+            ));
         }
 
         errors

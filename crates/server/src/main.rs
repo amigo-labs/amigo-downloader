@@ -1,4 +1,5 @@
 mod api;
+mod auth;
 mod background;
 mod clicknload;
 mod feedback;
@@ -12,6 +13,7 @@ mod ws;
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use axum::http::{HeaderValue, Method, header};
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
 
@@ -34,6 +36,15 @@ async fn main() -> anyhow::Result<()> {
 
     let config_path = Config::resolve_path();
     let config = Config::load(&config_path).unwrap_or_default();
+
+    // Reject misconfigured bind/token combinations early.
+    let validation_errors = config.validate();
+    if !validation_errors.is_empty() {
+        for err in &validation_errors {
+            tracing::error!("Config error: {err}");
+        }
+        anyhow::bail!("Invalid configuration — refusing to start");
+    }
 
     let storage = Storage::open(
         PathBuf::from("amigo.db"),
@@ -144,13 +155,53 @@ async fn main() -> anyhow::Result<()> {
     // Feedback rate limiter
     let feedback_limiter = feedback::new_rate_limiter(config.feedback.max_issues_per_hour);
 
-    let app = api::router(state.clone())
+    // Build the CORS layer from explicit config. Empty = no CORS (same-origin
+    // only, which is what the bundled Web UI needs). Permissive was a blanket
+    // CSRF hole.
+    let cors = if config.server.cors_origins.is_empty() {
+        CorsLayer::new()
+    } else {
+        let origins: Vec<HeaderValue> = config
+            .server
+            .cors_origins
+            .iter()
+            .filter_map(|o| o.parse().ok())
+            .collect();
+        CorsLayer::new()
+            .allow_origin(origins)
+            .allow_methods([
+                Method::GET,
+                Method::POST,
+                Method::PUT,
+                Method::PATCH,
+                Method::DELETE,
+            ])
+            .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
+    };
+
+    let auth_state = auth::AuthState::new(config.server.api_token.clone());
+    if !auth_state.is_enabled() {
+        tracing::warn!(
+            "API token not configured — REST API and WebSocket are unauthenticated. This is safe on loopback binds only."
+        );
+    }
+    let auth_layer = axum::middleware::from_fn_with_state(
+        auth_state.clone(),
+        auth::require_token,
+    );
+
+    let protected = api::router(state.clone())
         .merge(ws::ws_router(state.clone()))
         .merge(update_api::update_router(state.clone()))
-        .merge(nzbget_api::nzbget_router(state.clone()))
         .merge(feedback::feedback_router(state.clone(), feedback_limiter))
+        .layer(auth_layer);
+
+    // NZBGet JSON-RPC has its own HTTP Basic Auth layer (Sonarr/Radarr
+    // compatibility) and static files are public.
+    let app = protected
+        .merge(nzbget_api::nzbget_router(state.clone()))
         .merge(static_files::static_router())
-        .layer(CorsLayer::permissive());
+        .layer(cors);
 
     // Start background tasks (NZB watch folder, RSS poller)
     background::spawn_background_tasks(coordinator.clone(), state.http_client.clone());
@@ -163,10 +214,10 @@ async fn main() -> anyhow::Result<()> {
         }
     });
 
-    let bind = "0.0.0.0:1516";
+    let bind = config.server.bind.clone();
     tracing::info!("Starting amigo-server on {bind}");
 
-    let listener = tokio::net::TcpListener::bind(bind).await?;
+    let listener = tokio::net::TcpListener::bind(&bind).await?;
     axum::serve(listener, app).await?;
 
     Ok(())
