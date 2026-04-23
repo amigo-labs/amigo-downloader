@@ -181,15 +181,28 @@ async fn main() -> anyhow::Result<()> {
             .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
     };
 
-    let auth_state = auth::AuthState::new(config.server.api_token.clone());
-    if !auth_state.is_enabled() {
+    let bind_is_loopback = config.server.is_bind_loopback();
+    let setup_pin_env = std::env::var("AMIGO_SETUP_PIN").ok();
+    let auth_state = auth::AuthState::new(
+        state.clone(),
+        config.server.api_token.clone(),
+        setup_pin_env,
+        config.server.setup_complete,
+        bind_is_loopback,
+    );
+    if !config.server.setup_complete && !bind_is_loopback {
         tracing::warn!(
-            "API token not configured — REST API and WebSocket are unauthenticated. This is safe on loopback binds only."
+            "Setup not complete — server is running in setup-mode. Open http://{bind} in a browser to configure the admin account.",
+            bind = config.server.bind
         );
     }
     let auth_layer = axum::middleware::from_fn_with_state(
         auth_state.clone(),
-        auth::require_token,
+        auth::require_auth,
+    );
+    let setup_guard_layer = axum::middleware::from_fn_with_state(
+        auth_state.clone(),
+        auth::setup_guard,
     );
 
     let protected = api::router(state.clone())
@@ -203,6 +216,7 @@ async fn main() -> anyhow::Result<()> {
     let app = protected
         .merge(nzbget_api::nzbget_router(state.clone()))
         .merge(static_files::static_router())
+        .layer(setup_guard_layer)
         .layer(cors);
 
     // Start background tasks (NZB watch folder, RSS poller)

@@ -95,6 +95,13 @@ pub struct ServerConfig {
     /// Session lifetime in seconds. Defaults to 30 days; refreshed on activity.
     #[serde(default = "default_session_ttl_secs")]
     pub session_ttl_secs: i64,
+    /// When `true`, the server trusts `X-Forwarded-For` / `X-Forwarded-Proto`
+    /// headers on incoming requests — enable this only when sitting behind a
+    /// reverse proxy (nginx, Caddy, Traefik, Cloudflare Tunnel, Tailscale
+    /// Funnel) that you control. Off by default to prevent source-IP
+    /// spoofing on directly-exposed servers.
+    #[serde(default)]
+    pub trust_proxy: bool,
 }
 
 fn default_session_ttl_secs() -> i64 {
@@ -127,6 +134,7 @@ impl Default for ServerConfig {
             admin_username: None,
             admin_password_hash: None,
             session_ttl_secs: default_session_ttl_secs(),
+            trust_proxy: false,
         }
     }
 }
