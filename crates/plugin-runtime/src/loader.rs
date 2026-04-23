@@ -33,7 +33,8 @@ pub struct PluginLoader {
 
 impl PluginLoader {
     pub fn new(plugin_dir: PathBuf, sandbox_limits: SandboxLimits) -> Result<Self, crate::Error> {
-        Self::new_with_host_api(plugin_dir, sandbox_limits, HostApi::new(20))
+        let host_api = HostApi::from_sandbox(&sandbox_limits);
+        Self::new_with_host_api(plugin_dir, sandbox_limits, host_api)
     }
 
     /// Create a PluginLoader with a pre-configured HostApi (for wiring callbacks).

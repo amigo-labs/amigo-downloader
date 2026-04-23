@@ -65,10 +65,12 @@ async fn main() -> anyhow::Result<()> {
         &config.captcha,
     ));
 
-    // Load plugins with notify + captcha callbacks wired
-    let mut plugin_host_api = amigo_plugin_runtime::host_api::HostApi::new(
-        SandboxLimits::default().max_http_requests,
-    );
+    // Load plugins with notify + captcha callbacks wired. `from_sandbox`
+    // picks up the SSRF policy and request limit from the same struct that
+    // governs other sandbox limits.
+    let sandbox_limits = SandboxLimits::default();
+    let mut plugin_host_api =
+        amigo_plugin_runtime::host_api::HostApi::from_sandbox(&sandbox_limits);
 
     // Wire notify callback: plugin → broadcast → WebSocket → UI toast
     {
@@ -98,7 +100,7 @@ async fn main() -> anyhow::Result<()> {
     let plugin_loader = Arc::new(
         PluginLoader::new_with_host_api(
             PathBuf::from("plugins"),
-            SandboxLimits::default(),
+            sandbox_limits,
             plugin_host_api,
         )
         .expect("Failed to initialize plugin runtime — cannot start server"),

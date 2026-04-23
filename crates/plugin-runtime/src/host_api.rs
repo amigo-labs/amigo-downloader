@@ -33,6 +33,9 @@ pub struct HostApi {
     max_requests: u32,
     notify_callback: Option<NotifyCallback>,
     captcha_callback: Option<CaptchaSolveCallback>,
+    /// When false, reject plugin HTTP requests whose resolved IP is loopback,
+    /// private (RFC1918), link-local, CGNAT, or otherwise non-public.
+    allow_private_network: bool,
 }
 
 impl HostApi {
@@ -48,7 +51,16 @@ impl HostApi {
             max_requests,
             notify_callback: None,
             captcha_callback: None,
+            allow_private_network: false,
         }
+    }
+
+    /// Build a `HostApi` whose limits match a `SandboxLimits`, including the
+    /// `allow_private_network` setting.
+    pub fn from_sandbox(limits: &crate::sandbox::SandboxLimits) -> Self {
+        let mut api = Self::new(limits.max_http_requests);
+        api.allow_private_network = limits.allow_private_network;
+        api
     }
 
     /// Set the callback for plugin notifications.
@@ -59,6 +71,54 @@ impl HostApi {
     /// Set the callback for captcha solving.
     pub fn set_captcha_callback(&mut self, callback: CaptchaSolveCallback) {
         self.captcha_callback = Some(callback);
+    }
+
+    /// Allow plugin HTTP requests to reach private / loopback / link-local
+    /// addresses. Off by default; see [`crate::sandbox::SandboxLimits`].
+    pub fn set_allow_private_network(&mut self, allow: bool) {
+        self.allow_private_network = allow;
+    }
+
+    /// Validate `url` against the SSRF policy. Rejects non-http(s) schemes and
+    /// — when `allow_private_network` is false — any URL that resolves to a
+    /// loopback / private / link-local / CGNAT address, which includes the
+    /// AWS/GCP metadata endpoint `169.254.169.254`.
+    async fn check_url_allowed(&self, url: &str) -> Result<(), String> {
+        let parsed = url::Url::parse(url).map_err(|e| format!("Invalid URL: {e}"))?;
+        match parsed.scheme() {
+            "http" | "https" => {}
+            other => return Err(format!("URL scheme not allowed: {other}")),
+        }
+        if self.allow_private_network {
+            return Ok(());
+        }
+        let host = parsed
+            .host_str()
+            .ok_or_else(|| "URL is missing a host".to_string())?;
+        let port = parsed.port_or_known_default().unwrap_or(80);
+
+        // If the host is an IP literal, check it directly without DNS.
+        if let Ok(ip) = host.parse::<std::net::IpAddr>() {
+            if is_blocked_ip(ip) {
+                return Err(format!(
+                    "Request blocked: {host} is a private/loopback address"
+                ));
+            }
+            return Ok(());
+        }
+
+        let addrs = tokio::net::lookup_host((host, port))
+            .await
+            .map_err(|e| format!("DNS lookup failed for {host}: {e}"))?;
+        for addr in addrs {
+            if is_blocked_ip(addr.ip()) {
+                return Err(format!(
+                    "Request blocked: {host} resolves to private/loopback address {}",
+                    addr.ip()
+                ));
+            }
+        }
+        Ok(())
     }
 
     /// Reset request counter (called before each plugin invocation).
@@ -86,6 +146,7 @@ impl HostApi {
         headers: Option<HashMap<String, String>>,
     ) -> Result<(u16, String, HashMap<String, String>), String> {
         self.check_request_limit().await?;
+        self.check_url_allowed(url).await?;
         debug!("Plugin http_get: {url}");
 
         let mut req = self.http_client.get(url);
@@ -115,6 +176,7 @@ impl HostApi {
         headers: Option<HashMap<String, String>>,
     ) -> Result<(u16, String, HashMap<String, String>), String> {
         self.check_request_limit().await?;
+        self.check_url_allowed(url).await?;
         debug!("Plugin http_post: {url}");
 
         let mut req = self
@@ -147,6 +209,7 @@ impl HostApi {
         headers: Option<HashMap<String, String>>,
     ) -> Result<(u16, HashMap<String, String>), String> {
         self.check_request_limit().await?;
+        self.check_url_allowed(url).await?;
         debug!("Plugin http_head: {url}");
 
         let mut req = self.http_client.head(url);
@@ -630,6 +693,7 @@ impl HostApi {
         headers: Option<HashMap<String, String>>,
     ) -> Result<(u16, String, HashMap<String, String>), String> {
         self.check_request_limit().await?;
+        self.check_url_allowed(url).await?;
         debug!("Plugin http_post_form: {url}");
 
         let mut req = self.http_client.post(url).form(fields);
@@ -658,6 +722,7 @@ impl HostApi {
         headers: Option<HashMap<String, String>>,
     ) -> Result<String, String> {
         self.check_request_limit().await?;
+        self.check_url_allowed(url).await?;
         debug!("Plugin http_get_binary: {url}");
 
         let mut req = self.http_client.get(url);
@@ -679,6 +744,7 @@ impl HostApi {
         headers: Option<HashMap<String, String>>,
     ) -> Result<String, String> {
         self.check_request_limit().await?;
+        self.check_url_allowed(url).await?;
         debug!("Plugin http_follow_redirects: {url}");
 
         let mut req = self.http_client.head(url);
@@ -1667,9 +1733,117 @@ fn base64_encode_bytes(input: &[u8]) -> String {
     result
 }
 
+/// Reject IPs that plugins must not be able to reach: loopback, RFC1918
+/// private, link-local (169.254.0.0/16 — covers cloud-metadata services),
+/// CGNAT (100.64.0.0/10), broadcast, unspecified, documentation, and the
+/// IPv6 equivalents plus IPv4-mapped IPv6.
+fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
+    use std::net::IpAddr;
+    match ip {
+        IpAddr::V4(v4) => {
+            if v4.is_loopback()
+                || v4.is_private()
+                || v4.is_link_local()
+                || v4.is_broadcast()
+                || v4.is_unspecified()
+                || v4.is_documentation()
+            {
+                return true;
+            }
+            let o = v4.octets();
+            // CGNAT 100.64.0.0/10 is treated as non-public.
+            o[0] == 100 && (64..=127).contains(&o[1])
+        }
+        IpAddr::V6(v6) => {
+            if v6.is_loopback() || v6.is_unspecified() {
+                return true;
+            }
+            let segs = v6.segments();
+            // Unique-local fc00::/7
+            if (segs[0] & 0xfe00) == 0xfc00 {
+                return true;
+            }
+            // Link-local fe80::/10
+            if (segs[0] & 0xffc0) == 0xfe80 {
+                return true;
+            }
+            // Walk IPv4-mapped addresses through the v4 check.
+            if let Some(v4) = v6.to_ipv4_mapped() {
+                return is_blocked_ip(IpAddr::V4(v4));
+            }
+            false
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn blocked_ip_v4_coverage() {
+        use std::net::{IpAddr, Ipv4Addr};
+        assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1))));
+        assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(10, 0, 0, 1))));
+        assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(192, 168, 1, 1))));
+        assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(172, 16, 0, 1))));
+        // Cloud metadata endpoint.
+        assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(169, 254, 169, 254))));
+        // CGNAT
+        assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(100, 64, 0, 1))));
+        assert!(is_blocked_ip(IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0))));
+        // Public addresses are allowed.
+        assert!(!is_blocked_ip(IpAddr::V4(Ipv4Addr::new(8, 8, 8, 8))));
+        assert!(!is_blocked_ip(IpAddr::V4(Ipv4Addr::new(1, 1, 1, 1))));
+    }
+
+    #[test]
+    fn blocked_ip_v6_coverage() {
+        use std::net::IpAddr;
+        assert!(is_blocked_ip("::1".parse::<IpAddr>().unwrap()));
+        assert!(is_blocked_ip("::".parse::<IpAddr>().unwrap()));
+        assert!(is_blocked_ip("fe80::1".parse::<IpAddr>().unwrap()));
+        assert!(is_blocked_ip("fc00::1".parse::<IpAddr>().unwrap()));
+        assert!(is_blocked_ip("fd00::1".parse::<IpAddr>().unwrap()));
+        // IPv4-mapped loopback
+        assert!(is_blocked_ip("::ffff:127.0.0.1".parse::<IpAddr>().unwrap()));
+        // Public v6 is allowed.
+        assert!(!is_blocked_ip("2606:4700:4700::1111".parse::<IpAddr>().unwrap()));
+    }
+
+    #[tokio::test]
+    async fn ssrf_rejects_loopback_literal() {
+        let api = HostApi::new(20);
+        let err = api
+            .check_url_allowed("http://127.0.0.1:22/")
+            .await
+            .unwrap_err();
+        assert!(err.contains("private/loopback"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn ssrf_rejects_metadata_endpoint() {
+        let api = HostApi::new(20);
+        let err = api
+            .check_url_allowed("http://169.254.169.254/latest/meta-data/")
+            .await
+            .unwrap_err();
+        assert!(err.contains("private/loopback"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn ssrf_rejects_non_http_scheme() {
+        let api = HostApi::new(20);
+        let err = api.check_url_allowed("file:///etc/passwd").await.unwrap_err();
+        assert!(err.contains("scheme not allowed"), "{err}");
+    }
+
+    #[tokio::test]
+    async fn ssrf_allows_when_flag_set() {
+        let mut api = HostApi::new(20);
+        api.set_allow_private_network(true);
+        api.check_url_allowed("http://127.0.0.1:22/").await.unwrap();
+    }
 
     #[test]
     fn test_regex_match() {

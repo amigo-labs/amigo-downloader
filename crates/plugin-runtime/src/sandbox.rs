@@ -12,6 +12,12 @@ pub struct SandboxLimits {
     pub max_http_requests: u32,
     /// Max storage per plugin in bytes.
     pub max_storage_bytes: u64,
+    /// Allow plugin HTTP requests to reach private / loopback / link-local IPs.
+    /// Defaults to `false` — a blocked request returns an error from
+    /// `amigo.httpGet`/`httpPost`/`httpHead`/etc. Set to `true` only if you
+    /// trust every installed plugin and need to talk to LAN hosts.
+    #[serde(default)]
+    pub allow_private_network: bool,
 }
 
 impl Default for SandboxLimits {
@@ -21,6 +27,7 @@ impl Default for SandboxLimits {
             max_memory_bytes: 64 * 1024 * 1024, // 64MB
             max_http_requests: 20,
             max_storage_bytes: 1024 * 1024, // 1MB
+            allow_private_network: false,
         }
     }
 }
