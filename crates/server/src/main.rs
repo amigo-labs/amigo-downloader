@@ -5,6 +5,7 @@ mod clicknload;
 mod feedback;
 mod login;
 mod nzbget_api;
+mod pairing;
 mod password;
 mod resolver;
 mod setup;
@@ -38,7 +39,7 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let config_path = Config::resolve_path();
-    let config = Config::load(&config_path).unwrap_or_default();
+    let mut config = Config::load(&config_path).unwrap_or_default();
 
     // Reject misconfigured bind/token combinations early.
     let validation_errors = config.validate();
@@ -47,6 +48,30 @@ async fn main() -> anyhow::Result<()> {
             tracing::error!("Config error: {err}");
         }
         anyhow::bail!("Invalid configuration — refusing to start");
+    }
+
+    // Headless setup: if `AMIGO_SETUP_USER` + `AMIGO_SETUP_PASSWORD` are
+    // provided and the wizard has not been completed, finish it now so the
+    // server comes up fully authenticated without the browser.
+    if !config.server.setup_complete {
+        if let (Ok(user), Ok(pw)) = (
+            std::env::var("AMIGO_SETUP_USER"),
+            std::env::var("AMIGO_SETUP_PASSWORD"),
+        ) {
+            if user.trim().is_empty() || pw.len() < 8 {
+                tracing::error!(
+                    "AMIGO_SETUP_USER / AMIGO_SETUP_PASSWORD provided but invalid (user empty or password < 8 chars)"
+                );
+                anyhow::bail!("invalid setup env vars");
+            }
+            let hash = password::hash_password(&pw)
+                .map_err(|e| anyhow::anyhow!("setup hash failed: {e}"))?;
+            config.server.admin_username = Some(user);
+            config.server.admin_password_hash = Some(hash);
+            config.server.setup_complete = true;
+            config.save(&config_path)?;
+            tracing::info!("Setup completed from environment variables — admin account active.");
+        }
     }
 
     let storage = Storage::open(
@@ -214,9 +239,11 @@ async fn main() -> anyhow::Result<()> {
         .merge(feedback::feedback_router(state.clone(), feedback_limiter))
         .layer(auth_layer);
 
-    // Public / partially-authenticated routes (login, /me, setup wizard).
+    // Public / partially-authenticated routes (login, /me, setup wizard,
+    // pairing endpoints).
     let open = setup::setup_router(state.clone(), auth_state.clone())
-        .merge(login::login_router(state.clone(), auth_state.clone()));
+        .merge(login::login_router(state.clone(), auth_state.clone()))
+        .merge(pairing::pairing_router(state.clone(), auth_state.clone()));
 
     // NZBGet JSON-RPC has its own HTTP Basic Auth layer (Sonarr/Radarr
     // compatibility) and static files are public.
@@ -242,7 +269,11 @@ async fn main() -> anyhow::Result<()> {
     tracing::info!("Starting amigo-server on {bind}");
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;
-    axum::serve(listener, app).await?;
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await?;
 
     Ok(())
 }

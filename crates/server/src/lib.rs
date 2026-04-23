@@ -8,6 +8,7 @@ pub mod clicknload;
 mod feedback;
 pub mod login;
 mod nzbget_api;
+pub mod pairing;
 pub mod password;
 mod resolver;
 pub mod setup;
