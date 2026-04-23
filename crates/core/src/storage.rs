@@ -118,11 +118,52 @@ CREATE TABLE IF NOT EXISTS rss_seen (
     PRIMARY KEY (feed_id, guid)
 );
 
+-- Browser login sessions (cookie-based). Opaque `id` is the session token.
+CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    username TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL,
+    last_seen_at INTEGER NOT NULL
+);
+
+-- Long-lived API tokens used by the CLI / scripts / webhooks. The secret is
+-- stored hashed; the plaintext is shown exactly once (at pairing-approve).
+CREATE TABLE IF NOT EXISTS api_tokens (
+    id TEXT PRIMARY KEY,
+    token_hash TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    created_at INTEGER NOT NULL,
+    last_used_at INTEGER,
+    last_used_ip TEXT,
+    expires_at INTEGER,
+    revoked INTEGER NOT NULL DEFAULT 0
+);
+
+-- Ephemeral device-pairing requests. Deleted after the CLI polls an approved
+-- request once. Status: pending | approved | denied | expired.
+CREATE TABLE IF NOT EXISTS pairing_requests (
+    id TEXT PRIMARY KEY,
+    poll_token_hash TEXT NOT NULL UNIQUE,
+    device_name TEXT NOT NULL,
+    source_ip TEXT NOT NULL,
+    user_agent TEXT NOT NULL DEFAULT '',
+    fingerprint TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    api_token_plain TEXT,
+    api_token_id TEXT,
+    created_at INTEGER NOT NULL,
+    expires_at INTEGER NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_downloads_status ON downloads(status);
 CREATE INDEX IF NOT EXISTS idx_downloads_package ON downloads(package_id);
 CREATE INDEX IF NOT EXISTS idx_downloads_protocol ON downloads(protocol);
 CREATE INDEX IF NOT EXISTS idx_chunks_download ON chunks(download_id);
 CREATE INDEX IF NOT EXISTS idx_history_completed ON history(completed_at);
+CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
+CREATE INDEX IF NOT EXISTS idx_pairing_expires ON pairing_requests(expires_at);
+CREATE INDEX IF NOT EXISTS idx_pairing_status ON pairing_requests(status);
 "#;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -171,6 +212,48 @@ pub struct RssFeedRow {
     pub last_check: Option<String>,
     pub last_error: Option<String>,
     pub created_at: String,
+}
+
+/// Browser login session. `id` is the opaque cookie value.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SessionRow {
+    pub id: String,
+    pub username: String,
+    /// Unix epoch seconds.
+    pub created_at: i64,
+    pub expires_at: i64,
+    pub last_seen_at: i64,
+}
+
+/// Long-lived API token for non-browser clients. `token_hash` is the Argon2
+/// (or SHA-256 for fast path — see server) hash of the plaintext bearer token.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ApiTokenRow {
+    pub id: String,
+    pub token_hash: String,
+    pub name: String,
+    pub created_at: i64,
+    pub last_used_at: Option<i64>,
+    pub last_used_ip: Option<String>,
+    pub expires_at: Option<i64>,
+    pub revoked: bool,
+}
+
+/// Pairing-flow row. Lives until the CLI polls an approved request or until
+/// `expires_at` is reached.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PairingRequestRow {
+    pub id: String,
+    pub poll_token_hash: String,
+    pub device_name: String,
+    pub source_ip: String,
+    pub user_agent: String,
+    pub fingerprint: String,
+    pub status: String,
+    pub api_token_plain: Option<String>,
+    pub api_token_id: Option<String>,
+    pub created_at: i64,
+    pub expires_at: i64,
 }
 
 #[derive(Clone)]
@@ -644,6 +727,252 @@ impl Storage {
         )?;
         Ok(())
     }
+
+    // --- Sessions (browser login cookies) ---
+
+    pub async fn create_session(&self, row: &SessionRow) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "INSERT INTO sessions (id, username, created_at, expires_at, last_seen_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![
+                row.id,
+                row.username,
+                row.created_at,
+                row.expires_at,
+                row.last_seen_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub async fn get_session(&self, id: &str) -> Result<Option<SessionRow>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare(
+            "SELECT id, username, created_at, expires_at, last_seen_at \
+             FROM sessions WHERE id = ?1",
+        )?;
+        let result = stmt
+            .query_row(rusqlite::params![id], row_to_session)
+            .ok();
+        Ok(result)
+    }
+
+    pub async fn touch_session(&self, id: &str, now: i64) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "UPDATE sessions SET last_seen_at = ?1 WHERE id = ?2",
+            rusqlite::params![now, id],
+        )?;
+        Ok(())
+    }
+
+    pub async fn delete_session(&self, id: &str) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute("DELETE FROM sessions WHERE id = ?1", rusqlite::params![id])?;
+        Ok(())
+    }
+
+    /// Delete sessions whose `expires_at` is in the past (relative to `now`).
+    pub async fn cleanup_expired_sessions(&self, now: i64) -> Result<u64, crate::Error> {
+        let db = self.db.lock().await;
+        let n = db.execute(
+            "DELETE FROM sessions WHERE expires_at < ?1",
+            rusqlite::params![now],
+        )?;
+        Ok(n as u64)
+    }
+
+    // --- API tokens (CLI / script bearer credentials) ---
+
+    pub async fn create_api_token(&self, row: &ApiTokenRow) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "INSERT INTO api_tokens (id, token_hash, name, created_at, last_used_at, last_used_ip, expires_at, revoked) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            rusqlite::params![
+                row.id,
+                row.token_hash,
+                row.name,
+                row.created_at,
+                row.last_used_at,
+                row.last_used_ip,
+                row.expires_at,
+                row.revoked as i64,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub async fn get_api_token_by_hash(
+        &self,
+        hash: &str,
+    ) -> Result<Option<ApiTokenRow>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare(
+            "SELECT id, token_hash, name, created_at, last_used_at, last_used_ip, expires_at, revoked \
+             FROM api_tokens WHERE token_hash = ?1 AND revoked = 0",
+        )?;
+        let result = stmt
+            .query_row(rusqlite::params![hash], row_to_api_token)
+            .ok();
+        Ok(result)
+    }
+
+    pub async fn touch_api_token(
+        &self,
+        id: &str,
+        now: i64,
+        ip: Option<&str>,
+    ) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "UPDATE api_tokens SET last_used_at = ?1, last_used_ip = ?2 WHERE id = ?3",
+            rusqlite::params![now, ip, id],
+        )?;
+        Ok(())
+    }
+
+    pub async fn list_api_tokens(&self) -> Result<Vec<ApiTokenRow>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare(
+            "SELECT id, token_hash, name, created_at, last_used_at, last_used_ip, expires_at, revoked \
+             FROM api_tokens ORDER BY created_at DESC",
+        )?;
+        let rows = stmt
+            .query_map([], row_to_api_token)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub async fn revoke_api_token(&self, id: &str) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "UPDATE api_tokens SET revoked = 1 WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+        Ok(())
+    }
+
+    // --- Pairing requests (CLI <-> server device approval) ---
+
+    pub async fn create_pairing_request(
+        &self,
+        row: &PairingRequestRow,
+    ) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "INSERT INTO pairing_requests (id, poll_token_hash, device_name, source_ip, user_agent, fingerprint, status, api_token_plain, api_token_id, created_at, expires_at) \
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'pending', NULL, NULL, ?7, ?8)",
+            rusqlite::params![
+                row.id,
+                row.poll_token_hash,
+                row.device_name,
+                row.source_ip,
+                row.user_agent,
+                row.fingerprint,
+                row.created_at,
+                row.expires_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub async fn get_pairing_by_poll_hash(
+        &self,
+        hash: &str,
+    ) -> Result<Option<PairingRequestRow>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare(
+            "SELECT id, poll_token_hash, device_name, source_ip, user_agent, fingerprint, status, api_token_plain, api_token_id, created_at, expires_at \
+             FROM pairing_requests WHERE poll_token_hash = ?1",
+        )?;
+        let result = stmt
+            .query_row(rusqlite::params![hash], row_to_pairing)
+            .ok();
+        Ok(result)
+    }
+
+    pub async fn list_pending_pairings(&self) -> Result<Vec<PairingRequestRow>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare(
+            "SELECT id, poll_token_hash, device_name, source_ip, user_agent, fingerprint, status, api_token_plain, api_token_id, created_at, expires_at \
+             FROM pairing_requests WHERE status = 'pending' ORDER BY created_at ASC",
+        )?;
+        let rows = stmt
+            .query_map([], row_to_pairing)?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    pub async fn approve_pairing(
+        &self,
+        id: &str,
+        api_token_plain: &str,
+        api_token_id: &str,
+    ) -> Result<bool, crate::Error> {
+        let db = self.db.lock().await;
+        let n = db.execute(
+            "UPDATE pairing_requests \
+             SET status = 'approved', api_token_plain = ?1, api_token_id = ?2 \
+             WHERE id = ?3 AND status = 'pending'",
+            rusqlite::params![api_token_plain, api_token_id, id],
+        )?;
+        Ok(n > 0)
+    }
+
+    pub async fn deny_pairing(&self, id: &str) -> Result<bool, crate::Error> {
+        let db = self.db.lock().await;
+        let n = db.execute(
+            "UPDATE pairing_requests SET status = 'denied' WHERE id = ?1 AND status = 'pending'",
+            rusqlite::params![id],
+        )?;
+        Ok(n > 0)
+    }
+
+    pub async fn consume_pairing_by_poll_hash(
+        &self,
+        hash: &str,
+    ) -> Result<Option<PairingRequestRow>, crate::Error> {
+        // Return the row (including api_token_plain) and delete it atomically.
+        let mut db = self.db.lock().await;
+        let tx = db.transaction()?;
+        let row: Option<PairingRequestRow> = {
+            let mut stmt = tx.prepare(
+                "SELECT id, poll_token_hash, device_name, source_ip, user_agent, fingerprint, status, api_token_plain, api_token_id, created_at, expires_at \
+                 FROM pairing_requests WHERE poll_token_hash = ?1 AND status = 'approved'",
+            )?;
+            stmt.query_row(rusqlite::params![hash], row_to_pairing).ok()
+        };
+        if row.is_some() {
+            tx.execute(
+                "DELETE FROM pairing_requests WHERE poll_token_hash = ?1",
+                rusqlite::params![hash],
+            )?;
+        }
+        tx.commit()?;
+        Ok(row)
+    }
+
+    pub async fn expire_pairings(&self, now: i64) -> Result<u64, crate::Error> {
+        let db = self.db.lock().await;
+        let n = db.execute(
+            "UPDATE pairing_requests SET status = 'expired' WHERE status = 'pending' AND expires_at < ?1",
+            rusqlite::params![now],
+        )?;
+        Ok(n as u64)
+    }
+
+    pub async fn cleanup_old_pairings(&self, older_than: i64) -> Result<u64, crate::Error> {
+        // Expired / denied rows older than `older_than` are removed.
+        let db = self.db.lock().await;
+        let n = db.execute(
+            "DELETE FROM pairing_requests \
+             WHERE (status IN ('expired', 'denied') AND created_at < ?1)",
+            rusqlite::params![older_than],
+        )?;
+        Ok(n as u64)
+    }
 }
 
 fn row_to_usenet_server(row: &rusqlite::Row<'_>) -> rusqlite::Result<UsenetServerRow> {
@@ -658,6 +987,45 @@ fn row_to_usenet_server(row: &rusqlite::Row<'_>) -> rusqlite::Result<UsenetServe
         connections: row.get::<_, i64>(7)? as u32,
         priority: row.get::<_, i64>(8)? as u32,
         created_at: row.get(9)?,
+    })
+}
+
+fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<SessionRow> {
+    Ok(SessionRow {
+        id: row.get(0)?,
+        username: row.get(1)?,
+        created_at: row.get(2)?,
+        expires_at: row.get(3)?,
+        last_seen_at: row.get(4)?,
+    })
+}
+
+fn row_to_api_token(row: &rusqlite::Row<'_>) -> rusqlite::Result<ApiTokenRow> {
+    Ok(ApiTokenRow {
+        id: row.get(0)?,
+        token_hash: row.get(1)?,
+        name: row.get(2)?,
+        created_at: row.get(3)?,
+        last_used_at: row.get(4)?,
+        last_used_ip: row.get(5)?,
+        expires_at: row.get(6)?,
+        revoked: row.get::<_, i64>(7)? != 0,
+    })
+}
+
+fn row_to_pairing(row: &rusqlite::Row<'_>) -> rusqlite::Result<PairingRequestRow> {
+    Ok(PairingRequestRow {
+        id: row.get(0)?,
+        poll_token_hash: row.get(1)?,
+        device_name: row.get(2)?,
+        source_ip: row.get(3)?,
+        user_agent: row.get(4)?,
+        fingerprint: row.get(5)?,
+        status: row.get(6)?,
+        api_token_plain: row.get(7)?,
+        api_token_id: row.get(8)?,
+        created_at: row.get(9)?,
+        expires_at: row.get(10)?,
     })
 }
 
@@ -751,5 +1119,199 @@ mod tests {
         let storage = Storage::open_memory().unwrap();
         let downloads = storage.list_downloads().await.unwrap();
         assert!(downloads.is_empty());
+    }
+
+    // --- Session CRUD ---
+
+    #[tokio::test]
+    async fn session_roundtrip_and_expiry_cleanup() {
+        let storage = Storage::open_memory().unwrap();
+        let now = 1_000_000_i64;
+        let alive = SessionRow {
+            id: "sess-alive".into(),
+            username: "admin".into(),
+            created_at: now,
+            expires_at: now + 3600,
+            last_seen_at: now,
+        };
+        let stale = SessionRow {
+            id: "sess-stale".into(),
+            username: "admin".into(),
+            created_at: now - 7200,
+            expires_at: now - 3600,
+            last_seen_at: now - 3600,
+        };
+        storage.create_session(&alive).await.unwrap();
+        storage.create_session(&stale).await.unwrap();
+
+        let fetched = storage.get_session("sess-alive").await.unwrap().unwrap();
+        assert_eq!(fetched.username, "admin");
+
+        storage.touch_session("sess-alive", now + 10).await.unwrap();
+        let touched = storage.get_session("sess-alive").await.unwrap().unwrap();
+        assert_eq!(touched.last_seen_at, now + 10);
+
+        let removed = storage.cleanup_expired_sessions(now).await.unwrap();
+        assert_eq!(removed, 1);
+        assert!(storage.get_session("sess-stale").await.unwrap().is_none());
+        assert!(storage.get_session("sess-alive").await.unwrap().is_some());
+
+        storage.delete_session("sess-alive").await.unwrap();
+        assert!(storage.get_session("sess-alive").await.unwrap().is_none());
+    }
+
+    // --- API token CRUD ---
+
+    #[tokio::test]
+    async fn api_token_crud_and_revocation() {
+        let storage = Storage::open_memory().unwrap();
+        let row = ApiTokenRow {
+            id: "tok-1".into(),
+            token_hash: "hash-aaa".into(),
+            name: "laptop".into(),
+            created_at: 1,
+            last_used_at: None,
+            last_used_ip: None,
+            expires_at: None,
+            revoked: false,
+        };
+        storage.create_api_token(&row).await.unwrap();
+
+        let by_hash = storage
+            .get_api_token_by_hash("hash-aaa")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(by_hash.name, "laptop");
+
+        storage
+            .touch_api_token("tok-1", 42, Some("10.0.0.5"))
+            .await
+            .unwrap();
+        let tokens = storage.list_api_tokens().await.unwrap();
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].last_used_at, Some(42));
+        assert_eq!(tokens[0].last_used_ip.as_deref(), Some("10.0.0.5"));
+
+        storage.revoke_api_token("tok-1").await.unwrap();
+        // Revoked rows are filtered out of the auth-lookup path.
+        assert!(storage.get_api_token_by_hash("hash-aaa").await.unwrap().is_none());
+        // …but still show up in the management list.
+        assert_eq!(storage.list_api_tokens().await.unwrap().len(), 1);
+    }
+
+    // --- Pairing flow ---
+
+    #[tokio::test]
+    async fn pairing_approve_and_consume_once() {
+        let storage = Storage::open_memory().unwrap();
+        let now = 100_i64;
+        let row = PairingRequestRow {
+            id: "pair-1".into(),
+            poll_token_hash: "poll-hash".into(),
+            device_name: "laptop".into(),
+            source_ip: "192.0.2.5".into(),
+            user_agent: "amigo-dl/0.1".into(),
+            fingerprint: "472-189".into(),
+            status: "pending".into(),
+            api_token_plain: None,
+            api_token_id: None,
+            created_at: now,
+            expires_at: now + 300,
+        };
+        storage.create_pairing_request(&row).await.unwrap();
+
+        assert_eq!(storage.list_pending_pairings().await.unwrap().len(), 1);
+
+        let ok = storage
+            .approve_pairing("pair-1", "plain-token", "tok-1")
+            .await
+            .unwrap();
+        assert!(ok);
+
+        // Second approve is a no-op because the row is no longer pending.
+        let ok2 = storage
+            .approve_pairing("pair-1", "x", "y")
+            .await
+            .unwrap();
+        assert!(!ok2);
+
+        let consumed = storage
+            .consume_pairing_by_poll_hash("poll-hash")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(consumed.api_token_plain.as_deref(), Some("plain-token"));
+
+        // Subsequent consume returns nothing — the row was deleted.
+        assert!(storage
+            .consume_pairing_by_poll_hash("poll-hash")
+            .await
+            .unwrap()
+            .is_none());
+    }
+
+    #[tokio::test]
+    async fn pairing_deny_blocks_token_delivery() {
+        let storage = Storage::open_memory().unwrap();
+        let now = 100_i64;
+        let row = PairingRequestRow {
+            id: "pair-2".into(),
+            poll_token_hash: "deny-hash".into(),
+            device_name: "laptop".into(),
+            source_ip: "192.0.2.5".into(),
+            user_agent: String::new(),
+            fingerprint: "000-000".into(),
+            status: "pending".into(),
+            api_token_plain: None,
+            api_token_id: None,
+            created_at: now,
+            expires_at: now + 300,
+        };
+        storage.create_pairing_request(&row).await.unwrap();
+        assert!(storage.deny_pairing("pair-2").await.unwrap());
+
+        // Consume returns None because the row is denied, not approved.
+        assert!(storage
+            .consume_pairing_by_poll_hash("deny-hash")
+            .await
+            .unwrap()
+            .is_none());
+
+        // Status is visible via the hash-lookup.
+        let row = storage
+            .get_pairing_by_poll_hash("deny-hash")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(row.status, "denied");
+    }
+
+    #[tokio::test]
+    async fn pairing_expire_transitions_pending_to_expired() {
+        let storage = Storage::open_memory().unwrap();
+        let row = PairingRequestRow {
+            id: "pair-3".into(),
+            poll_token_hash: "exp-hash".into(),
+            device_name: "laptop".into(),
+            source_ip: "192.0.2.5".into(),
+            user_agent: String::new(),
+            fingerprint: "111-222".into(),
+            status: "pending".into(),
+            api_token_plain: None,
+            api_token_id: None,
+            created_at: 10,
+            expires_at: 20,
+        };
+        storage.create_pairing_request(&row).await.unwrap();
+        let n = storage.expire_pairings(1000).await.unwrap();
+        assert_eq!(n, 1);
+
+        let fetched = storage
+            .get_pairing_by_poll_hash("exp-hash")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(fetched.status, "expired");
     }
 }
