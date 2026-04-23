@@ -23,3 +23,5 @@ axum = { workspace = true }
 indicatif = { workspace = true }
 console = { workspace = true }
 regex = "1"
+serde = { workspace = true }
+toml = { workspace = true }
