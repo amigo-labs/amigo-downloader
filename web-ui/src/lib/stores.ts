@@ -411,6 +411,19 @@ export const showFeedbackDialog = writable<boolean>(false);
 export const wsConnected = writable<boolean>(false);
 
 // ========================================
+// AUTH GATES
+// ========================================
+
+/// Flipped to `true` whenever an API call returns 401 Unauthorized. App.svelte
+/// watches this and swaps the view to the Login page; the login flow resets
+/// it on success.
+export const authRequired = writable<boolean>(false);
+
+/// Flipped to `true` whenever an API call returns 503 + setup_required. The
+/// setup wizard resets it once the user completes onboarding.
+export const setupRequired = writable<boolean>(false);
+
+// ========================================
 // SIDEBAR COLLAPSED
 // ========================================
 
