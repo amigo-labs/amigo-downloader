@@ -1,0 +1,24 @@
+---
+import InstallTabs from "./InstallTabs.svelte";
+---
+
+<section class="section" id="install">
+  <div class="container-prose grid gap-10 md:grid-cols-[1fr_1.2fr] items-start">
+    <div>
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mb-3" style="color: var(--text-primary)">
+        One command. <span class="neon-text-primary">Any platform.</span>
+      </h2>
+      <p class="mb-6" style="color: var(--text-secondary)">
+        Ship it as a Docker container, a single binary, or a native desktop app. Pick
+        whichever fits your setup — the server, plugins and Web UI come bundled.
+      </p>
+      <ul class="space-y-2 text-sm" style="color: var(--text-secondary)">
+        <li><span class="neon-text-primary font-semibold">Docker:</span> recommended — single compose file, persistent volumes, built-in update checks.</li>
+        <li><span class="neon-text-primary font-semibold">Shell:</span> install script auto-detects OS + arch, drops a <code>systemd</code> unit when available.</li>
+        <li><span class="neon-text-primary font-semibold">Cargo:</span> build from source for bleeding-edge features.</li>
+        <li><span class="neon-text-primary font-semibold">Desktop:</span> native Tauri builds for macOS, Windows, Linux.</li>
+      </ul>
+    </div>
+    <InstallTabs client:visible />
+  </div>
+</section>

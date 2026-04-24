@@ -2,7 +2,7 @@
   import { addDownload, addBatch } from "../lib/api";
   import { closeSidePanel } from "../lib/stores";
   import { addToast } from "../lib/toast";
-  import Icon from "./Icon.svelte";
+  import Icon from "@amigo/ui/components/Icon.svelte";
 
   let urlInput = $state("");
   let loading = $state(false);

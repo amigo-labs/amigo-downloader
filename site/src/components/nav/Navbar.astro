@@ -1,0 +1,46 @@
+---
+const lang = Astro.currentLocale ?? "en";
+const prefix = lang === "en" ? "" : `/${lang}`;
+
+const links = [
+  { href: `${prefix}/#features`, label: "Features" },
+  { href: `${prefix}/#install`, label: "Install" },
+  { href: `${prefix}/#plugins`, label: "Plugins" },
+  { href: "https://github.com/amigo-labs/amigo-downloader", label: "GitHub", external: true },
+];
+---
+
+<header class="sticky top-0 z-40 backdrop-blur-md" style="background: color-mix(in srgb, var(--bg-deep) 85%, transparent); border-bottom: 1px solid var(--border-color)">
+  <div class="container-prose flex items-center justify-between py-3">
+    <a href={prefix || "/"} class="flex items-center gap-2 font-semibold" style="color: var(--text-primary)">
+      <img
+        src="/amigo-downloader.png"
+        alt=""
+        width="32"
+        height="32"
+        class="rounded-md"
+        style="box-shadow: 0 0 0 1px var(--neon-border)"
+      />
+      <span class="neon-text-primary tracking-tight">amigo-downloader</span>
+    </a>
+    <nav aria-label="Primary" class="hidden md:flex items-center gap-6 text-sm" style="color: var(--text-secondary)">
+      {
+        links.map((l) => (
+          <a
+            href={l.href}
+            class="hover:text-[var(--neon-primary)] transition-colors"
+            {...(l.external ? { target: "_blank", rel: "noopener" } : {})}
+          >
+            {l.label}
+          </a>
+        ))
+      }
+    </nav>
+    <a
+      href="#install"
+      class="btn btn-primary text-sm"
+    >
+      Install
+    </a>
+  </div>
+</header>

@@ -1,0 +1,76 @@
+---
+const year = new Date().getFullYear();
+
+const columns = [
+  {
+    title: "Product",
+    links: [
+      { href: "/#features", label: "Features" },
+      { href: "/#install", label: "Install" },
+      { href: "/#plugins", label: "Plugins" },
+    ],
+  },
+  {
+    title: "Developers",
+    links: [
+      { href: "https://github.com/amigo-labs/amigo-downloader", label: "GitHub" },
+      { href: "https://github.com/amigo-labs/amigo-downloader/blob/main/docs/plugin-api.md", label: "Plugin API" },
+      { href: "https://github.com/amigo-labs/amigo-downloader/blob/main/docs/architecture.md", label: "Architecture" },
+    ],
+  },
+  {
+    title: "Community",
+    links: [
+      { href: "https://github.com/amigo-labs/amigo-downloader/issues", label: "Issues" },
+      { href: "https://github.com/amigo-labs/amigo-downloader/releases", label: "Releases" },
+      { href: "https://github.com/amigo-labs/amigo-downloader/blob/main/LICENSE", label: "License" },
+    ],
+  },
+];
+---
+
+<footer class="relative mt-20 neon-top-line" style="border-top: 1px solid var(--border-color); background: var(--bg-surface)">
+  <div class="container-prose py-12 grid gap-10 md:grid-cols-[1.5fr_1fr_1fr_1fr]">
+    <div>
+      <div class="flex items-center gap-2 font-semibold mb-3">
+        <img
+          src="/amigo-downloader.png"
+          alt=""
+          width="36"
+          height="36"
+          class="rounded-md"
+          style="box-shadow: 0 0 0 1px var(--neon-border)"
+        />
+        <span class="neon-text-primary tracking-tight">amigo-downloader</span>
+      </div>
+      <p class="text-sm max-w-sm" style="color: var(--text-secondary)">
+        Technical. Precise. Powerful. A modular download manager written in Rust, with a
+        TypeScript plugin system and first-class Usenet + HLS + DASH support.
+      </p>
+    </div>
+    {
+      columns.map((col) => (
+        <div>
+          <h4 class="stat-label mb-3">{col.title}</h4>
+          <ul class="space-y-2 text-sm" style="color: var(--text-secondary)">
+            {col.links.map((l) => (
+              <li>
+                <a
+                  href={l.href}
+                  class="hover:text-[var(--neon-primary)] transition-colors"
+                  {...l.href.startsWith("http") ? { target: "_blank", rel: "noopener" } : {}}
+                >
+                  {l.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))
+    }
+  </div>
+  <div class="container-prose pb-8 flex flex-wrap items-center justify-between gap-4 text-xs" style="color: var(--text-secondary); border-top: 1px solid var(--border-color); padding-top: 1.5rem">
+    <span>© {year} amigo-labs · MIT License</span>
+    <span>Built with Astro, Svelte and Rust.</span>
+  </div>
+</footer>

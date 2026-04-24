@@ -3,7 +3,7 @@
   import { sidePanelMode, selectedDownload, closeSidePanel } from "../lib/stores";
   import DetailPanel from "./DetailPanel.svelte";
   import AddPanel from "./AddPanel.svelte";
-  import Icon from "./Icon.svelte";
+  import Icon from "@amigo/ui/components/Icon.svelte";
 
   let isOpen = $derived($sidePanelMode !== null);
   let title = $derived(

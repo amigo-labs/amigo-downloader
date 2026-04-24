@@ -1,6 +1,6 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import Icon from "./Icon.svelte";
+  import Icon from "@amigo/ui/components/Icon.svelte";
 
   let { x, y, items, onclose }:
     { x: number; y: number; items: { label: string; icon: string; action: () => void; color?: string }[]; onclose: () => void } = $props();

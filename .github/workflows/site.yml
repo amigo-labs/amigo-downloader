@@ -1,0 +1,97 @@
+name: Site (Cloudflare Pages)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "packages/**"
+      - "locales/**"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - ".github/workflows/site.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "packages/**"
+      - "locales/**"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - ".github/workflows/site.yml"
+
+# Cancel in-progress runs for the same ref when a new commit lands
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & check
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-name: ${{ steps.artifact.outputs.name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check site
+        run: pnpm --filter amigo-site exec astro check
+
+      - name: Build site
+        run: pnpm --filter amigo-site build
+        env:
+          SITE_URL: >-
+            ${{ github.event_name == 'pull_request'
+              && format('https://pr-{0}.amigo-downloader.pages.dev', github.event.pull_request.number)
+              || 'https://amigo-downloader.pages.dev' }}
+
+      - id: artifact
+        run: echo "name=site-dist" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: site-dist
+          path: site/dist
+          retention-days: 7
+
+  deploy:
+    name: Deploy to Cloudflare Pages
+    if: >-
+      ${{
+        (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+        (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
+      }}
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      deployments: write
+      pull-requests: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: site-dist
+          path: dist
+
+      - name: Publish to Cloudflare Pages
+        id: deploy
+        uses: cloudflare/pages-action@v1
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          projectName: amigo-downloader
+          directory: dist
+          branch: ${{ github.head_ref || github.ref_name }}
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}

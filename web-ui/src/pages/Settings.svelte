@@ -4,7 +4,7 @@
   import { getConfig, putConfig, getWebhooks, type AppConfig } from "../lib/api";
   import { addToast } from "../lib/toast";
   import { locale, type Locale } from "../lib/i18n";
-  import Icon from "../components/Icon.svelte";
+  import Icon from "@amigo/ui/components/Icon.svelte";
 
   import SettingsFeatures from "../components/settings/SettingsFeatures.svelte";
   import SettingsUsenet from "../components/settings/SettingsUsenet.svelte";

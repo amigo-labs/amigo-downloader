@@ -1,0 +1,69 @@
+---
+const features = [
+  {
+    title: "Multi-chunk HTTP",
+    body: "Up to 8 parallel chunks per file, adaptive sizing, connection pooling, resume on drop.",
+  },
+  {
+    title: "Usenet with PAR2",
+    body: "Native NNTP/NNTPS, multi-server with priorities, yEnc decode, PAR2 verify/repair.",
+  },
+  {
+    title: "HLS & DASH",
+    body: "m3u8 and MPD parsing, variant/track pick, segment download with retries.",
+  },
+  {
+    title: "YouTube built-in",
+    body: "InnerTube API client, N-parameter via QuickJS, format-quality selection.",
+  },
+  {
+    title: "TypeScript plugins",
+    body: "Sandboxed QuickJS VM, SWC transpilation, 30 s / 64 MB / 20 req / 1 MB limits.",
+  },
+  {
+    title: "DLC import & export",
+    body: "Read and write AES-128 DLC containers — compatible with the JDownloader ecosystem.",
+  },
+  {
+    title: "Click'n'Load on 9666",
+    body: "Drop-in Browser-Extension support — same port, same protocol, zero config.",
+  },
+  {
+    title: "NZBGet JSON-RPC",
+    body: "Wire Sonarr, Radarr, SABnzbd-era tools into amigo without changing a single line.",
+  },
+  {
+    title: "RSS · Webhooks · i18n",
+    body: "Watch RSS feeds, fire outbound webhooks, shipping with EN + DE out of the box.",
+  },
+];
+---
+
+<section class="section" id="features">
+  <div class="container-prose">
+    <div class="flex items-end justify-between flex-wrap gap-4 mb-10">
+      <div>
+        <h2 class="text-3xl md:text-4xl font-bold tracking-tight mb-3" style="color: var(--text-primary)">
+          Everything you expect — done properly.
+        </h2>
+        <p class="max-w-2xl" style="color: var(--text-secondary)">
+          Feature-complete out of the box, with the performance and sandboxing you'd write yourself.
+        </p>
+      </div>
+    </div>
+    <div class="grid gap-4 md:grid-cols-3">
+      {
+        features.map((f) => (
+          <div class="feature-card">
+            <h3 class="text-lg font-semibold mb-2" style="color: var(--text-primary)">
+              {f.title}
+            </h3>
+            <p class="text-sm leading-relaxed" style="color: var(--text-secondary)">
+              {f.body}
+            </p>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

@@ -1,0 +1,22 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import MascotFloat from "../components/hero/MascotFloat.astro";
+---
+
+<BaseLayout title="404 — amigo-downloader" description="That page hit a retry limit we can't recover from.">
+  <section class="section">
+    <div class="container-prose text-center">
+      <div class="flex justify-center mb-6">
+        <MascotFloat size={128} />
+      </div>
+      <div class="stat-label mb-3">HTTP 404 · Not Found</div>
+      <h1 class="text-4xl md:text-5xl font-bold tracking-tight mb-4" style="color: var(--text-primary)">
+        This chunk <span class="neon-text-primary">didn't resolve</span>.
+      </h1>
+      <p class="mb-8 max-w-md mx-auto" style="color: var(--text-secondary)">
+        The URL you followed doesn't map to anything on the site. Head back home and try the nav.
+      </p>
+      <a href="/" class="btn btn-primary">← Back to the home page</a>
+    </div>
+  </section>
+</BaseLayout>

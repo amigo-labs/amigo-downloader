@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { addToast } from "../lib/toast";
-  import Icon from "./Icon.svelte";
+  import Icon from "@amigo/ui/components/Icon.svelte";
 
   let { captcha, onclose }: {
     captcha: {

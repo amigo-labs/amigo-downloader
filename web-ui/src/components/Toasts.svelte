@@ -1,6 +1,6 @@
 <script lang="ts">
   import { toasts, removeToast, type Toast } from "../lib/toast";
-  import Icon from "./Icon.svelte";
+  import Icon from "@amigo/ui/components/Icon.svelte";
 
   function colorFor(type: Toast["type"]) {
     switch (type) {

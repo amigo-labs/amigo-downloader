@@ -1,0 +1,46 @@
+---
+const protocols = [
+  {
+    id: "http",
+    name: "HTTP/S",
+    tagline: "Multi-chunk · resume · cookie jar · redirect-safe",
+  },
+  { id: "hls", name: "HLS", tagline: "m3u8 variants · track pick · segment downloads" },
+  { id: "dash", name: "DASH", tagline: "MPD parsing · adaptive segments" },
+  {
+    id: "usenet",
+    name: "Usenet",
+    tagline: "NNTP/NNTPS · yEnc · PAR2 repair · multi-server",
+  },
+  {
+    id: "youtube",
+    name: "YouTube",
+    tagline: "Built-in InnerTube · N-challenge · format auto-select",
+  },
+];
+---
+
+<section class="section" id="protocols">
+  <div class="container-prose">
+    <h2 class="text-3xl md:text-4xl font-bold tracking-tight mb-3" style="color: var(--text-primary)">
+      Every protocol that matters.
+    </h2>
+    <p class="max-w-2xl mb-10" style="color: var(--text-secondary)">
+      Built-in backends for the protocols that power modern downloads. No more stitching
+      together tools for Usenet, streaming, or tricky hoster flows.
+    </p>
+    <div class="grid gap-3 md:grid-cols-5">
+      {
+        protocols.map((p) => (
+          <div class="feature-card">
+            <div class="stat-label mb-2">{p.id}</div>
+            <div class="text-lg font-semibold mb-1 neon-text-primary">{p.name}</div>
+            <div class="text-xs" style="color: var(--text-secondary)">
+              {p.tagline}
+            </div>
+          </div>
+        ))
+      }
+    </div>
+  </div>
+</section>

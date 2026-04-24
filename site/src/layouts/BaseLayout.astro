@@ -1,0 +1,84 @@
+---
+import "../styles/global.css";
+import Navbar from "../components/nav/Navbar.astro";
+import Footer from "../components/nav/Footer.astro";
+
+interface Props {
+  title: string;
+  description?: string;
+  ogImage?: string;
+  palette?: "blue" | "teal" | "indigo" | "amber" | "violet" | "rose";
+  intensity?: 0 | 1 | 2 | 3 | 4;
+}
+
+const {
+  title,
+  description = "The fastest, most powerful download manager for HTTP, Usenet, HLS, DASH and YouTube. TypeScript plugins, Docker, Tauri, CLI.",
+  ogImage = "/amigo-downloader.png",
+  palette = "blue",
+  intensity = 2,
+} = Astro.props;
+
+const lang = Astro.currentLocale ?? "en";
+const canonical = new URL(Astro.url.pathname, Astro.site).toString();
+const ogImageUrl = new URL(ogImage, Astro.site).toString();
+---
+
+<!doctype html>
+<html
+  lang={lang}
+  class={`palette-${palette} neon-${["off", "low", "med", "high", "full"][intensity]}`}
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={canonical} />
+    <link rel="icon" type="image/png" href="/amigo-downloader.png" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={ogImageUrl} />
+    <meta property="og:url" content={canonical} />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImageUrl} />
+
+    <!-- Theme bootstrap (persist palette + intensity before paint) -->
+    <script is:inline>
+      (function () {
+        try {
+          const p = localStorage.getItem("amigo-palette");
+          const i = localStorage.getItem("amigo-intensity");
+          const valid = ["blue", "teal", "indigo", "amber", "violet", "rose"];
+          const intensityClasses = ["neon-off", "neon-low", "neon-med", "neon-high", "neon-full"];
+          const root = document.documentElement;
+          if (p && valid.includes(p)) {
+            valid.forEach((v) => root.classList.remove("palette-" + v));
+            root.classList.add("palette-" + p);
+          }
+          const iNum = Number(i);
+          if (!Number.isNaN(iNum) && iNum >= 0 && iNum <= 4) {
+            intensityClasses.forEach((c) => root.classList.remove(c));
+            root.classList.add(intensityClasses[iNum]);
+          }
+        } catch {}
+      })();
+    </script>
+  </head>
+  <body>
+    <a href="#main" class="skip-link">Skip to content</a>
+    <Navbar />
+    <main id="main">
+      <slot />
+    </main>
+    <Footer />
+  </body>
+</html>

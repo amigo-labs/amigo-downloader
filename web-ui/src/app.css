@@ -1,172 +1,11 @@
 @import "tailwindcss";
+@import "@amigo/ui/tokens.css";
 
 /* ========================================
-   NEON THEME SYSTEM — VS Code Dark + Neon Accents
-   60:30:10 Rule:
-     60% dark backgrounds (bg-deep, bg-surface)
-     30% secondary surfaces, text, borders
-     10% neon accents (CTAs, active states, progress)
+   Web-UI-specific styles (not shared with marketing site).
+   Shared design tokens, palettes, neon-card / status-dots /
+   progress / keyframes live in @amigo/ui/tokens.css.
    ======================================== */
-
-@theme {
-  --color-neon-primary: var(--neon-primary, #3b82f6);
-  --color-neon-success: var(--neon-success, #22c55e);
-  --color-neon-accent: var(--neon-accent, #ef4444);
-  --color-neon-warning: var(--neon-warning, #eab308);
-  --color-neon-border: var(--neon-border);
-  --color-hover-bg: var(--hover-bg);
-  --color-bg-deep: var(--bg-deep, #1e1e1e);
-  --color-bg-surface: var(--bg-surface, #252526);
-  --color-bg-surface-2: var(--bg-surface-2, #2d2d2d);
-  --color-text: var(--text-primary, #cccccc);
-  --color-text-secondary: var(--text-secondary, #858585);
-}
-
-/* --- Dark Mode (Default — VS Code Dark) --- */
-:root {
-  --neon-primary: #3b82f6;
-  --neon-success: #22c55e;
-  --neon-accent: #ef4444;
-  --neon-warning: #eab308;
-
-  --bg-deep: #1e1e1e;
-  --bg-surface: #252526;
-  --bg-surface-2: #2d2d2d;
-  --text-primary: #cccccc;
-  --text-secondary: #858585;
-  --border-color: #3c3c3c;
-
-  /* Neon glow tokens (scaled by intensity system) */
-  --neon-glow-sm: 0 0 6px color-mix(in srgb, var(--neon-primary) 25%, transparent);
-  --neon-glow-md: 0 0 12px color-mix(in srgb, var(--neon-primary) 30%, transparent),
-                  0 0 4px color-mix(in srgb, var(--neon-primary) 15%, transparent);
-  --neon-glow-lg: 0 0 20px color-mix(in srgb, var(--neon-primary) 35%, transparent),
-                  0 0 8px color-mix(in srgb, var(--neon-primary) 20%, transparent),
-                  0 0 2px color-mix(in srgb, var(--neon-primary) 40%, transparent);
-  --neon-text-glow: 0 0 8px color-mix(in srgb, var(--neon-primary) 40%, transparent);
-  --neon-border: color-mix(in srgb, var(--neon-primary) 30%, transparent);
-  --neon-border-hover: color-mix(in srgb, var(--neon-primary) 50%, transparent);
-  --neon-drop-blur: 3px;
-  --hover-bg: color-mix(in srgb, var(--neon-primary) 8%, transparent);
-  --status-online: #22c55e;
-  --status-degraded: #eab308;
-  --status-error: #ef4444;
-
-  /* Typography scale (Major Third 1.25) */
-  --font-xs: 0.75rem;
-  --font-sm: 0.875rem;
-  --font-base: 1rem;
-  --font-lg: 1.25rem;
-  --font-xl: 1.5rem;
-  --font-2xl: 1.875rem;
-  --font-display: 2.5rem;
-  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
-}
-
-/* --- Light Mode --- */
-:root.light {
-  --bg-deep: #f4f5f7;
-  --bg-surface: #ffffff;
-  --bg-surface-2: #ebedf2;
-  --text-primary: #1a1d2e;
-  --text-secondary: rgba(26, 29, 46, 0.55);
-  --border-color: rgba(0, 0, 0, 0.1);
-  --hover-bg: color-mix(in srgb, var(--neon-primary) 8%, transparent);
-
-  /* Stronger neon borders/glows on light bg for visibility */
-  --neon-border: color-mix(in srgb, var(--neon-primary) 25%, transparent);
-  --neon-border-hover: color-mix(in srgb, var(--neon-primary) 45%, transparent);
-
-  /* Status colors stay the same — they are universal */
-  --status-online: #16a34a;
-  --status-degraded: #ca8a04;
-  --status-error: #dc2626;
-}
-
-/* --- Color Palettes --- */
-:root.palette-blue {
-  --neon-primary: #3b82f6;
-}
-
-:root.palette-teal {
-  --neon-primary: #14b8a6;
-}
-
-:root.palette-indigo {
-  --neon-primary: #6366f1;
-}
-
-:root.palette-amber {
-  --neon-primary: #f59e0b;
-}
-
-:root.palette-violet {
-  --neon-primary: #8b5cf6;
-}
-
-:root.palette-rose {
-  --neon-primary: #f43f5e;
-}
-
-/* ========================================
-   BASE STYLES (60% — dark backgrounds)
-   ======================================== */
-
-body {
-  background: var(--bg-deep);
-  color: var(--text-primary);
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  font-feature-settings: 'rlig' 1, 'calt' 1;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-}
-
-/* ========================================
-   NEON UTILITIES (10% — accent only)
-   Use sparingly: CTAs, active states, progress
-   ======================================== */
-
-.neon-text-primary { color: var(--neon-primary); }
-.neon-text-success { color: var(--neon-success); }
-.neon-text-accent { color: var(--neon-accent); }
-.neon-text-warning { color: var(--neon-warning); }
-
-/* ========================================
-   NEON CARD (replaces glass-panel)
-   ======================================== */
-
-.neon-card {
-  position: relative;
-  border: 1px solid var(--neon-border);
-  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 10%), 0 1px 2px -1px rgb(0 0 0 / 8%);
-  transition: border-color 0.3s ease, box-shadow 0.3s ease;
-}
-
-:root.light .neon-card {
-  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 6%), 0 1px 2px -1px rgb(0 0 0 / 4%);
-}
-
-.neon-card:hover {
-  border-color: var(--neon-border-hover);
-  box-shadow: var(--neon-glow-md);
-}
-
-/* CRT scanlines on cards — only at full neon intensity */
-.neon-full .neon-card::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  border-radius: inherit;
-  z-index: 1;
-  background: repeating-linear-gradient(
-    to bottom,
-    transparent 0px,
-    transparent 3px,
-    color-mix(in srgb, var(--neon-primary) 3%, transparent) 3px,
-    color-mix(in srgb, var(--neon-primary) 3%, transparent) 4px
-  );
-}
 
 /* ========================================
    CLICKABLE ROW
@@ -181,50 +20,6 @@ body {
 .clickable-row:hover {
   background: var(--hover-bg);
   box-shadow: inset 3px 0 0 var(--neon-primary);
-}
-
-/* ========================================
-   STAT LABEL (sidebar stats, footer)
-   ======================================== */
-
-.stat-label {
-  font-size: 0.625rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: color-mix(in srgb, var(--neon-primary) 50%, var(--text-secondary));
-  text-shadow: var(--neon-text-glow);
-}
-
-/* ========================================
-   STATUS DOTS WITH GLOW
-   ======================================== */
-
-.status-dot {
-  display: inline-block;
-  width: 0.5rem;
-  height: 0.5rem;
-  border-radius: 50%;
-  transition: transform 0.15s;
-}
-
-.status-dot--online {
-  background-color: var(--status-online);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--status-online) 40%, transparent),
-              0 0 2px var(--status-online);
-}
-
-.status-dot--degraded {
-  background-color: var(--status-degraded);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--status-degraded) 40%, transparent),
-              0 0 2px var(--status-degraded);
-}
-
-.status-dot--error {
-  background-color: var(--status-error);
-  box-shadow: 0 0 6px color-mix(in srgb, var(--status-error) 40%, transparent),
-              0 0 2px var(--status-error);
-  animation: neon-flicker 3s ease-in-out infinite;
 }
 
 /* ========================================
@@ -330,7 +125,7 @@ body {
 }
 
 /* ========================================
-   COLOR SWATCH (theme picker)
+   COLOR SWATCH (theme picker — Settings)
    ======================================== */
 
 .color-swatch {
@@ -358,7 +153,7 @@ body {
 }
 
 /* ========================================
-   NEON INTENSITY SLIDER
+   NEON INTENSITY SLIDER (Settings)
    ======================================== */
 
 .neon-slider {
@@ -415,137 +210,7 @@ body {
 }
 
 /* ========================================
-   PROGRESS BAR
-   ======================================== */
-
-.progress-bar {
-  height: 4px;
-  border-radius: 2px;
-  background: var(--border-color);
-  overflow: hidden;
-}
-
-.progress-bar-fill {
-  height: 100%;
-  border-radius: 2px;
-  background: var(--neon-primary);
-}
-
-.progress-bar-fill.active {
-  background: linear-gradient(
-    90deg,
-    var(--neon-primary) 0%,
-    color-mix(in srgb, var(--neon-primary) 70%, white) 50%,
-    var(--neon-primary) 100%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 2s linear infinite;
-}
-
-/* ========================================
-   NEON TOP LINE (sidebar + footer accent — 10%)
-   ======================================== */
-
-.neon-top-line::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: linear-gradient(90deg, transparent, var(--neon-primary), var(--neon-accent), transparent);
-}
-
-/* ========================================
-   SCROLLBAR
-   ======================================== */
-
-::-webkit-scrollbar { width: 6px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
-
-.light ::-webkit-scrollbar-thumb,
-:root.light ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.12); }
-.light ::-webkit-scrollbar-thumb:hover,
-:root.light ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.22); }
-
-/* ========================================
-   ANIMATIONS
-   ======================================== */
-
-@keyframes page-enter {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-.page-enter {
-  animation: page-enter 0.25s cubic-bezier(0.25, 1, 0.5, 1);
-}
-
-@keyframes card-enter {
-  from { opacity: 0; transform: translateY(12px) scale(0.98); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-.card-enter {
-  animation: card-enter 0.35s cubic-bezier(0.25, 1, 0.5, 1) both;
-  animation-delay: calc(var(--i, 0) * 50ms);
-}
-
-@keyframes shimmer {
-  0% { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
-}
-
-@keyframes neon-pulse {
-  0%, 100% { box-shadow: 0 0 4px var(--neon-primary); }
-  50% { box-shadow: 0 0 10px var(--neon-primary); }
-}
-
-.status-pulse {
-  animation: neon-pulse 2s ease-in-out infinite;
-}
-
-@keyframes neon-flicker {
-  0%, 100% { opacity: 1; }
-  92% { opacity: 1; }
-  93% { opacity: 0.6; }
-  94% { opacity: 1; }
-  96% { opacity: 0.7; }
-  97% { opacity: 1; }
-}
-
-@keyframes neon-letter-flicker {
-  0%, 17.9%, 18.9%, 51.9%, 53.6%, 78.9%, 80.9%, 100% {
-    color: var(--neon-primary);
-    text-shadow: 0 0 7px var(--neon-primary),
-                 0 0 20px color-mix(in srgb, var(--neon-primary) 60%, transparent),
-                 0 0 40px color-mix(in srgb, var(--neon-primary) 30%, transparent);
-    opacity: 1;
-  }
-  18% { opacity: 0.15; text-shadow: none; }
-  52% { opacity: 0.1; text-shadow: none; }
-  52.8% { opacity: 0.7; text-shadow: 0 0 4px var(--neon-primary); }
-  53.1% { opacity: 0.1; text-shadow: none; }
-  79% { opacity: 0.1; text-shadow: none; }
-  79.6% { opacity: 0.5; text-shadow: 0 0 3px var(--neon-primary); }
-  79.9% { opacity: 0.08; text-shadow: none; }
-  80.3% { opacity: 0.6; text-shadow: 0 0 4px var(--neon-primary); }
-  80.6% { opacity: 0.1; text-shadow: none; }
-}
-
-.neon-full .neon-flicker-text {
-  animation: neon-letter-flicker 5s step-end infinite;
-}
-
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-4px); }
-}
-
-/* ========================================
-   INTERACTIVE ELEMENTS
+   INTERACTIVE ELEMENTS (web-ui-only)
    ======================================== */
 
 /* Icon-only button hover (close, pause, play, delete, etc.) */
@@ -603,62 +268,4 @@ select:focus {
 /* Disabled buttons */
 button:disabled {
   cursor: not-allowed;
-}
-
-/* ========================================
-   FOCUS INDICATORS (audit H3)
-   ======================================== */
-
-*:focus-visible {
-  outline: 2px solid var(--neon-primary);
-  outline-offset: 2px;
-}
-
-/* ========================================
-   SKIP TO CONTENT (audit L6)
-   ======================================== */
-
-.skip-link {
-  position: absolute;
-  top: -100%;
-  left: 16px;
-  z-index: 1000;
-  padding: 8px 16px;
-  background: var(--neon-primary);
-  color: var(--bg-deep);
-  font-weight: 700;
-  border-radius: 0 0 8px 8px;
-  text-decoration: none;
-}
-
-.skip-link:focus {
-  top: 0;
-}
-
-/* ========================================
-   SCREEN READER ONLY (audit H7)
-   ======================================== */
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border-width: 0;
-}
-
-/* ========================================
-   REDUCED MOTION (audit H2)
-   ======================================== */
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-  }
 }
