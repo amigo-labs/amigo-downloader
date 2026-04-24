@@ -166,9 +166,25 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("Recovered {recovered} interrupted downloads");
     }
 
-    // Plugin updater
+    // Plugin updater. Registry signatures are required by default — a
+    // developer bootstrap override (`AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED=1`)
+    // disables verification with a loud warning, for working against a
+    // locally-hosted unsigned fork.
+    let dev_unsigned = std::env::var("AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED")
+        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false);
+    if dev_unsigned {
+        tracing::warn!(
+            "AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED is set — plugin registry signatures will NOT be verified. DO NOT use this for production."
+        );
+    }
     let registry_config = RegistryConfig {
         index_url: config.update.plugin_registry_url.clone(),
+        trusted_signing_key: if dev_unsigned {
+            None
+        } else {
+            Some(amigo_plugin_runtime::registry::AMIGO_REGISTRY_PUBLIC_KEY)
+        },
         ..Default::default()
     };
     let plugin_updater = Arc::new(PluginUpdater::new(

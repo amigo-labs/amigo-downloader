@@ -5,11 +5,20 @@
 
 use std::path::{Path, PathBuf};
 
+use ed25519_dalek::{Signature, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use tracing::{debug, info};
+use tracing::{debug, info, warn};
 
 use crate::types::PluginMeta;
+
+/// Ed25519 public key of the amigo-labs plugin registry signer.
+///
+/// This is a **placeholder** — replace with the real project key before the
+/// 1.0 release. Rotate by shipping a new amigo-server version; clients that
+/// haven't updated will reject the new signatures, which is the safer
+/// failure mode.
+pub const AMIGO_REGISTRY_PUBLIC_KEY: [u8; 32] = [0u8; 32];
 
 /// Registry index as served from the plugin repository.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,6 +59,10 @@ pub struct RegistryConfig {
     pub cache_path: Option<PathBuf>,
     /// Max age of the cache before auto-refresh (in seconds).
     pub cache_max_age_secs: u64,
+    /// Ed25519 public key the remote index must be signed with. `None`
+    /// disables signature verification — only use for local development.
+    /// Production builds pin this to [`AMIGO_REGISTRY_PUBLIC_KEY`].
+    pub trusted_signing_key: Option<[u8; 32]>,
 }
 
 impl Default for RegistryConfig {
@@ -58,6 +71,7 @@ impl Default for RegistryConfig {
             index_url: "https://raw.githubusercontent.com/amigo-labs/amigo-downloader-plugins/main/index.json".into(),
             cache_path: Some(PathBuf::from("plugins/index.json")),
             cache_max_age_secs: 24 * 60 * 60, // 24 hours
+            trusted_signing_key: Some(AMIGO_REGISTRY_PUBLIC_KEY),
         }
     }
 }
@@ -130,7 +144,8 @@ fn save_cached_index(cache_path: &Path, index: &RegistryIndex) {
     }
 }
 
-/// Fetch the plugin registry index from the remote URL.
+/// Fetch the plugin registry index from the remote URL, verifying its
+/// Ed25519 signature when a trusted signing key is configured.
 async fn fetch_index_remote(
     client: &reqwest::Client,
     config: &RegistryConfig,
@@ -151,13 +166,87 @@ async fn fetch_index_remote(
         )));
     }
 
-    let index: RegistryIndex = resp
-        .json()
+    // We need the raw bytes to verify the signature over the *exact*
+    // wire-format, not a re-serialised copy.
+    let raw = resp
+        .bytes()
         .await
+        .map_err(|e| crate::Error::RegistryUnavailable(e.to_string()))?;
+
+    match &config.trusted_signing_key {
+        Some(pubkey) => {
+            let sig_url = format!("{}.sig", config.index_url);
+            let sig_hex = fetch_signature(client, &sig_url).await?;
+            verify_ed25519(&raw, &sig_hex, pubkey)?;
+            debug!("Registry index signature verified");
+        }
+        None => warn!(
+            "Registry signature verification DISABLED — only safe for local development"
+        ),
+    }
+
+    let index: RegistryIndex = serde_json::from_slice(&raw)
         .map_err(|e| crate::Error::RegistryUnavailable(format!("Invalid index: {e}")))?;
 
     info!("Registry index: {} plugins available", index.plugins.len());
     Ok(index)
+}
+
+/// Fetch the detached signature file alongside `index.json` (same URL with
+/// a `.sig` suffix). The body is expected to be a hex-encoded Ed25519
+/// signature — 64 bytes / 128 hex chars, optionally trailing whitespace.
+async fn fetch_signature(
+    client: &reqwest::Client,
+    sig_url: &str,
+) -> Result<String, crate::Error> {
+    let resp = client
+        .get(sig_url)
+        .header("User-Agent", "amigo-downloader")
+        .send()
+        .await
+        .map_err(|e| {
+            crate::Error::RegistryUnavailable(format!(
+                "registry signature fetch failed ({sig_url}): {e}"
+            ))
+        })?;
+    if !resp.status().is_success() {
+        return Err(crate::Error::RegistryUnavailable(format!(
+            "registry signature missing — HTTP {} on {sig_url}",
+            resp.status()
+        )));
+    }
+    resp.text().await.map_err(|e| {
+        crate::Error::RegistryUnavailable(format!("signature body unreadable: {e}"))
+    })
+}
+
+/// Verify that `payload` carries the Ed25519 signature `sig_hex` produced
+/// by the private key matching `pubkey`.
+pub fn verify_ed25519(
+    payload: &[u8],
+    sig_hex: &str,
+    pubkey: &[u8; 32],
+) -> Result<(), crate::Error> {
+    let sig_bytes = hex::decode(sig_hex.trim()).map_err(|e| {
+        crate::Error::RegistryUnavailable(format!("signature is not hex: {e}"))
+    })?;
+    if sig_bytes.len() != 64 {
+        return Err(crate::Error::RegistryUnavailable(format!(
+            "signature has wrong length {} (want 64)",
+            sig_bytes.len()
+        )));
+    }
+    let mut sig_arr = [0u8; 64];
+    sig_arr.copy_from_slice(&sig_bytes);
+    let sig = Signature::from_bytes(&sig_arr);
+    let vk = VerifyingKey::from_bytes(pubkey).map_err(|e| {
+        crate::Error::RegistryUnavailable(format!("bad registry pubkey: {e}"))
+    })?;
+    vk.verify(payload, &sig).map_err(|_| {
+        crate::Error::RegistryUnavailable(
+            "registry signature did not verify against the trusted key".into(),
+        )
+    })
 }
 
 /// Legacy alias — use `load_index` instead.
@@ -384,6 +473,60 @@ mod tests {
         let updates = check_plugin_updates(&index, &installed);
         assert_eq!(updates.len(), 1);
         assert!(updates[0].is_new);
+    }
+
+    #[test]
+    fn verify_ed25519_accepts_valid_signature() {
+        use ed25519_dalek::{Signer, SigningKey};
+        let signer = SigningKey::from_bytes(&[7u8; 32]);
+        let pubkey = signer.verifying_key().to_bytes();
+        let payload = br#"{"schema_version":1,"plugins":[]}"#;
+        let sig = signer.sign(payload);
+        let sig_hex = hex::encode(sig.to_bytes());
+
+        verify_ed25519(payload, &sig_hex, &pubkey).expect("valid sig should verify");
+    }
+
+    #[test]
+    fn verify_ed25519_rejects_tampered_payload() {
+        use ed25519_dalek::{Signer, SigningKey};
+        let signer = SigningKey::from_bytes(&[9u8; 32]);
+        let pubkey = signer.verifying_key().to_bytes();
+        let sig = signer.sign(b"original");
+        let sig_hex = hex::encode(sig.to_bytes());
+
+        let err = verify_ed25519(b"tampered", &sig_hex, &pubkey)
+            .expect_err("tampered payload must not verify");
+        assert!(format!("{err}").contains("signature did not verify"));
+    }
+
+    #[test]
+    fn verify_ed25519_rejects_wrong_key() {
+        use ed25519_dalek::{Signer, SigningKey};
+        let signer = SigningKey::from_bytes(&[1u8; 32]);
+        let other = SigningKey::from_bytes(&[2u8; 32]);
+        let payload = b"payload";
+        let sig = signer.sign(payload);
+        let sig_hex = hex::encode(sig.to_bytes());
+
+        let err = verify_ed25519(payload, &sig_hex, &other.verifying_key().to_bytes())
+            .expect_err("signature signed by a different key must not verify");
+        assert!(format!("{err}").contains("signature did not verify"));
+    }
+
+    #[test]
+    fn verify_ed25519_rejects_malformed_hex() {
+        let pk = [0u8; 32];
+        let err = verify_ed25519(b"x", "not-hex", &pk).expect_err("malformed hex must error");
+        assert!(format!("{err}").contains("not hex"));
+    }
+
+    #[test]
+    fn verify_ed25519_rejects_short_signature() {
+        let pk = [0u8; 32];
+        let err =
+            verify_ed25519(b"x", "aa", &pk).expect_err("short signature must error");
+        assert!(format!("{err}").contains("wrong length"));
     }
 
     #[test]

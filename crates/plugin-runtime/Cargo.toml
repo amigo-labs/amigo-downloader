@@ -27,6 +27,9 @@ tempfile = { workspace = true }
 aes = "0.8"
 cbc = "0.1"
 
+# Ed25519 signature verification for the plugin registry (index.json.sig).
+ed25519-dalek = { workspace = true }
+
 # QuickJS-NG runtime (replaces rune)
 rquickjs = { workspace = true }
 
@@ -37,3 +40,9 @@ swc_ecma_ast = "21"
 swc_ecma_codegen = "24"
 swc_ecma_transforms_typescript = "43"
 swc_ecma_visit = "21"
+
+[dev-dependencies]
+# Signing keypair for registry-signature tests — `ed25519-dalek` exposes
+# `SigningKey` only with the `rand_core` feature enabled.
+ed25519-dalek = { workspace = true, features = ["rand_core"] }
+rand = { workspace = true }

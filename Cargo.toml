@@ -57,6 +57,9 @@ tower-http = { version = "0.6", features = ["cors", "fs"] }
 argon2 = "0.5"
 rand = "0.8"
 
+# Plugin-registry + self-update signing
+ed25519-dalek = { version = "2", default-features = false, features = ["std", "pkcs8"] }
+
 # CLI
 clap = { version = "4", features = ["derive"] }
 indicatif = "0.17"
