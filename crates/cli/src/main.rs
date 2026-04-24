@@ -123,13 +123,6 @@ enum Commands {
         #[command(subcommand)]
         action: UpdateAction,
     },
-    /// Start the web server
-    Serve {
-        #[arg(long, default_value = "1516")]
-        port: u16,
-        #[arg(long, default_value = "0.0.0.0")]
-        bind: String,
-    },
     /// Pair this CLI with a remote amigo server (opens an approval request
     /// in the server's web UI). Stores the returned API token in
     /// `~/.config/amigo/remotes.toml` under the given alias.
@@ -1104,7 +1097,10 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
             PluginAction::List | PluginAction::Enable { .. } | PluginAction::Login { .. } => {
-                println!("Plugin management requires the server. Use: amigo-dl serve");
+                println!(
+                    "Plugin management requires a running server. Start `amigo-server` locally, \
+                     or pair against a remote with `amigo-dl login <url>`."
+                );
             }
             PluginAction::Update { .. }
             | PluginAction::Install { .. }
@@ -1186,24 +1182,6 @@ async fn main() -> anyhow::Result<()> {
             }
         },
 
-        Commands::Serve { port, bind } => {
-            let addr = format!("{bind}:{port}");
-            print_banner(mode);
-            tui.step("🌐", &format!("Starting server on {}", style(&addr).bold().cyan()));
-            tui.info("Lite mode — REST API only. Use `amigo-server` for full Web UI.");
-
-            let coord = init_coordinator()?;
-            let listener = tokio::net::TcpListener::bind(&addr).await?;
-
-            let _state = std::sync::Arc::new(coord);
-            let app = axum::Router::new()
-                .route("/api/v1/status", axum::routing::get(|| async {
-                    axum::Json(serde_json::json!({"status": "ok", "version": env!("CARGO_PKG_VERSION"), "mode": "cli"}))
-                }));
-
-            tui.success(&format!("Listening on {addr}"));
-            axum::serve(listener, app).await?;
-        }
         Commands::Login { url, name } => {
             pair_with_remote(&url, name.as_deref(), &tui).await?;
         }

@@ -11,22 +11,21 @@ where the server actually runs.
 | **`amigo-server` binary** (Linux/Mac/Windows) | yes — ships the Web UI embedded | no | Self-hosted on a NAS / homelab without containers |
 | **Docker image** (`amigo-downloader:latest`) | yes (as a container) | no | Always-on homeserver, multiple clients |
 | **`amigo-dl <URL>`** (direct download) | yes — one shot, no daemon | no | Quick single-file download, `yt-dlp`-style |
-| **`amigo-dl serve`** (lite REST API) | yes — no Web UI | no | Headless embedded / scripting |
 | **Web UI in browser** | no — it's only a frontend | yes — served by `amigo-server` or Docker | Regular GUI use |
 | **`amigo-dl add / list / pause / …`** (queue mode) | no | yes — local `amigo-server` or a remote reachable via `amigo-dl login` | Scripted queue management |
 | **`amigo-dl login <url>` + `remote …`** | no | yes — a remote `amigo-server` (usually Docker) | Laptop → home server |
 
 In short:
 
-- **Standalone** (no extra service required): Tauri, the `amigo-server` binary, the Docker container, `amigo-dl <URL>`, `amigo-dl serve`.
+- **Standalone** (no extra service required): Tauri, the `amigo-server` binary, the Docker container, `amigo-dl <URL>`.
 - **Needs a running server** (Docker or local, doesn't matter which): browser UI, queue CLI (`add`, `list`, …), remote CLI (`login`, `--remote`).
 
 ## Local (default)
 
-Running `amigo-server` (or `amigo-dl serve`, Tauri-desktop) with no extra
-config binds to `127.0.0.1:1516`. Authentication is off because nothing on
-the network can reach the process — the wizard, login page, and pairing
-flow are all skipped. Just open <http://localhost:1516> and use the app.
+Running `amigo-server` (or the Tauri desktop app) with no extra config
+binds to `127.0.0.1:1516`. Authentication is off because nothing on the
+network can reach the process — the wizard, login page, and pairing flow
+are all skipped. Just open <http://localhost:1516> and use the app.
 
 ## Docker / LAN (first-run wizard)
 

@@ -111,7 +111,7 @@ fn default_session_ttl_secs() -> i64 {
 impl ServerConfig {
     /// `true` if the bind address is a loopback host (127.0.0.1 / ::1 /
     /// localhost). On loopback we skip setup entirely — a Tauri desktop,
-    /// a local `amigo-dl serve`, or a dev run are trusted by construction.
+    /// a local `amigo-server` run, or a dev run are trusted by construction.
     pub fn is_bind_loopback(&self) -> bool {
         let host = self
             .bind
