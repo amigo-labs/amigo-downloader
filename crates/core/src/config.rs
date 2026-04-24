@@ -60,6 +60,83 @@ pub struct Config {
     pub features: FeatureFlags,
     #[serde(default)]
     pub nzbget_api: NzbGetApiConfig,
+    #[serde(default)]
+    pub server: ServerConfig,
+}
+
+/// HTTP server binding and authentication.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServerConfig {
+    /// Socket address to bind the REST API + Web UI server to.
+    /// Defaults to `127.0.0.1:1516` (local-only). Set to `0.0.0.0:1516` to expose
+    /// on the LAN — the first-run setup wizard kicks in automatically.
+    pub bind: String,
+    /// Pre-shared bearer token for legacy/scripted access. When set, it is
+    /// accepted as `Authorization: Bearer <token>` on every `/api/v1/*` route
+    /// in addition to the cookie / API-token mechanisms. Leave `None` and
+    /// use the device-pairing flow instead.
+    #[serde(default)]
+    pub api_token: Option<String>,
+    /// Explicit CORS allowlist. Empty = no CORS layer (same-origin only, which is the
+    /// default because the Web UI is served from the same origin).
+    #[serde(default)]
+    pub cors_origins: Vec<String>,
+    /// `true` once the first-run setup wizard has finished. When `false` and
+    /// the bind is non-loopback, the server enters setup-mode: all endpoints
+    /// except `/api/v1/setup/*` return 503 with `{"error": "setup_required"}`.
+    #[serde(default)]
+    pub setup_complete: bool,
+    /// Admin username chosen in the setup wizard (or via `AMIGO_SETUP_USER`).
+    #[serde(default)]
+    pub admin_username: Option<String>,
+    /// Argon2id hash of the admin password (PHC-formatted). Never the plaintext.
+    #[serde(default)]
+    pub admin_password_hash: Option<String>,
+    /// Session lifetime in seconds. Defaults to 30 days; refreshed on activity.
+    #[serde(default = "default_session_ttl_secs")]
+    pub session_ttl_secs: i64,
+    /// When `true`, the server trusts `X-Forwarded-For` / `X-Forwarded-Proto`
+    /// headers on incoming requests — enable this only when sitting behind a
+    /// reverse proxy (nginx, Caddy, Traefik, Cloudflare Tunnel, Tailscale
+    /// Funnel) that you control. Off by default to prevent source-IP
+    /// spoofing on directly-exposed servers.
+    #[serde(default)]
+    pub trust_proxy: bool,
+}
+
+fn default_session_ttl_secs() -> i64 {
+    30 * 24 * 3600
+}
+
+impl ServerConfig {
+    /// `true` if the bind address is a loopback host (127.0.0.1 / ::1 /
+    /// localhost). On loopback we skip setup entirely — a Tauri desktop,
+    /// a local `amigo-server` run, or a dev run are trusted by construction.
+    pub fn is_bind_loopback(&self) -> bool {
+        let host = self
+            .bind
+            .rsplit_once(':')
+            .map(|(h, _)| h)
+            .unwrap_or(self.bind.as_str())
+            .trim_start_matches('[')
+            .trim_end_matches(']');
+        matches!(host, "127.0.0.1" | "::1" | "localhost")
+    }
+}
+
+impl Default for ServerConfig {
+    fn default() -> Self {
+        Self {
+            bind: "127.0.0.1:1516".into(),
+            api_token: None,
+            cors_origins: Vec::new(),
+            setup_complete: false,
+            admin_username: None,
+            admin_password_hash: None,
+            session_ttl_secs: default_session_ttl_secs(),
+            trust_proxy: false,
+        }
+    }
 }
 
 /// NZBGet-compatible JSON-RPC API credentials for Sonarr/Radarr integration.
@@ -125,6 +202,12 @@ pub struct UpdateConfig {
     pub plugin_registry_url: String,
     /// GitHub repository for core releases.
     pub github_repo: String,
+    /// Automatically install plugin updates when the periodic check finds
+    /// them. Opt-in — defaults to `false` because auto-installing code from
+    /// a remote registry is a sensitive operation. Safe to enable only
+    /// because the registry index is now Ed25519-signed (audit #31).
+    #[serde(default)]
+    pub auto_update_plugins: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -187,6 +270,7 @@ impl Default for Config {
             webhooks: Vec::new(),
             features: FeatureFlags::default(),
             nzbget_api: NzbGetApiConfig::default(),
+            server: ServerConfig::default(),
         }
     }
 }
@@ -222,6 +306,7 @@ impl Default for UpdateConfig {
             check_interval_hours: 24,
             plugin_registry_url: "https://raw.githubusercontent.com/amigo-labs/amigo-downloader-plugins/main/index.json".into(),
             github_repo: "amigo-labs/amigo-downloader".into(),
+            auto_update_plugins: false,
         }
     }
 }
@@ -306,6 +391,15 @@ impl Config {
         if self.retry.max_delay_secs < self.retry.base_delay_secs {
             errors.push("retry.max_delay_secs must be >= retry.base_delay_secs".into());
         }
+        if self.server.bind.is_empty() {
+            errors.push("server.bind must not be empty".into());
+        }
+        if self.server.session_ttl_secs <= 0 {
+            errors.push("server.session_ttl_secs must be > 0".into());
+        }
+        // Non-loopback binds are allowed without credentials because the
+        // server enters setup-mode on its own; the first-run wizard then
+        // collects them. Historical `api_token`-only setups keep working.
 
         errors
     }
@@ -367,6 +461,34 @@ mod tests {
         assert_eq!(loaded.max_concurrent_downloads, 10);
 
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn loopback_detection() {
+        let mut cfg = ServerConfig::default();
+        assert!(cfg.is_bind_loopback(), "default must be loopback");
+
+        cfg.bind = "127.0.0.1:1516".into();
+        assert!(cfg.is_bind_loopback());
+        cfg.bind = "localhost:1516".into();
+        assert!(cfg.is_bind_loopback());
+        cfg.bind = "[::1]:1516".into();
+        assert!(cfg.is_bind_loopback());
+
+        cfg.bind = "0.0.0.0:1516".into();
+        assert!(!cfg.is_bind_loopback());
+        cfg.bind = "192.168.1.10:1516".into();
+        assert!(!cfg.is_bind_loopback());
+    }
+
+    #[test]
+    fn non_loopback_without_token_is_valid_now() {
+        // Setup-mode replaces the old "refuse to start" rule.
+        let mut cfg = Config::default();
+        cfg.server.bind = "0.0.0.0:1516".into();
+        cfg.server.api_token = None;
+        cfg.server.setup_complete = false;
+        assert!(cfg.validate().is_empty(), "{:?}", cfg.validate());
     }
 
     #[test]

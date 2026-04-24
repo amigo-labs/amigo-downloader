@@ -50,7 +50,15 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 
 # Web framework
 axum = { version = "0.8", features = ["ws", "multipart"] }
+axum-extra = { version = "0.10", features = ["cookie", "typed-header"] }
 tower-http = { version = "0.6", features = ["cors", "fs"] }
+
+# Password hashing + CSPRNG
+argon2 = "0.5"
+rand = "0.8"
+
+# Plugin-registry + self-update signing
+ed25519-dalek = { version = "2", default-features = false, features = ["std", "pkcs8"] }
 
 # CLI
 clap = { version = "4", features = ["derive"] }

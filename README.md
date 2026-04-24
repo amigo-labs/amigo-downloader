@@ -133,14 +133,15 @@ amigo-dl plugins enable <id>           # enable a plugin
 amigo-dl plugins login <id>            # login to a hoster account
 ```
 
-#### Server & updates
+#### Updates
 
 ```bash
-amigo-dl serve                         # start REST API (port 1516)
-amigo-dl serve --port 9090 --bind 127.0.0.1
-amigo-dl update check                  # check for new version
-amigo-dl update apply --yes            # apply update
+amigo-dl update check                  # check for a new version
+amigo-dl update apply --yes            # apply the update
 ```
+
+Run `amigo-server` (or the Docker image) to get the full daemon with
+Web UI — the CLI is a client, not a daemon host.
 
 </details>
 

@@ -593,9 +593,13 @@ amigo-dl plugins test <plugin.ts> [url]     # run spec or resolve a URL
 amigo-dl update check
 amigo-dl update apply [--yes]
 
-# Server
-amigo-dl serve [--port 1516 --bind 0.0.0.0]
+# Remote pairing (CLI → remote amigo-server / Docker)
+amigo-dl login <url> [--name <alias>]
+amigo-dl remote list|remove <name>|use <name>
 ```
+
+The daemon lives in the separate `amigo-server` binary (and the Docker
+image that wraps it). `amigo-dl` is strictly a client + direct downloader.
 
 Torrent/Magnet sind aktuell nicht implementiert. `crates/core/src/protocol/` enthält nur `http`, `hls`, `dash`, `usenet`.
 

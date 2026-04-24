@@ -1,14 +1,21 @@
-//! Background tasks: NZB watch folder monitoring and RSS feed polling.
+//! Background tasks: NZB watch folder monitoring, RSS feed polling, and
+//! periodic plugin auto-updates.
 
 use std::path::Path;
 use std::sync::Arc;
 
 use amigo_core::coordinator::Coordinator;
+use amigo_plugin_runtime::updater::PluginUpdater;
 use tokio::time::{Duration, interval};
 use tracing::{debug, info, warn};
 
 /// Start all background tasks.
-pub fn spawn_background_tasks(coordinator: Arc<Coordinator>, http_client: reqwest::Client) {
+pub fn spawn_background_tasks(
+    coordinator: Arc<Coordinator>,
+    http_client: reqwest::Client,
+    plugin_updater: Arc<PluginUpdater>,
+) {
+    spawn_plugin_auto_update(coordinator.clone(), plugin_updater);
     // NZB watch folder — check every 10 seconds (only when usenet feature enabled)
     let coord = coordinator.clone();
     tokio::spawn(async move {
@@ -32,6 +39,48 @@ pub fn spawn_background_tasks(coordinator: Arc<Coordinator>, http_client: reqwes
             ticker.tick().await;
             if let Err(e) = poll_rss_feeds(&coord, &http_client).await {
                 debug!("RSS poll cycle: {e}");
+            }
+        }
+    });
+}
+
+/// Periodically ask the plugin updater to install upgrades for every
+/// installed plugin. Controlled by `update.auto_update_plugins` in config
+/// (opt-in — defaults to off) with a lower bound of 1 hour between ticks
+/// to stop misconfigured short intervals from hammering the registry.
+fn spawn_plugin_auto_update(
+    coordinator: Arc<Coordinator>,
+    plugin_updater: Arc<PluginUpdater>,
+) {
+    tokio::spawn(async move {
+        // Sleep once before the first tick so we don't collide with startup
+        // plugin discovery. Re-read config each iteration so the user can
+        // toggle `auto_update_plugins` without a restart.
+        let mut ticker = interval(Duration::from_secs(60 * 60));
+        ticker.tick().await; // fires immediately — swallow that
+        loop {
+            ticker.tick().await;
+            let cfg = coordinator.config().await.update;
+            if !cfg.auto_check || !cfg.auto_update_plugins {
+                continue;
+            }
+            // Re-align the interval if the user changed `check_interval_hours`.
+            let desired = Duration::from_secs(cfg.check_interval_hours.max(1) * 3600);
+            if ticker.period() != desired {
+                ticker = interval(desired);
+                ticker.tick().await;
+            }
+            match plugin_updater.update_all_plugins().await {
+                Ok(updated) if !updated.is_empty() => {
+                    let names: Vec<&str> = updated.iter().map(|m| m.id.as_str()).collect();
+                    info!(
+                        "Auto-updated {} plugin(s): {}",
+                        updated.len(),
+                        names.join(", ")
+                    );
+                }
+                Ok(_) => debug!("Plugin auto-update: nothing to do"),
+                Err(e) => warn!("Plugin auto-update failed: {e}"),
             }
         }
     });

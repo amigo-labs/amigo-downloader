@@ -1,6 +1,6 @@
 // REST + WebSocket client for amigo-downloader API
 import type { Download } from "./stores";
-import { wsConnected } from "./stores";
+import { authRequired, setupRequired, wsConnected } from "./stores";
 
 const API_BASE = "/api/v1";
 
@@ -19,7 +19,7 @@ export class ApiError extends Error {
 }
 
 async function api<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const opts: RequestInit = { method };
+  const opts: RequestInit = { method, credentials: "same-origin" };
   if (body !== undefined) {
     opts.headers = { "Content-Type": "application/json" };
     opts.body = JSON.stringify(body);
@@ -27,6 +27,13 @@ async function api<T>(method: string, path: string, body?: unknown): Promise<T> 
   const res = await fetch(`${API_BASE}${path}`, opts);
   if (!res.ok) {
     const errorBody = await res.json().catch(() => ({}));
+    // Global auth / setup interceptors — let App.svelte flip to the right
+    // page automatically instead of every caller re-implementing this.
+    if (res.status === 401) {
+      authRequired.set(true);
+    } else if (res.status === 503 && errorBody?.error === "setup_required") {
+      setupRequired.set(true);
+    }
     throw new ApiError(res.status, errorBody);
   }
   if (res.status === 204) return undefined as T;
@@ -52,6 +59,64 @@ export const getPlugins = () => api<Plugin[]>("GET", "/plugins");
 export const checkUpdates = () => api<unknown>("GET", "/updates/check");
 export const applyCoreUpdate = () => api<unknown>("POST", "/updates/core");
 export const getSystemInfo = () => api<unknown>("GET", "/system-info");
+
+// ========================================
+// PLUGIN UPDATES (audit finding #33)
+// ========================================
+export const updatePlugin = (id: string) =>
+  api<unknown>("POST", `/updates/plugins/${encodeURIComponent(id)}`);
+export const installPlugin = (id: string) =>
+  api<unknown>("POST", `/updates/plugins/${encodeURIComponent(id)}/install`);
+
+// ========================================
+// SETUP / LOGIN / PAIRING
+// ========================================
+
+export interface SetupStatus {
+  needs_setup: boolean;
+  needs_pin: boolean;
+}
+export const getSetupStatus = () => api<SetupStatus>("GET", "/setup/status");
+
+export interface CompleteSetupBody {
+  username: string;
+  password: string;
+}
+export async function completeSetup(body: CompleteSetupBody, pin?: string): Promise<unknown> {
+  const opts: RequestInit = {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  };
+  if (pin) {
+    (opts.headers as Record<string, string>)["X-Setup-Pin"] = pin;
+  }
+  const res = await fetch(`${API_BASE}/setup/complete`, opts);
+  if (!res.ok) throw new ApiError(res.status, await res.json().catch(() => ({})));
+  return res.json();
+}
+
+export const login = (username: string, password: string) =>
+  api<{ ok: boolean; username: string }>("POST", "/login", { username, password });
+export const logout = () => api<unknown>("POST", "/logout");
+export const me = () =>
+  api<{ kind: string; username?: string; token_name?: string }>("GET", "/me");
+
+export interface PendingPairing {
+  id: string;
+  device_name: string;
+  source_ip: string;
+  user_agent: string;
+  fingerprint: string;
+  created_at: number;
+}
+export const listPendingPairings = () =>
+  api<PendingPairing[]>("GET", "/pairing/pending");
+export const approvePairing = (id: string) =>
+  api<unknown>("POST", "/pairing/approve", { id });
+export const denyPairing = (id: string) =>
+  api<unknown>("POST", "/pairing/deny", { id });
 
 // Re-export Download from stores (single source of truth — audit M6)
 export type { Download } from "./stores";

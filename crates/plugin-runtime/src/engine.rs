@@ -2,9 +2,21 @@
 //!
 //! Manages the QuickJS runtime and provides isolated contexts for each plugin.
 
-use std::time::Duration;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use rquickjs::{Context, Ctx, FromJs, Function, Object, Runtime, Value};
+
+/// Sentinel for "no active deadline" on [`PluginEngine::deadline_ms`].
+const NO_DEADLINE: u64 = u64::MAX;
+
+fn now_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
 
 /// Engine configuration.
 pub struct EngineConfig {
@@ -26,6 +38,10 @@ impl Default for EngineConfig {
 /// Central QuickJS-NG engine — one runtime, multiple contexts.
 pub struct PluginEngine {
     runtime: Runtime,
+    /// Shared deadline for the runtime-wide interrupt handler. `NO_DEADLINE`
+    /// means no active limit. Use [`PluginContext::with_deadline`] to scope
+    /// a call.
+    deadline_ms: Arc<AtomicU64>,
 }
 
 impl PluginEngine {
@@ -37,7 +53,19 @@ impl PluginEngine {
         runtime.set_memory_limit(config.max_memory);
         runtime.set_max_stack_size(config.max_stack_size);
 
-        Ok(Self { runtime })
+        // Install a runtime-wide interrupt handler that aborts JS execution
+        // once the active deadline expires. QuickJS polls this between
+        // operations so even `while(true){}` stops eventually.
+        let deadline_ms = Arc::new(AtomicU64::new(NO_DEADLINE));
+        let reader = Arc::clone(&deadline_ms);
+        runtime.set_interrupt_handler(Some(Box::new(move || {
+            now_ms() > reader.load(Ordering::Relaxed)
+        })));
+
+        Ok(Self {
+            runtime,
+            deadline_ms,
+        })
     }
 
     /// Create a new isolated context for a plugin.
@@ -46,13 +74,35 @@ impl PluginEngine {
             crate::Error::Execution(format!("Failed to create QuickJS context: {e}"))
         })?;
 
-        Ok(PluginContext { context })
+        Ok(PluginContext {
+            context,
+            deadline_ms: Arc::clone(&self.deadline_ms),
+        })
     }
 }
 
 /// An isolated QuickJS context for a single plugin.
 pub struct PluginContext {
     context: Context,
+    deadline_ms: Arc<AtomicU64>,
+}
+
+impl PluginContext {
+    /// Run `f` with an active deadline. The interrupt handler aborts any JS
+    /// that runs past `timeout`; the deadline is cleared on return. The
+    /// closure also receives the absolute deadline (Unix epoch ms) so it can
+    /// distinguish "eval raised because of interrupt" from "eval raised for
+    /// other reasons" by comparing to `SystemTime::now`.
+    fn with_deadline<F, R>(&self, timeout: Duration, f: F) -> R
+    where
+        F: FnOnce(Ctx<'_>, u64) -> R,
+    {
+        let deadline = now_ms().saturating_add(timeout.as_millis() as u64);
+        self.deadline_ms.store(deadline, Ordering::Relaxed);
+        let result = self.context.with(|ctx| f(ctx, deadline));
+        self.deadline_ms.store(NO_DEADLINE, Ordering::Relaxed);
+        result
+    }
 }
 
 impl PluginContext {
@@ -174,9 +224,13 @@ impl PluginContext {
             url = url.replace('\\', "\\\\").replace('"', "\\\""),
         );
 
-        self.context.with(|ctx| {
+        self.with_deadline(timeout, |ctx, deadline_ms| {
             let result: String = ctx.eval(script).map_err(|e| {
-                crate::Error::Execution(format!("resolve() eval failed: {e}"))
+                if now_ms() > deadline_ms {
+                    crate::Error::Timeout(timeout.as_secs())
+                } else {
+                    crate::Error::Execution(format!("resolve() eval failed: {e}"))
+                }
             })?;
 
             // If still pending, drive the event loop
@@ -248,10 +302,16 @@ impl PluginContext {
             "#,
         );
 
-        self.context.with(|ctx| {
-            let _deadline = std::time::Instant::now() + timeout;
+        // Enforce the timeout via the runtime-wide interrupt handler — this
+        // catches synchronous infinite loops that a tokio-level timeout can't
+        // see, since `Context::with` is a blocking call.
+        self.with_deadline(timeout, |ctx, deadline| {
             let result: String = ctx.eval(script).map_err(|e| {
-                crate::Error::Execution(format!("postProcess() failed: {e}"))
+                if now_ms() > deadline {
+                    crate::Error::Timeout(timeout.as_secs())
+                } else {
+                    crate::Error::Execution(format!("postProcess() failed: {e}"))
+                }
             })?;
             Ok(result)
         })
@@ -491,5 +551,41 @@ mod tests {
 
         let result = ctx.eval_js(r#""hello" + " " + "world""#).unwrap();
         assert_eq!(result, "hello world");
+    }
+
+    #[test]
+    fn post_process_timeout_interrupts_infinite_loop() {
+        let engine = PluginEngine::new(EngineConfig::default()).unwrap();
+        let ctx = engine.create_context().unwrap();
+
+        // Define a postProcess that never returns.
+        ctx.eval_source(
+            r#"
+            var __plugin_exports = {
+                postProcess: function() { while (true) {} }
+            };
+            "#,
+            "test.js",
+        )
+        .unwrap();
+
+        let start = std::time::Instant::now();
+        let err = ctx
+            .call_post_process("{}", Duration::from_millis(250))
+            .expect_err("postProcess with infinite loop must time out");
+        let elapsed = start.elapsed();
+
+        // Must terminate within a reasonable multiple of the timeout —
+        // before the fix this hung indefinitely.
+        assert!(
+            elapsed < Duration::from_secs(5),
+            "postProcess did not honour timeout; elapsed={elapsed:?}"
+        );
+        assert!(
+            matches!(err, crate::Error::Timeout(_))
+                || err.to_string().to_lowercase().contains("timeout")
+                || err.to_string().to_lowercase().contains("interrupt"),
+            "unexpected error: {err}"
+        );
     }
 }

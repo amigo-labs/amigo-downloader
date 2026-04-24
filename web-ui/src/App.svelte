@@ -52,8 +52,42 @@
   import { addToast } from "./lib/toast";
   import Downloads from "./pages/Downloads.svelte";
   import History from "./pages/History.svelte";
+  import Login from "./pages/Login.svelte";
   import Plugins from "./pages/Plugins.svelte";
   import Settings from "./pages/Settings.svelte";
+  import Setup from "./pages/Setup.svelte";
+  import PairingModal from "./components/PairingModal.svelte";
+  import { authRequired, setupRequired } from "./lib/stores";
+  import { getSetupStatus, me } from "./lib/api";
+
+  // --- Auth / setup bootstrap gate ---------------------------------------
+  type BootState = "loading" | "setup" | "login" | "ready";
+  let bootState = $state<BootState>("loading");
+
+  // Flip to the right page whenever an API call reports 401/503.
+  setupRequired.subscribe((v) => {
+    if (v) bootState = "setup";
+  });
+  authRequired.subscribe((v) => {
+    if (v) bootState = "login";
+  });
+
+  async function detectBootState(): Promise<BootState> {
+    try {
+      const s = await getSetupStatus();
+      if (s.needs_setup) return "setup";
+    } catch {
+      // /setup/status is public; a failure here means the server is
+      // unreachable — show the login form so the user sees *something*.
+      return "login";
+    }
+    try {
+      await me();
+      return "ready";
+    } catch {
+      return "login";
+    }
+  }
 
   let showFeedback = $derived($showFeedbackDialog);
   let showShortcuts = $state(false);
@@ -101,6 +135,12 @@
   ];
 
   onMount(() => {
+    // Gate: decide whether to show Setup / Login / ready before anything
+    // else connects to the API.
+    detectBootState().then((s) => {
+      bootState = s;
+    });
+
     // Initialize theme + palette + intensity
     // Apply theme class
     document.documentElement.classList.toggle("light", $theme === "light");
@@ -306,6 +346,15 @@
 
 <svelte:window onkeydown={handleKeydown} />
 
+{#if bootState === "loading"}
+  <div class="flex h-screen items-center justify-center" style="background: var(--bg-deep)">
+    <p style="color: var(--text-secondary)">Loading…</p>
+  </div>
+{:else if bootState === "setup"}
+  <Setup />
+{:else if bootState === "login"}
+  <Login />
+{:else}
 <!-- Skip to content (audit L6) -->
 <a class="skip-link" href="#main-content">Skip to content</a>
 
@@ -691,3 +740,5 @@
 
 <Toasts />
 <DropZone />
+<PairingModal />
+{/if}

@@ -62,6 +62,8 @@ struct Cli {
     command: Option<Commands>,
 }
 
+mod remotes;
+
 #[derive(Subcommand)]
 enum Commands {
     /// Download URLs directly (explicit form of bare URL usage)
@@ -121,13 +123,31 @@ enum Commands {
         #[command(subcommand)]
         action: UpdateAction,
     },
-    /// Start the web server
-    Serve {
-        #[arg(long, default_value = "1516")]
-        port: u16,
-        #[arg(long, default_value = "0.0.0.0")]
-        bind: String,
+    /// Pair this CLI with a remote amigo server (opens an approval request
+    /// in the server's web UI). Stores the returned API token in
+    /// `~/.config/amigo/remotes.toml` under the given alias.
+    Login {
+        /// Base URL of the remote server, e.g. `http://nas:1516`.
+        url: String,
+        /// Alias to store the remote under. Defaults to the URL host.
+        #[arg(long)]
+        name: Option<String>,
     },
+    /// Manage saved remote servers.
+    Remote {
+        #[command(subcommand)]
+        action: RemoteAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum RemoteAction {
+    /// List configured remotes.
+    List,
+    /// Remove a saved remote by alias.
+    Remove { name: String },
+    /// Set the default remote (used when `--remote` is not passed).
+    Use { name: String },
 }
 
 #[derive(Subcommand)]
@@ -1077,7 +1097,10 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
             PluginAction::List | PluginAction::Enable { .. } | PluginAction::Login { .. } => {
-                println!("Plugin management requires the server. Use: amigo-dl serve");
+                println!(
+                    "Plugin management requires a running server. Start `amigo-server` locally, \
+                     or pair against a remote with `amigo-dl login <url>`."
+                );
             }
             PluginAction::Update { .. }
             | PluginAction::Install { .. }
@@ -1159,25 +1182,164 @@ async fn main() -> anyhow::Result<()> {
             }
         },
 
-        Commands::Serve { port, bind } => {
-            let addr = format!("{bind}:{port}");
-            print_banner(mode);
-            tui.step("🌐", &format!("Starting server on {}", style(&addr).bold().cyan()));
-            tui.info("Lite mode — REST API only. Use `amigo-server` for full Web UI.");
-
-            let coord = init_coordinator()?;
-            let listener = tokio::net::TcpListener::bind(&addr).await?;
-
-            let _state = std::sync::Arc::new(coord);
-            let app = axum::Router::new()
-                .route("/api/v1/status", axum::routing::get(|| async {
-                    axum::Json(serde_json::json!({"status": "ok", "version": env!("CARGO_PKG_VERSION"), "mode": "cli"}))
-                }));
-
-            tui.success(&format!("Listening on {addr}"));
-            axum::serve(listener, app).await?;
+        Commands::Login { url, name } => {
+            pair_with_remote(&url, name.as_deref(), &tui).await?;
         }
+        Commands::Remote { action } => match action {
+            RemoteAction::List => {
+                let r = remotes::load();
+                if r.remotes.is_empty() {
+                    tui.info("No remotes configured. Run `amigo-dl login <url>`.");
+                } else {
+                    for (alias, remote) in &r.remotes {
+                        let marker = if r.default.as_deref() == Some(alias) { "*" } else { " " };
+                        println!("{marker} {alias:<16} {}", remote.url);
+                    }
+                }
+            }
+            RemoteAction::Remove { name } => {
+                let mut r = remotes::load();
+                if r.remotes.remove(&name).is_some() {
+                    if r.default.as_deref() == Some(&name) {
+                        r.default = None;
+                    }
+                    remotes::save(&r).map_err(|e| anyhow::anyhow!(e))?;
+                    tui.success(&format!("Removed remote {name}"));
+                } else {
+                    tui.error(&format!("No remote named {name}"));
+                }
+            }
+            RemoteAction::Use { name } => {
+                let mut r = remotes::load();
+                if !r.remotes.contains_key(&name) {
+                    tui.error(&format!("No remote named {name} — run `amigo-dl login` first."));
+                } else {
+                    r.default = Some(name.clone());
+                    remotes::save(&r).map_err(|e| anyhow::anyhow!(e))?;
+                    tui.success(&format!("Default remote is now {name}"));
+                }
+            }
+        },
     }
 
     Ok(())
+}
+
+/// Start a pairing request against `url`, poll until the admin approves/denies,
+/// and persist the resulting API token.
+async fn pair_with_remote(
+    url: &str,
+    name_override: Option<&str>,
+    tui: &Tui,
+) -> anyhow::Result<()> {
+    let base = url.trim_end_matches('/').to_string();
+    let hostname = std::env::var("HOSTNAME")
+        .ok()
+        .or_else(hostname_fallback)
+        .unwrap_or_else(|| "amigo-cli".to_string());
+    let device_name = name_override.unwrap_or(&hostname).to_string();
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()?;
+
+    let start: serde_json::Value = client
+        .post(format!("{base}/api/v1/pairing/start"))
+        .json(&serde_json::json!({ "device_name": device_name }))
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let poll_token = start
+        .get("poll_token")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| anyhow::anyhow!("server did not return poll_token"))?
+        .to_string();
+    let fingerprint = start
+        .get("fingerprint")
+        .and_then(|v| v.as_str())
+        .unwrap_or("??????")
+        .to_string();
+
+    tui.info(&format!(
+        "Open {base} in your browser and approve this device.",
+    ));
+    tui.info(&format!(
+        "   Verification fingerprint: {}",
+        style(&fingerprint).bold().cyan()
+    ));
+    tui.info("   Waiting for approval… (Ctrl-C to abort)");
+
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5 * 60);
+    loop {
+        if std::time::Instant::now() > deadline {
+            anyhow::bail!("pairing timed out after 5 minutes");
+        }
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        let status: serde_json::Value = client
+            .get(format!(
+                "{base}/api/v1/pairing/status?poll_token={poll_token}"
+            ))
+            .send()
+            .await?
+            .error_for_status()?
+            .json()
+            .await?;
+        let state = status
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("unknown");
+        match state {
+            "pending" => continue,
+            "denied" => anyhow::bail!("the admin denied this device"),
+            "expired" | "not_found" => anyhow::bail!("pairing request expired — try again"),
+            "approved" => {
+                let token = status
+                    .get("token")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| anyhow::anyhow!("server approved but returned no token"))?;
+                let mut r = remotes::load();
+                let alias = name_override
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| alias_from_url(&base));
+                r.remotes.insert(
+                    alias.clone(),
+                    remotes::Remote {
+                        url: base.clone(),
+                        token: token.to_string(),
+                        device_name: Some(device_name),
+                    },
+                );
+                if r.default.is_none() {
+                    r.default = Some(alias.clone());
+                }
+                remotes::save(&r).map_err(|e| anyhow::anyhow!(e))?;
+                tui.success(&format!(
+                    "Paired as '{alias}'. Saved to {}",
+                    remotes::config_path().display()
+                ));
+                return Ok(());
+            }
+            other => anyhow::bail!("unexpected pairing status: {other}"),
+        }
+    }
+}
+
+fn hostname_fallback() -> Option<String> {
+    // Portable "what's my hostname" without a crate: read /etc/hostname on unix.
+    std::fs::read_to_string("/etc/hostname")
+        .ok()
+        .and_then(|s| {
+            let t = s.trim();
+            if t.is_empty() { None } else { Some(t.to_string()) }
+        })
+}
+
+fn alias_from_url(url: &str) -> String {
+    // Best-effort: turn "http://nas.local:1516" into "nas.local".
+    let s = url
+        .trim_start_matches("http://")
+        .trim_start_matches("https://");
+    s.split(&['/', ':'][..]).next().unwrap_or(s).to_string()
 }
