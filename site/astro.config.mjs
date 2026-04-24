@@ -4,7 +4,13 @@ import mdx from "@astrojs/mdx";
 import sitemap from "@astrojs/sitemap";
 import tailwindcss from "@tailwindcss/vite";
 
-const SITE_URL = process.env.SITE_URL ?? "https://amigo-downloader.pages.dev";
+// Precedence: explicit SITE_URL > Cloudflare Pages preview URL > production default.
+// CF_PAGES_URL is set automatically by Cloudflare Pages (classic) for both preview
+// and production builds, so OG/canonical URLs match the actual deploy URL.
+const SITE_URL =
+  process.env.SITE_URL ??
+  process.env.CF_PAGES_URL ??
+  "https://amigo-downloader.pages.dev";
 
 // https://astro.build/config
 export default defineConfig({
