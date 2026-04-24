@@ -12,13 +12,12 @@ where the server actually runs.
 | **Docker image** (`amigo-downloader:latest`) | yes (as a container) | no | Always-on homeserver, multiple clients |
 | **`amigo-dl <URL>`** (direct download) | yes — one shot, no daemon | no | Quick single-file download, `yt-dlp`-style |
 | **Web UI in browser** | no — it's only a frontend | yes — served by `amigo-server` or Docker | Regular GUI use |
-| **`amigo-dl add / list / pause / …`** (queue mode) | no | yes — local `amigo-server` or a remote reachable via `amigo-dl login` | Scripted queue management |
-| **`amigo-dl login <url>` + `remote …`** | no | yes — a remote `amigo-server` (usually Docker) | Laptop → home server |
+| **`amigo-dl` queue commands** (`add`, `list`, `pause`, …) | no | yes — a running `amigo-server`. Use locally by default, or pair once with a remote via `amigo-dl login <url>` and then address it with `--remote <alias>`. | Scripted queue management, talking to a Docker host from a laptop |
 
 In short:
 
 - **Standalone** (no extra service required): Tauri, the `amigo-server` binary, the Docker container, `amigo-dl <URL>`.
-- **Needs a running server** (Docker or local, doesn't matter which): browser UI, queue CLI (`add`, `list`, …), remote CLI (`login`, `--remote`).
+- **Needs a running server** (Docker or local, doesn't matter which): browser UI, `amigo-dl` queue commands. The CLI is one binary — `login` / `remote` / `--remote` are just one-time pairing and later addressing on the same tool.
 
 ## Local (default)
 
