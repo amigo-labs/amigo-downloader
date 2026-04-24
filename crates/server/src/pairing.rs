@@ -64,6 +64,7 @@ async fn rl_allow(rl: &RateLimiter, ip: &str) -> bool {
 }
 
 #[derive(Clone)]
+#[allow(dead_code)] // `auth` is captured for future per-endpoint filtering
 struct PairingState {
     app: AppState,
     auth: AuthState,

@@ -44,10 +44,10 @@ async fn main() -> anyhow::Result<()> {
     // Env overrides — useful for Docker / IaC where flipping `bind` or
     // enabling reverse-proxy awareness shouldn't require editing a TOML
     // file that also lives in a volume.
-    if let Ok(bind) = std::env::var("AMIGO_BIND") {
-        if !bind.trim().is_empty() {
-            config.server.bind = bind;
-        }
+    if let Ok(bind) = std::env::var("AMIGO_BIND")
+        && !bind.trim().is_empty()
+    {
+        config.server.bind = bind;
     }
     if std::env::var("AMIGO_TRUST_PROXY")
         .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
@@ -74,25 +74,25 @@ async fn main() -> anyhow::Result<()> {
     // Headless setup: if `AMIGO_SETUP_USER` + `AMIGO_SETUP_PASSWORD` are
     // provided and the wizard has not been completed, finish it now so the
     // server comes up fully authenticated without the browser.
-    if !config.server.setup_complete {
-        if let (Ok(user), Ok(pw)) = (
+    if !config.server.setup_complete
+        && let (Ok(user), Ok(pw)) = (
             std::env::var("AMIGO_SETUP_USER"),
             std::env::var("AMIGO_SETUP_PASSWORD"),
-        ) {
-            if user.trim().is_empty() || pw.len() < 8 {
-                tracing::error!(
-                    "AMIGO_SETUP_USER / AMIGO_SETUP_PASSWORD provided but invalid (user empty or password < 8 chars)"
-                );
-                anyhow::bail!("invalid setup env vars");
-            }
-            let hash = password::hash_password(&pw)
-                .map_err(|e| anyhow::anyhow!("setup hash failed: {e}"))?;
-            config.server.admin_username = Some(user);
-            config.server.admin_password_hash = Some(hash);
-            config.server.setup_complete = true;
-            config.save(&config_path)?;
-            tracing::info!("Setup completed from environment variables — admin account active.");
+        )
+    {
+        if user.trim().is_empty() || pw.len() < 8 {
+            tracing::error!(
+                "AMIGO_SETUP_USER / AMIGO_SETUP_PASSWORD provided but invalid (user empty or password < 8 chars)"
+            );
+            anyhow::bail!("invalid setup env vars");
         }
+        let hash = password::hash_password(&pw)
+            .map_err(|e| anyhow::anyhow!("setup hash failed: {e}"))?;
+        config.server.admin_username = Some(user);
+        config.server.admin_password_hash = Some(hash);
+        config.server.setup_complete = true;
+        config.save(&config_path)?;
+        tracing::info!("Setup completed from environment variables — admin account active.");
     }
 
     let storage = Storage::open(

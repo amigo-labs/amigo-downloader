@@ -82,22 +82,23 @@ pub fn client_ip(
     peer: Option<std::net::SocketAddr>,
     trust_proxy: bool,
 ) -> String {
-    if trust_proxy {
-        if let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok()) {
-            if let Some(first) = xff.split(',').next() {
-                let t = first.trim();
+    if trust_proxy
+        && let Some(xff) = headers.get("x-forwarded-for").and_then(|v| v.to_str().ok())
+        && let Some(first) = xff.split(',').next()
+    {
+        let t = first.trim();
+        if !t.is_empty() {
+            return t.to_string();
+        }
+    }
+    if trust_proxy
+        && let Some(fwd) = headers.get("forwarded").and_then(|v| v.to_str().ok())
+    {
+        for part in fwd.split(';').flat_map(|s| s.split(',')) {
+            if let Some(v) = part.trim().strip_prefix("for=") {
+                let t = v.trim_matches('"').trim_start_matches('[').trim_end_matches(']');
                 if !t.is_empty() {
                     return t.to_string();
-                }
-            }
-        }
-        if let Some(fwd) = headers.get("forwarded").and_then(|v| v.to_str().ok()) {
-            for part in fwd.split(';').flat_map(|s| s.split(',')) {
-                if let Some(v) = part.trim().strip_prefix("for=") {
-                    let t = v.trim_matches('"').trim_start_matches("[").trim_end_matches("]");
-                    if !t.is_empty() {
-                        return t.to_string();
-                    }
                 }
             }
         }
@@ -108,6 +109,7 @@ pub fn client_ip(
 /// Whether the original request came in over HTTPS. When `trust_proxy` is
 /// true, honours `X-Forwarded-Proto`; otherwise conservatively returns
 /// `false` (the listener itself is plain HTTP).
+#[allow(dead_code)] // consumed by setup/login cookie emission in follow-up patches
 pub fn request_is_secure(headers: &HeaderMap, trust_proxy: bool) -> bool {
     if !trust_proxy {
         return false;
@@ -140,7 +142,7 @@ pub fn ct_eq(a: &[u8], b: &[u8]) -> bool {
     diff == 0
 }
 
-fn extract_bearer<'a>(headers: &'a HeaderMap) -> Option<&'a str> {
+fn extract_bearer(headers: &HeaderMap) -> Option<&str> {
     let s = headers.get(header::AUTHORIZATION)?.to_str().ok()?;
     s.strip_prefix("Bearer ")
 }
@@ -151,7 +153,7 @@ fn extract_query_token(uri: &Uri) -> Option<&str> {
         .find_map(|pair| pair.strip_prefix("token="))
 }
 
-fn extract_session_cookie<'a>(headers: &'a HeaderMap) -> Option<&'a str> {
+fn extract_session_cookie(headers: &HeaderMap) -> Option<&str> {
     let s = headers.get(header::COOKIE)?.to_str().ok()?;
     for kv in s.split(';') {
         let kv = kv.trim();
@@ -162,8 +164,11 @@ fn extract_session_cookie<'a>(headers: &'a HeaderMap) -> Option<&'a str> {
     None
 }
 
-/// Identity returned by [`authenticate`] on success.
+/// Identity returned by [`authenticate`] on success. Fields are read via
+/// `req.extensions().get::<Principal>()` from Svelte-free handlers; clippy
+/// can't see that across the middleware boundary, hence the allow.
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 pub enum Principal {
     /// Browser session — carries the username.
     Session { username: String, session_id: String },
@@ -182,30 +187,29 @@ pub async fn authenticate(
     let now = chrono::Utc::now().timestamp();
 
     // Session cookie.
-    if let Some(sid) = extract_session_cookie(headers) {
-        if let Ok(Some(row)) = auth.app.coordinator.storage().get_session(sid).await {
-            if row.expires_at > now {
-                let _ = auth
-                    .app
-                    .coordinator
-                    .storage()
-                    .touch_session(sid, now)
-                    .await;
-                return Some(Principal::Session {
-                    username: row.username,
-                    session_id: row.id,
-                });
-            }
-        }
+    if let Some(sid) = extract_session_cookie(headers)
+        && let Ok(Some(row)) = auth.app.coordinator.storage().get_session(sid).await
+        && row.expires_at > now
+    {
+        let _ = auth
+            .app
+            .coordinator
+            .storage()
+            .touch_session(sid, now)
+            .await;
+        return Some(Principal::Session {
+            username: row.username,
+            session_id: row.id,
+        });
     }
 
     // Bearer tokens — either pre-shared, or an API-token row.
     let bearer = extract_bearer(headers).or_else(|| extract_query_token(uri));
     if let Some(tok) = bearer {
-        if let Some(preshared) = auth.preshared_token.as_ref() {
-            if ct_eq(tok.as_bytes(), preshared.as_bytes()) {
-                return Some(Principal::Preshared);
-            }
+        if let Some(preshared) = auth.preshared_token.as_ref()
+            && ct_eq(tok.as_bytes(), preshared.as_bytes())
+        {
+            return Some(Principal::Preshared);
         }
         let hash = hash_api_token(tok);
         if let Ok(Some(row)) = auth
@@ -214,19 +218,18 @@ pub async fn authenticate(
             .storage()
             .get_api_token_by_hash(&hash)
             .await
+            && row.expires_at.is_none_or(|exp| exp > now)
         {
-            if row.expires_at.is_none_or(|exp| exp > now) {
-                let _ = auth
-                    .app
-                    .coordinator
-                    .storage()
-                    .touch_api_token(&row.id, now, None)
-                    .await;
-                return Some(Principal::ApiToken {
-                    id: row.id,
-                    name: row.name,
-                });
-            }
+            let _ = auth
+                .app
+                .coordinator
+                .storage()
+                .touch_api_token(&row.id, now, None)
+                .await;
+            return Some(Principal::ApiToken {
+                id: row.id,
+                name: row.name,
+            });
         }
     }
 

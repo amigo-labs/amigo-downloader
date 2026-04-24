@@ -1235,7 +1235,7 @@ async fn pair_with_remote(
     let base = url.trim_end_matches('/').to_string();
     let hostname = std::env::var("HOSTNAME")
         .ok()
-        .or_else(|| hostname_fallback())
+        .or_else(hostname_fallback)
         .unwrap_or_else(|| "amigo-cli".to_string());
     let device_name = name_override.unwrap_or(&hostname).to_string();
 

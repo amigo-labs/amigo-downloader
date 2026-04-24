@@ -125,14 +125,12 @@ async fn logout(
     req: axum::extract::Request,
 ) -> Response {
     let (app, _) = &*s;
-    if let Some(principal) = req.extensions().get::<Principal>() {
-        if let Principal::Session { session_id, .. } = principal {
-            let _ = app
-                .coordinator
-                .storage()
-                .delete_session(session_id)
-                .await;
-        }
+    if let Some(Principal::Session { session_id, .. }) = req.extensions().get::<Principal>() {
+        let _ = app
+            .coordinator
+            .storage()
+            .delete_session(session_id)
+            .await;
     }
     // Clear the cookie regardless; the client may be a stale bearer user.
     let clear = Cookie::build((SESSION_COOKIE, ""))
