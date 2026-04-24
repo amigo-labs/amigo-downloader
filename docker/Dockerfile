@@ -1,8 +1,21 @@
-# Stage 1: Build Web-UI
+# Stage 1: Build Web-UI (pnpm workspace)
 FROM node:22-alpine3.21 AS ui-builder
-WORKDIR /app/web-ui
-COPY web-ui/ .
-RUN npm ci && npm run build
+RUN corepack enable
+WORKDIR /app
+
+# Copy workspace manifests first for maximum layer cache reuse
+COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
+COPY web-ui/package.json web-ui/
+COPY packages/ui/package.json packages/ui/
+
+# Install only the workspace dependencies needed to build the web-ui
+RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
+    pnpm install --frozen-lockfile --filter amigo-web-ui...
+
+# Now copy sources and build
+COPY packages/ui packages/ui
+COPY web-ui web-ui
+RUN pnpm --filter amigo-web-ui build
 
 # Stage 2: Build Rust
 FROM rust:1-bookworm AS rust-builder

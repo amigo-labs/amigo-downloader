@@ -41,40 +41,50 @@ jobs:
   web-ui:
     name: Web UI (build + check)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: web-ui
     steps:
       - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: web-ui/package-lock.json
+          cache: pnpm
 
-      - run: npm ci
-      - run: npm run build
-      - run: npm run check
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm --filter amigo-web-ui build
+
+      - name: Check
+        run: pnpm --filter amigo-web-ui check
 
   plugin-sdk:
     name: Plugin SDK (typecheck + test)
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: plugin-sdk
     steps:
       - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: plugin-sdk/package-lock.json
+          cache: pnpm
 
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: pnpm --filter @amigo/plugin-sdk typecheck
+
+      - name: Test
+        run: pnpm --filter @amigo/plugin-sdk test
 
   docker:
     name: Docker build
