@@ -1,0 +1,82 @@
+---
+const snippet = `/// <reference path="../types/amigo.d.ts" />
+
+module.exports = {
+  id: "my-hoster",
+  name: "My Hoster",
+  version: "1.0.0",
+  urlPattern: "https?://my-hoster\\\\.com/.+",
+
+  resolve(url) {
+    const page = amigo.httpGet(url);
+    const link = amigo.htmlQueryAttr(page.body, "a.download-btn", "href");
+    return {
+      name: amigo.htmlExtractTitle(page.body) ?? "Download",
+      downloads: [{
+        url: amigo.urlResolve(url, link),
+        filename: null,
+        filesize: null,
+        chunks_supported: true,
+        max_chunks: null,
+        headers: null,
+        cookies: null,
+        wait_seconds: null,
+        mirrors: [],
+      }],
+    };
+  },
+} satisfies AmigoPlugin;`;
+
+const limits = [
+  { label: "30 s", sub: "exec timeout" },
+  { label: "64 MB", sub: "memory" },
+  { label: "20 req", sub: "HTTP budget" },
+  { label: "1 MB", sub: "storage" },
+];
+---
+
+<section class="section" id="plugins">
+  <div class="container-prose grid gap-10 lg:grid-cols-[1fr_1.1fr] items-start">
+    <div>
+      <h2 class="text-3xl md:text-4xl font-bold tracking-tight mb-3" style="color: var(--text-primary)">
+        Plugins in <span class="neon-text-primary">TypeScript</span>. Sandboxed.
+      </h2>
+      <p class="mb-6" style="color: var(--text-secondary)">
+        Write hoster and extractor plugins in plain TypeScript. SWC transpiles them, a
+        QuickJS VM runs them — no Node, no network shims, no file-system access. Hot-reload
+        while you hack.
+      </p>
+      <div class="grid grid-cols-4 gap-3 mb-6">
+        {
+          limits.map((l) => (
+            <div class="feature-card text-center p-3">
+              <div class="text-lg font-bold neon-text-primary">{l.label}</div>
+              <div class="text-[10px] uppercase tracking-wider" style="color: var(--text-secondary)">
+                {l.sub}
+              </div>
+            </div>
+          ))
+        }
+      </div>
+      <a
+        href="https://github.com/amigo-labs/amigo-downloader/blob/main/docs/plugin-api.md"
+        class="btn btn-ghost text-sm"
+        target="_blank"
+        rel="noopener"
+      >
+        Read the plugin API →
+      </a>
+    </div>
+    <div class="terminal-window">
+      <div class="terminal-header">
+        <span class="terminal-dot" style="background: #ef4444"></span>
+        <span class="terminal-dot" style="background: #eab308"></span>
+        <span class="terminal-dot" style="background: #22c55e"></span>
+        <span class="ml-2 text-xs terminal-dim">plugins/hosters/my-hoster/plugin.ts</span>
+      </div>
+      <pre
+        class="terminal-body overflow-x-auto text-xs leading-relaxed"
+        style="margin: 0; color: var(--text-primary)"><code>{snippet}</code></pre>
+    </div>
+  </div>
+</section>

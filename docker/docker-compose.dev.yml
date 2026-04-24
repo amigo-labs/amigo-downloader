@@ -8,6 +8,8 @@ services:
       - "5173:5173"
     volumes:
       - ../web-ui:/app/web-ui
-      - /app/web-ui/node_modules    # Preserve container node_modules
+      - ../packages/ui:/app/packages/ui
+      - /app/node_modules            # Preserve container hoisted node_modules
+      - /app/web-ui/node_modules     # Preserve pnpm-linked node_modules
     environment:
       - TZ=Europe/Berlin

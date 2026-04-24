@@ -1,0 +1,21 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+import Hero from "../components/hero/Hero.astro";
+import StatHighlights from "../components/sections/StatHighlights.astro";
+import ProtocolStack from "../components/sections/ProtocolStack.astro";
+import FeatureGrid from "../components/sections/FeatureGrid.astro";
+import PluginShowcase from "../components/sections/PluginShowcase.astro";
+import InstallSection from "../components/sections/InstallSection.astro";
+---
+
+<BaseLayout
+  title="amigo-downloader — The download manager power users want"
+  description="Multi-chunk HTTP, Usenet with PAR2, HLS, DASH, YouTube, and a sandboxed TypeScript plugin system — all in a single Rust binary. Web UI, CLI, Docker, Tauri."
+>
+  <Hero />
+  <StatHighlights />
+  <ProtocolStack />
+  <FeatureGrid />
+  <PluginShowcase />
+  <InstallSection />
+</BaseLayout>

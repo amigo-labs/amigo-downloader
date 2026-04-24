@@ -1,5 +1,5 @@
 <script lang="ts">
-  import Icon from "./Icon.svelte";
+  import Icon from "@amigo/ui/components/Icon.svelte";
 
   let { onclose }: { onclose: () => void } = $props();
 

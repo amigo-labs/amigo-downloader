@@ -2,7 +2,7 @@
   import { onMount } from "svelte";
   import { addToast } from "../lib/toast";
   import { crashReport } from "../lib/stores";
-  import Icon from "./Icon.svelte";
+  import Icon from "@amigo/ui/components/Icon.svelte";
 
   let { onclose }: { onclose: () => void } = $props();
 

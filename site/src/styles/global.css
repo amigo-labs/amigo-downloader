@@ -1,0 +1,156 @@
+@import "tailwindcss";
+@import "@amigo/ui/tokens.css";
+
+/* ========================================
+   Marketing-site-only styles.
+   Design tokens, palettes, keyframes, neon-card, etc. come from
+   @amigo/ui/tokens.css — keep this file lean and marketing-specific.
+   ======================================== */
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Section spacing for marketing pages */
+.section {
+  padding-block: 5rem;
+}
+
+@media (min-width: 768px) {
+  .section {
+    padding-block: 7rem;
+  }
+}
+
+.container-prose {
+  max-width: 72rem;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+}
+
+@media (min-width: 768px) {
+  .container-prose {
+    padding-inline: 2rem;
+  }
+}
+
+/* Hero gradient backdrop */
+.hero-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(
+      60% 60% at 50% 30%,
+      color-mix(in srgb, var(--neon-primary) 18%, transparent) 0%,
+      transparent 70%
+    );
+  mask-image: linear-gradient(to bottom, black 50%, transparent 100%);
+}
+
+/* Terminal window chrome (mock CLI demo) */
+.terminal-window {
+  background: var(--bg-surface);
+  border: 1px solid var(--neon-border);
+  border-radius: 0.75rem;
+  overflow: hidden;
+  font-family: var(--font-mono);
+  box-shadow: var(--neon-glow-md);
+}
+
+.terminal-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.625rem 0.875rem;
+  background: var(--bg-surface-2);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.terminal-dot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: 50%;
+  opacity: 0.75;
+}
+
+.terminal-body {
+  padding: 1rem 1.25rem;
+  font-size: 0.8125rem;
+  line-height: 1.7;
+  color: var(--text-primary);
+  min-height: 10rem;
+}
+
+.terminal-prompt {
+  color: var(--neon-primary);
+  text-shadow: var(--neon-text-glow);
+}
+
+.terminal-dim {
+  color: var(--text-secondary);
+}
+
+/* CTA button base */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.25rem;
+  border-radius: 0.625rem;
+  font-weight: 600;
+  font-size: 0.9375rem;
+  line-height: 1;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn-primary {
+  background: var(--neon-primary);
+  color: var(--bg-deep);
+  box-shadow: var(--neon-glow-sm);
+}
+
+.btn-primary:hover {
+  box-shadow: var(--neon-glow-md);
+  transform: translateY(-1px);
+}
+
+.btn-ghost {
+  background: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--neon-border);
+}
+
+.btn-ghost:hover {
+  border-color: var(--neon-border-hover);
+  background: var(--hover-bg);
+  box-shadow: var(--neon-glow-sm);
+}
+
+/* Feature card (marketing) */
+.feature-card {
+  padding: 1.5rem;
+  border-radius: 0.875rem;
+  background: color-mix(in srgb, var(--bg-surface) 85%, transparent);
+  border: 1px solid var(--neon-border);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+}
+
+.feature-card:hover {
+  border-color: var(--neon-border-hover);
+  box-shadow: var(--neon-glow-sm);
+  transform: translateY(-2px);
+}
+
+/* Mascot float animation */
+.mascot-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+/* Install tab copy button state */
+.copy-ok {
+  color: var(--neon-success);
+}

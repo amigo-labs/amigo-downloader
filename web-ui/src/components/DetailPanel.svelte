@@ -3,8 +3,8 @@
   import { selectedDownload, closeSidePanel, crashReport, showFeedbackDialog } from "../lib/stores";
   import { formatBytes, formatSpeed, pauseDownload, resumeDownload, retryDownload, deleteDownload } from "../lib/api";
   import { addToast } from "../lib/toast";
-  import ChunkViz from "./ChunkViz.svelte";
-  import Icon from "./Icon.svelte";
+  import ChunkViz from "@amigo/ui/components/ChunkViz.svelte";
+  import Icon from "@amigo/ui/components/Icon.svelte";
 
   let dl = $derived($selectedDownload);
   let confirmingDelete = $state(false);

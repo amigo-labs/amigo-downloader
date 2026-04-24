@@ -2,7 +2,7 @@
   import { onDestroy } from "svelte";
   import { pauseDownload, resumeDownload, retryDownload, deleteDownload, formatBytes, formatSpeed } from "../lib/api";
   import { openDetailPanel, selectedIds, toggleSelection } from "../lib/stores";
-  import Icon from "./Icon.svelte";
+  import Icon from "@amigo/ui/components/Icon.svelte";
 
   let { download }: { download: any } = $props();
 

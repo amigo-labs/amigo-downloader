@@ -1,0 +1,16 @@
+{
+  "name": "amigo-downloader-monorepo",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build:web-ui": "pnpm --filter amigo-web-ui build",
+    "build:site": "pnpm --filter amigo-site build",
+    "dev:web-ui": "pnpm --filter amigo-web-ui dev",
+    "dev:site": "pnpm --filter amigo-site dev",
+    "check": "pnpm -r --if-present check"
+  }
+}

@@ -1,0 +1,56 @@
+name: Site (build check)
+
+# Cloudflare Pages is connected to this repo as a Git integration and
+# handles the actual build + deploy on every push/PR. This workflow only
+# runs a fast dry build + type check in CI so broken Astro code gets a
+# red check on the PR before CF even tries to deploy — catching type
+# errors `astro check` would otherwise miss.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "packages/**"
+      - "locales/**"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - ".github/workflows/site.yml"
+  pull_request:
+    branches: [main]
+    paths:
+      - "site/**"
+      - "packages/**"
+      - "locales/**"
+      - "pnpm-workspace.yaml"
+      - "package.json"
+      - ".github/workflows/site.yml"
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check site
+        run: pnpm --filter amigo-site exec astro check
+
+      - name: Build site
+        run: pnpm --filter amigo-site build

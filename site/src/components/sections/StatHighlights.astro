@@ -1,0 +1,26 @@
+---
+const stats = [
+  { value: "8×", label: "parallel chunks", sub: "per download" },
+  { value: "<50 MB", label: "single binary", sub: "ships with UI" },
+  { value: "6", label: "neon palettes", sub: "5 intensity levels" },
+  { value: "0", label: "external services", sub: "SQLite embedded" },
+];
+---
+
+<section class="container-prose pt-6">
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+    {
+      stats.map((s) => (
+        <div class="feature-card text-center">
+          <div class="text-3xl font-bold mb-1 neon-text-primary">{s.value}</div>
+          <div class="text-sm font-semibold" style="color: var(--text-primary)">
+            {s.label}
+          </div>
+          <div class="text-xs mt-1" style="color: var(--text-secondary)">
+            {s.sub}
+          </div>
+        </div>
+      ))
+    }
+  </div>
+</section>

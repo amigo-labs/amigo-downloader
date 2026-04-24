@@ -3,9 +3,9 @@
   import { pauseDownload, resumeDownload, retryDownload, deleteDownload, formatBytes, formatSpeed } from "../lib/api";
   import { openDetailPanel, selectedDownloadId, selectedIds, toggleSelection, crashReport } from "../lib/stores";
   import { addToast } from "../lib/toast";
-  import ChunkViz from "./ChunkViz.svelte";
+  import ChunkViz from "@amigo/ui/components/ChunkViz.svelte";
   import ContextMenu from "./ContextMenu.svelte";
-  import Icon from "./Icon.svelte";
+  import Icon from "@amigo/ui/components/Icon.svelte";
 
   let { download, index = 0, ondragstart, ondragover, ondrop }:
     { download: any; index?: number; ondragstart?: (e: DragEvent) => void; ondragover?: (e: DragEvent) => void; ondrop?: (e: DragEvent) => void } = $props();

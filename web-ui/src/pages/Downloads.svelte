@@ -8,7 +8,7 @@
   import { addToast } from "../lib/toast";
   import DownloadCard from "../components/DownloadCard.svelte";
   import DownloadCompactRow from "../components/DownloadCompactRow.svelte";
-  import Icon from "../components/Icon.svelte";
+  import Icon from "@amigo/ui/components/Icon.svelte";
 
 
   let filter = $state<string>("all");

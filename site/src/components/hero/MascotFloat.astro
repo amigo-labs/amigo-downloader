@@ -1,0 +1,23 @@
+---
+interface Props {
+  size?: number;
+}
+const { size = 144 } = Astro.props;
+---
+
+<div class="relative mascot-float" style={`width: ${size}px; height: ${size}px`}>
+  <div
+    class="absolute inset-0 rounded-full blur-2xl"
+    style="background: radial-gradient(circle, color-mix(in srgb, var(--neon-primary) 35%, transparent), transparent 70%)"
+    aria-hidden="true"
+  >
+  </div>
+  <img
+    src="/amigo-downloader.png"
+    alt="amigo-downloader mascot"
+    width={size}
+    height={size}
+    class="relative rounded-2xl"
+    style="box-shadow: 0 0 0 1px var(--neon-border), var(--neon-glow-md)"
+  />
+</div>

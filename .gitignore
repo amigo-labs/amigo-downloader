@@ -6,6 +6,12 @@ node_modules/
 web-ui/dist/
 web-ui/.svelte-kit/
 plugin-sdk/dist/
+site/dist/
+site/.astro/
+.turbo/
+
+# pnpm
+.pnpm-store/
 
 # Tauri
 tauri/target/
