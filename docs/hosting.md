@@ -3,23 +3,23 @@
 amigo ships three first-class deployment shapes. Pick the one that matches
 where the server actually runs.
 
-## Welche Variante brauche ich?
+## Which variant do I need?
 
-| Variante | Läuft standalone? | Brauche ich zusätzlich einen Server? | Typischer Einsatz |
+| Variant | Runs standalone? | Needs a server too? | Typical use |
 |---|---|---|---|
-| **Tauri Desktop** (`amigo-desktop`) | ✅ ja — spawnt internen Loopback-Server | nein | Eigener Laptop/Desktop, Single-User |
-| **`amigo-server` Binary** (Linux/Mac/Windows) | ✅ ja — bringt die Web-UI mit | nein | Self-hosted auf NAS/Homelab ohne Container |
-| **Docker Image** (`amigo-downloader:latest`) | ✅ ja (als Container) | nein | Always-on Homeserver, mehrere Clients |
-| **`amigo-dl <URL>`** (Direct-Download) | ✅ ja — ein Shot, kein Daemon | nein | Schneller Einzeldownload wie `yt-dlp` |
-| **`amigo-dl serve`** (Lite-API) | ✅ ja — REST-only, ohne Web-UI | nein | Headless-Embedded, Scripting |
-| **Web-UI im Browser** | ❌ ist nur Frontend | ja — `amigo-server` oder Docker liefert sie aus | Normale Nutzung mit GUI |
-| **`amigo-dl add / list / pause / …`** (Queue-Modus) | ❌ | ja — lokaler `amigo-server` oder per `amigo-dl login` erreichbarer Remote | Scripted Queue-Management |
-| **`amigo-dl login <url>` + `remote …`** | ❌ | ja — entfernter `amigo-server` (meist Docker) | Laptop → Homeserver |
+| **Tauri Desktop** (`amigo-desktop`) | yes — spawns an internal loopback server | no | Personal laptop/desktop, single user |
+| **`amigo-server` binary** (Linux/Mac/Windows) | yes — ships the Web UI embedded | no | Self-hosted on a NAS / homelab without containers |
+| **Docker image** (`amigo-downloader:latest`) | yes (as a container) | no | Always-on homeserver, multiple clients |
+| **`amigo-dl <URL>`** (direct download) | yes — one shot, no daemon | no | Quick single-file download, `yt-dlp`-style |
+| **`amigo-dl serve`** (lite REST API) | yes — no Web UI | no | Headless embedded / scripting |
+| **Web UI in browser** | no — it's only a frontend | yes — served by `amigo-server` or Docker | Regular GUI use |
+| **`amigo-dl add / list / pause / …`** (queue mode) | no | yes — local `amigo-server` or a remote reachable via `amigo-dl login` | Scripted queue management |
+| **`amigo-dl login <url>` + `remote …`** | no | yes — a remote `amigo-server` (usually Docker) | Laptop → home server |
 
-Kurzfassung:
+In short:
 
-- **Standalone** (kein extra Service nötig): Tauri, `amigo-server`-Binary, Docker-Container, `amigo-dl <URL>`, `amigo-dl serve`.
-- **Brauchen einen laufenden Server** (egal ob Docker oder lokal): Browser-UI, Queue-CLI (`add`, `list`, …), Remote-CLI (`login`, `--remote`).
+- **Standalone** (no extra service required): Tauri, the `amigo-server` binary, the Docker container, `amigo-dl <URL>`, `amigo-dl serve`.
+- **Needs a running server** (Docker or local, doesn't matter which): browser UI, queue CLI (`add`, `list`, …), remote CLI (`login`, `--remote`).
 
 ## Local (default)
 
