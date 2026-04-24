@@ -55,6 +55,28 @@ isn't acceptable, see below.
 | `AMIGO_SETUP_USER` + `AMIGO_SETUP_PASSWORD` | Headless provisioning — the admin account is created at startup and the wizard never appears. Good for IaC / docker-compose. |
 | `AMIGO_TRUST_PROXY` | `true` = honour `X-Forwarded-For` / `X-Forwarded-Proto`. Enable only behind a reverse proxy you control. |
 | `AMIGO_API_TOKEN` | Legacy pre-shared bearer token; accepted alongside session cookies and pairing-issued API tokens. |
+| `AMIGO_AUTO_UPDATE_PLUGINS` | `true` = periodically install plugin updates from the signed registry. Defaults to off; relies on the Ed25519-signed `index.json.sig` for tamper evidence. |
+| `AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED` | `1` = accept an unsigned plugin registry (disables signature verification). Local development only — never set in production. |
+
+### Plugin auto-updates
+
+The plugin registry index (`index.json`) is served alongside a detached
+Ed25519 signature (`index.json.sig`). The amigo-server binary pins the
+signer's public key, verifies the signature on every registry fetch, and
+rejects any tampered or unsigned index. Per-plugin source files are
+additionally SHA-256 pinned in the index.
+
+With that tamper evidence in place, periodic auto-installs are safe to
+enable. Set `auto_update_plugins = true` in `[update]` (or export
+`AMIGO_AUTO_UPDATE_PLUGINS=true`). The background task then runs every
+`update.check_interval_hours` hours and calls `update_all_plugins()` on
+each tick; failures are logged, never fatal. New (not-yet-installed)
+plugins are skipped — only plugins the admin has already installed ever
+update automatically.
+
+To rotate the registry signing key, ship a new amigo-server release with
+the new pinned public key. Clients that haven't upgraded will reject the
+new signatures — this is the intended behaviour, it fails safe.
 
 ## Reverse proxy (nginx, Caddy, Traefik)
 

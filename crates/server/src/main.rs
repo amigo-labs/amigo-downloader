@@ -55,6 +55,12 @@ async fn main() -> anyhow::Result<()> {
     {
         config.server.trust_proxy = true;
     }
+    if std::env::var("AMIGO_AUTO_UPDATE_PLUGINS")
+        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+        .unwrap_or(false)
+    {
+        config.update.auto_update_plugins = true;
+    }
 
     // Reject misconfigured bind/token combinations early.
     let validation_errors = config.validate();
@@ -286,7 +292,11 @@ async fn main() -> anyhow::Result<()> {
         .layer(cors);
 
     // Start background tasks (NZB watch folder, RSS poller)
-    background::spawn_background_tasks(coordinator.clone(), state.http_client.clone());
+    background::spawn_background_tasks(
+        coordinator.clone(),
+        state.http_client.clone(),
+        state.plugin_updater.clone(),
+    );
 
     // Start Click'n'Load listener on port 9666 in background
     let cnl_coordinator = coordinator.clone();

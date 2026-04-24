@@ -202,6 +202,12 @@ pub struct UpdateConfig {
     pub plugin_registry_url: String,
     /// GitHub repository for core releases.
     pub github_repo: String,
+    /// Automatically install plugin updates when the periodic check finds
+    /// them. Opt-in — defaults to `false` because auto-installing code from
+    /// a remote registry is a sensitive operation. Safe to enable only
+    /// because the registry index is now Ed25519-signed (audit #31).
+    #[serde(default)]
+    pub auto_update_plugins: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -300,6 +306,7 @@ impl Default for UpdateConfig {
             check_interval_hours: 24,
             plugin_registry_url: "https://raw.githubusercontent.com/amigo-labs/amigo-downloader-plugins/main/index.json".into(),
             github_repo: "amigo-labs/amigo-downloader".into(),
+            auto_update_plugins: false,
         }
     }
 }

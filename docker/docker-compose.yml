@@ -27,6 +27,14 @@ services:
       # Behind a reverse proxy? Enable this so `X-Forwarded-For` /
       # `X-Forwarded-Proto` are trusted.
       # - AMIGO_TRUST_PROXY=true
+      # Periodically (every `update.check_interval_hours`) install plugin
+      # updates from the signed registry index. Off by default so updates
+      # only happen when the admin clicks in the UI.
+      # - AMIGO_AUTO_UPDATE_PLUGINS=true
+      # Local-dev only: accept an unsigned plugin registry. DO NOT set in
+      # production — it disables the tamper-evidence that protects plugin
+      # installs from a compromised GitHub content repo.
+      # - AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED=1
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:1516/api/v1/status"]
       interval: 30s
