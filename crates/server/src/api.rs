@@ -984,6 +984,21 @@ async fn add_rss_feed(
         ));
     }
 
+    // SSRF guard: refuse RSS feeds whose URL points at non-public targets
+    // (loopback, RFC1918, link-local, cloud metadata, …) or non-http(s)
+    // schemes. Without this, a privileged user could turn the feed poller
+    // into an internal scanner.
+    crate::net_guard::validate_outbound_url(&req.url, false)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: format!("RSS feed URL rejected: {e}"),
+                }),
+            )
+        })?;
+
     let id = uuid::Uuid::new_v4().to_string();
     let row = amigo_core::storage::RssFeedRow {
         id: id.clone(),
@@ -1098,6 +1113,20 @@ async fn create_webhook(
     State(state): State<AppState>,
     Json(req): Json<CreateWebhookRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<ErrorResponse>)> {
+    // SSRF guard: webhook URLs are operator-supplied. Without validation, a
+    // privileged user could register http://169.254.169.254/ (cloud metadata)
+    // or http://10.0.0.1/admin and have the server probe / exfiltrate.
+    crate::net_guard::validate_outbound_url(&req.url, false)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::BAD_REQUEST,
+                Json(ErrorResponse {
+                    error: format!("Webhook URL rejected: {e}"),
+                }),
+            )
+        })?;
+
     let endpoint = amigo_core::config::WebhookEndpoint {
         id: uuid::Uuid::new_v4().to_string(),
         name: req.name,

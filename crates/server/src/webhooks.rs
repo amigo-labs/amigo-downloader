@@ -204,6 +204,13 @@ async fn dispatch_once(
     payload_json: &str,
     event_type: &str,
 ) -> Result<u16, String> {
+    // Re-validate the destination at dispatch time so DNS-rebinding can't
+    // bypass the create_webhook gate by changing answers between
+    // configuration and use.
+    crate::net_guard::validate_outbound_url(&endpoint.url, false)
+        .await
+        .map_err(|e| format!("webhook target rejected: {e}"))?;
+
     let delivery_id = uuid::Uuid::new_v4().to_string();
 
     let mut req = client

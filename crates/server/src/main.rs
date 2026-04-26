@@ -4,6 +4,7 @@ mod background;
 mod clicknload;
 mod feedback;
 mod login;
+mod net_guard;
 mod nzbget_api;
 mod pairing;
 mod password;

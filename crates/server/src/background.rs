@@ -246,6 +246,13 @@ async fn fetch_and_process_feed(
     http_client: &reqwest::Client,
     feed: &amigo_core::storage::RssFeedRow,
 ) -> Result<u32, amigo_core::Error> {
+    // Re-validate the feed URL on every poll. Even though add_rss_feed
+    // checked it at insert time, a DNS A-record can later flip to a private
+    // IP — a textbook SSRF rebinding pattern.
+    crate::net_guard::validate_outbound_url(&feed.url, false)
+        .await
+        .map_err(|e| amigo_core::Error::Other(format!("RSS feed URL rejected: {e}")))?;
+
     let resp = http_client
         .get(&feed.url)
         .header("User-Agent", "amigo-downloader/0.1.0")

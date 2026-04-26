@@ -7,6 +7,7 @@ mod background;
 pub mod clicknload;
 mod feedback;
 pub mod login;
+pub mod net_guard;
 mod nzbget_api;
 pub mod pairing;
 pub mod password;

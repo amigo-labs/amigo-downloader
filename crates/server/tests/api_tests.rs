@@ -874,3 +874,94 @@ async fn nzb_upload_rejects_oversize_body() {
         resp.status()
     );
 }
+
+// =============================================================================
+// SSRF guard (audit finding #7)
+// =============================================================================
+
+#[tokio::test]
+async fn create_webhook_rejects_private_ip_url() {
+    let addr = spawn_test_server().await;
+    let client = test_client();
+
+    let resp = client
+        .post(format!("{}/api/v1/webhooks", base_url(addr)))
+        .json(&serde_json::json!({
+            "name": "evil",
+            "url": "http://127.0.0.1:22/",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status().as_u16(), 400, "loopback must be rejected");
+
+    let resp = client
+        .post(format!("{}/api/v1/webhooks", base_url(addr)))
+        .json(&serde_json::json!({
+            "name": "metadata",
+            "url": "http://169.254.169.254/latest/meta-data/",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status().as_u16(),
+        400,
+        "AWS metadata IP must be rejected"
+    );
+
+    let resp = client
+        .post(format!("{}/api/v1/webhooks", base_url(addr)))
+        .json(&serde_json::json!({
+            "name": "scheme",
+            "url": "file:///etc/passwd",
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status().as_u16(),
+        400,
+        "non-http(s) scheme must be rejected"
+    );
+}
+
+#[tokio::test]
+async fn add_rss_feed_rejects_private_ip_url() {
+    // Build a server with rss_feeds enabled so we exercise the SSRF guard
+    // rather than the feature flag short-circuit.
+    let config = Config {
+        max_concurrent_downloads: 0,
+        features: amigo_core::config::FeatureFlags {
+            rss_feeds: true,
+            ..Default::default()
+        },
+        ..Config::default()
+    };
+    let state = amigo_server::build_test_state(config);
+    let app = amigo_server::build_test_router(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let client = test_client();
+
+    let resp = client
+        .post(format!("{}/api/v1/rss", base_url(addr)))
+        .json(&serde_json::json!({
+            "name": "evil",
+            "url": "http://10.0.0.1/feed.xml",
+            "category": "",
+            "interval_minutes": 60_u32,
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(
+        resp.status().as_u16(),
+        400,
+        "RFC1918 RSS URL must be rejected"
+    );
+}
