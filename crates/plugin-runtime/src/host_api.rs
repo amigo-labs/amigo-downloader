@@ -31,12 +31,19 @@ pub struct HostApi {
     storage: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
     request_count: Arc<Mutex<u32>>,
     max_requests: u32,
+    /// Per-plugin storage quota (bytes). Counted across all `(key, value)`
+    /// pairs of a single plugin's storage map.
+    max_storage_bytes: u64,
     notify_callback: Option<NotifyCallback>,
     captcha_callback: Option<CaptchaSolveCallback>,
     /// When false, reject plugin HTTP requests whose resolved IP is loopback,
     /// private (RFC1918), link-local, CGNAT, or otherwise non-public.
     allow_private_network: bool,
 }
+
+/// Default per-plugin storage quota when constructed via [`HostApi::new`]
+/// without a SandboxLimits. Matches `SandboxLimits::default().max_storage_bytes`.
+const DEFAULT_MAX_STORAGE_BYTES: u64 = 1024 * 1024;
 
 impl HostApi {
     pub fn new(max_requests: u32) -> Self {
@@ -49,6 +56,7 @@ impl HostApi {
             storage: Arc::new(Mutex::new(HashMap::new())),
             request_count: Arc::new(Mutex::new(0)),
             max_requests,
+            max_storage_bytes: DEFAULT_MAX_STORAGE_BYTES,
             notify_callback: None,
             captcha_callback: None,
             allow_private_network: false,
@@ -60,6 +68,7 @@ impl HostApi {
     pub fn from_sandbox(limits: &crate::sandbox::SandboxLimits) -> Self {
         let mut api = Self::new(limits.max_http_requests);
         api.allow_private_network = limits.allow_private_network;
+        api.max_storage_bytes = limits.max_storage_bytes;
         api
     }
 
@@ -382,12 +391,40 @@ impl HostApi {
         storage.get(plugin_id)?.get(key).cloned()
     }
 
-    pub async fn storage_set(&self, plugin_id: &str, key: &str, value: &str) {
+    /// Persist `value` under `(plugin_id, key)`. Enforces the per-plugin
+    /// quota configured via [`SandboxLimits::max_storage_bytes`]. The total
+    /// is computed across all `(key, value)` byte lengths in this plugin's
+    /// map after the proposed write; an oversize write is rejected without
+    /// mutating state. Returns `Err` with a human-readable message on quota
+    /// breach so the JS binding can surface it as a thrown exception.
+    pub async fn storage_set(
+        &self,
+        plugin_id: &str,
+        key: &str,
+        value: &str,
+    ) -> Result<(), String> {
         let mut storage = self.storage.lock().await;
-        storage
-            .entry(plugin_id.to_string())
-            .or_default()
-            .insert(key.to_string(), value.to_string());
+        let map = storage.entry(plugin_id.to_string()).or_default();
+
+        let old_size = map
+            .get(key)
+            .map(|v| v.len() as u64 + key.len() as u64)
+            .unwrap_or(0);
+        let new_pair = key.len() as u64 + value.len() as u64;
+        let mut total: u64 = map
+            .iter()
+            .map(|(k, v)| k.len() as u64 + v.len() as u64)
+            .sum();
+        total = total.saturating_sub(old_size).saturating_add(new_pair);
+
+        if total > self.max_storage_bytes {
+            return Err(format!(
+                "storage quota exceeded for plugin '{plugin_id}': {total} > {} bytes",
+                self.max_storage_bytes
+            ));
+        }
+        map.insert(key.to_string(), value.to_string());
+        Ok(())
     }
 
     pub async fn storage_delete(&self, plugin_id: &str, key: &str) {
@@ -1255,14 +1292,18 @@ pub fn register_host_api(
     amigo
         .set(
             "storageSet",
-            Function::new(ctx.clone(), move |key: String, value: String| {
-                let h = h.clone();
-                let pid = pid.clone();
-                let rt = tokio::runtime::Handle::current();
-                tokio::task::block_in_place(|| {
-                    rt.block_on(async { h.storage_set(&pid, &key, &value).await })
-                });
-            }),
+            Function::new(
+                ctx.clone(),
+                move |key: String, value: String| -> rquickjs::Result<()> {
+                    let h = h.clone();
+                    let pid = pid.clone();
+                    let rt = tokio::runtime::Handle::current();
+                    tokio::task::block_in_place(|| {
+                        rt.block_on(async { h.storage_set(&pid, &key, &value).await })
+                    })
+                    .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
+                },
+            ),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
@@ -1882,13 +1923,82 @@ mod tests {
     #[tokio::test]
     async fn test_storage() {
         let api = HostApi::new(20);
-        api.storage_set("test-plugin", "key1", "value1").await;
+        api.storage_set("test-plugin", "key1", "value1")
+            .await
+            .expect("write within quota must succeed");
         assert_eq!(
             api.storage_get("test-plugin", "key1").await,
             Some("value1".to_string())
         );
         api.storage_delete("test-plugin", "key1").await;
         assert_eq!(api.storage_get("test-plugin", "key1").await, None);
+    }
+
+    #[tokio::test]
+    async fn storage_quota_rejects_oversized_write() {
+        // 1 KiB quota — we should be able to set a value just under the
+        // limit, then fail to grow past it.
+        let limits = crate::sandbox::SandboxLimits {
+            max_storage_bytes: 1024,
+            ..Default::default()
+        };
+        let api = HostApi::from_sandbox(&limits);
+
+        // Fill with ~900 bytes (key+value), still under quota.
+        let big = "x".repeat(900);
+        api.storage_set("p", "big", &big)
+            .await
+            .expect("first write fits");
+
+        // Try to push the total above 1 KiB with a 200-byte value.
+        let err = api
+            .storage_set("p", "extra", &"y".repeat(200))
+            .await
+            .expect_err("second write must exceed quota");
+        assert!(err.contains("storage quota exceeded"), "msg: {err}");
+
+        // The rejected write must not have mutated state.
+        assert_eq!(api.storage_get("p", "extra").await, None);
+        assert_eq!(api.storage_get("p", "big").await, Some(big));
+    }
+
+    #[tokio::test]
+    async fn storage_quota_replacing_existing_key_uses_delta() {
+        // Replacing an existing key must charge only the *delta*, not the
+        // full new value, otherwise plugins can't shrink an oversized blob
+        // even when freeing space is the goal.
+        let limits = crate::sandbox::SandboxLimits {
+            max_storage_bytes: 1024,
+            ..Default::default()
+        };
+        let api = HostApi::from_sandbox(&limits);
+        api.storage_set("p", "k", &"a".repeat(900))
+            .await
+            .expect("initial 900-byte write fits");
+        // Overwriting with the same size must succeed.
+        api.storage_set("p", "k", &"b".repeat(900))
+            .await
+            .expect("same-size overwrite must succeed");
+        // Shrinking is also fine.
+        api.storage_set("p", "k", &"c".repeat(10))
+            .await
+            .expect("shrinking write must succeed");
+    }
+
+    #[tokio::test]
+    async fn storage_quota_isolated_per_plugin() {
+        let limits = crate::sandbox::SandboxLimits {
+            max_storage_bytes: 1024,
+            ..Default::default()
+        };
+        let api = HostApi::from_sandbox(&limits);
+        api.storage_set("plugin-a", "k", &"a".repeat(900))
+            .await
+            .expect("a fits");
+        // Plugin B has its own quota — must still be able to write.
+        api.storage_set("plugin-b", "k", &"b".repeat(900))
+            .await
+            .expect("b has its own quota");
     }
 
     #[test]
