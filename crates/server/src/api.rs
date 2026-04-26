@@ -4,7 +4,7 @@ use std::sync::Arc;
 
 use axum::{
     Json, Router,
-    extract::{Multipart, Path, State},
+    extract::{DefaultBodyLimit, Multipart, Path, State},
     http::StatusCode,
     routing::{delete, get, patch, post, put},
 };
@@ -38,8 +38,20 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/downloads", get(list_downloads))
         // Specific download routes MUST come before {id} routes
         .route("/api/v1/downloads/batch", post(add_batch))
-        .route("/api/v1/downloads/nzb", post(upload_nzb))
-        .route("/api/v1/downloads/container", post(upload_container))
+        // NZB JSON bodies can be a few MiB for large releases; cap at 64 MiB
+        // so a malicious client can't exhaust memory by uploading a multi-GiB
+        // body. DLC containers are tiny (tens of KiB at most), so cap them
+        // at 1 MiB. Both overrides come from the audit's CRITICAL #3 finding
+        // — without them axum's default 2 MiB applied to one route and the
+        // multipart handler on the other could buffer arbitrary sizes.
+        .route(
+            "/api/v1/downloads/nzb",
+            post(upload_nzb).layer(DefaultBodyLimit::max(MAX_NZB_BODY_BYTES)),
+        )
+        .route(
+            "/api/v1/downloads/container",
+            post(upload_container).layer(DefaultBodyLimit::max(MAX_DLC_BODY_BYTES)),
+        )
         .route("/api/v1/downloads/usenet", get(list_usenet_downloads))
         .route("/api/v1/downloads/{id}", get(get_download))
         .route("/api/v1/downloads/{id}", patch(update_download))
@@ -791,6 +803,17 @@ async fn set_nzb_watch_dir(
         })?;
     Ok(Json(WatchDirResponse { path: req.path }))
 }
+
+// --- Body-size limits for upload endpoints (audit finding #3) ---
+
+/// Maximum size of an NZB JSON body. Real-world NZBs grow with article count;
+/// 64 MiB comfortably handles even multi-thousand-article releases while
+/// blocking obvious DoS payloads.
+const MAX_NZB_BODY_BYTES: usize = 64 * 1024 * 1024;
+
+/// Maximum size of a DLC container upload. DLC files carry an AES-CBC-
+/// encrypted XML link list; legitimate ones are kilobytes, never megabytes.
+const MAX_DLC_BODY_BYTES: usize = 1024 * 1024;
 
 // --- Unified config endpoint ---
 

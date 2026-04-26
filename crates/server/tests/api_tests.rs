@@ -795,3 +795,82 @@ async fn test_add_download_with_invalid_json_returns_error() {
 
     assert!(resp.status().is_client_error());
 }
+
+// =============================================================================
+// Body-size limits (audit finding #3 — DoS via unbounded uploads)
+// =============================================================================
+
+#[tokio::test]
+async fn dlc_upload_rejects_oversize_body() {
+    let addr = spawn_test_server().await;
+    let client = test_client();
+
+    // 2 MiB synthetic payload — over the 1 MiB DLC limit. We hand-roll the
+    // multipart body so the test depends only on the JSON-enabled client
+    // used elsewhere. The body-size guard triggers from DefaultBodyLimit
+    // before the multipart parser even runs, so the exact framing does not
+    // matter as long as the wire size exceeds the limit.
+    let payload = vec![b'A'; 2 * 1024 * 1024];
+    let boundary = "----amigotest";
+    let mut body: Vec<u8> = Vec::with_capacity(payload.len() + 256);
+    body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
+    body.extend_from_slice(
+        b"Content-Disposition: form-data; name=\"file\"; filename=\"evil.dlc\"\r\n",
+    );
+    body.extend_from_slice(b"Content-Type: application/octet-stream\r\n\r\n");
+    body.extend_from_slice(&payload);
+    body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+
+    let resp = client
+        .post(format!("{}/api/v1/downloads/container", base_url(addr)))
+        .header(
+            "content-type",
+            format!("multipart/form-data; boundary={boundary}"),
+        )
+        .body(body)
+        .send()
+        .await
+        .unwrap();
+
+    // The body-size guard rejects the request before the handler ever
+    // sees it. The exact status varies (axum's DefaultBodyLimit returns
+    // 413 for raw bodies, the Multipart extractor surfaces it as 400),
+    // but it must not be a 2xx — the must-not is that an oversize body
+    // gets buffered into the handler.
+    let status = resp.status();
+    assert!(
+        status.is_client_error(),
+        "expected 4xx for oversize DLC, got {status}"
+    );
+    assert!(
+        matches!(status.as_u16(), 400 | 413),
+        "expected 400 or 413 for oversize DLC, got {status}"
+    );
+}
+
+#[tokio::test]
+async fn nzb_upload_rejects_oversize_body() {
+    let addr = spawn_test_server().await;
+    let client = test_client();
+
+    // 65 MiB JSON body — over the 64 MiB NZB limit. We stuff the bytes into
+    // the nzb_data field as a long string.
+    let big_string = "X".repeat(65 * 1024 * 1024);
+    let body = serde_json::json!({ "nzb_data": big_string });
+
+    let resp = client
+        .post(format!("{}/api/v1/downloads/nzb", base_url(addr)))
+        .json(&body)
+        .send()
+        .await
+        .unwrap();
+
+    // Either 413 Payload Too Large from DefaultBodyLimit, or a 4xx if the
+    // server rejects the connection earlier — anything in the client-error
+    // range is acceptable; the must-not is "200 OK".
+    assert!(
+        resp.status().is_client_error(),
+        "expected 4xx, got {}",
+        resp.status()
+    );
+}
