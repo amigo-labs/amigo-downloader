@@ -794,16 +794,87 @@ async fn set_nzb_watch_dir(
 
 // --- Unified config endpoint ---
 
+/// Sentinel string substituted for secret fields in config responses. The UI
+/// renders these as masked inputs ("••••") and round-trips them back on PUT;
+/// `apply_secret_passthrough` preserves the on-disk value whenever the
+/// sentinel arrives unchanged so non-secret edits don't accidentally wipe
+/// credentials.
+const REDACTED_SENTINEL: &str = "__redacted__";
+
+/// Build a copy of `config` safe to return over the API. Plaintext secrets
+/// (API tokens, GitHub PAT, NZBGet password, webhook signing secrets, the
+/// admin password hash) are replaced with [`REDACTED_SENTINEL`] when set,
+/// or left as `None`/empty when not configured.
+fn redact_config(mut config: amigo_core::config::Config) -> amigo_core::config::Config {
+    if config.server.api_token.is_some() {
+        config.server.api_token = Some(REDACTED_SENTINEL.into());
+    }
+    if config.server.admin_password_hash.is_some() {
+        config.server.admin_password_hash = Some(REDACTED_SENTINEL.into());
+    }
+    if !config.nzbget_api.password.is_empty() {
+        config.nzbget_api.password = REDACTED_SENTINEL.into();
+    }
+    if !config.feedback.github_token.is_empty() {
+        config.feedback.github_token = REDACTED_SENTINEL.into();
+    }
+    for hook in &mut config.webhooks {
+        if hook.secret.is_some() {
+            hook.secret = Some(REDACTED_SENTINEL.into());
+        }
+    }
+    config
+}
+
+/// When a PUT request comes back with a secret field still equal to
+/// [`REDACTED_SENTINEL`], that means the UI never saw the plaintext and is
+/// just round-tripping the masked value — keep the existing on-disk secret
+/// instead of overwriting it with the sentinel string.
+fn apply_secret_passthrough(
+    incoming: &mut amigo_core::config::Config,
+    existing: &amigo_core::config::Config,
+) {
+    if incoming.server.api_token.as_deref() == Some(REDACTED_SENTINEL) {
+        incoming.server.api_token = existing.server.api_token.clone();
+    }
+    if incoming.server.admin_password_hash.as_deref() == Some(REDACTED_SENTINEL) {
+        incoming.server.admin_password_hash = existing.server.admin_password_hash.clone();
+    }
+    if incoming.nzbget_api.password == REDACTED_SENTINEL {
+        incoming.nzbget_api.password = existing.nzbget_api.password.clone();
+    }
+    if incoming.feedback.github_token == REDACTED_SENTINEL {
+        incoming.feedback.github_token = existing.feedback.github_token.clone();
+    }
+    // Webhooks are matched by id; if a hook with the same id already exists
+    // and the incoming secret is the sentinel, restore the previous secret.
+    for hook in &mut incoming.webhooks {
+        if hook.secret.as_deref() == Some(REDACTED_SENTINEL) {
+            hook.secret = existing
+                .webhooks
+                .iter()
+                .find(|h| h.id == hook.id)
+                .and_then(|h| h.secret.clone());
+        }
+    }
+}
+
 async fn get_config(
     State(state): State<AppState>,
 ) -> Json<amigo_core::config::Config> {
-    Json(state.coordinator.config().await)
+    let config = state.coordinator.config().await;
+    Json(redact_config(config))
 }
 
 async fn put_config(
     State(state): State<AppState>,
-    Json(new_config): Json<amigo_core::config::Config>,
+    Json(mut new_config): Json<amigo_core::config::Config>,
 ) -> Result<Json<amigo_core::config::Config>, (StatusCode, Json<ErrorResponse>)> {
+    // Restore secrets the UI never saw so a "save settings" round-trip from
+    // a masked GET response cannot accidentally erase credentials.
+    let existing = state.coordinator.config().await;
+    apply_secret_passthrough(&mut new_config, &existing);
+
     // Save to TOML file
     new_config.save(&state.config_path).map_err(|e| {
         (
@@ -816,7 +887,7 @@ async fn put_config(
     state.coordinator.update_config(new_config.clone()).await;
 
     tracing::info!("Config updated and saved to {:?}", state.config_path);
-    Ok(Json(new_config))
+    Ok(Json(redact_config(new_config)))
 }
 
 // --- RSS feed handlers (feature-gated) ---
@@ -1061,5 +1132,109 @@ fn row_to_response(row: amigo_core::storage::DownloadRow) -> DownloadResponse {
         speed: row.speed_current,
         error: row.error_message,
         created_at: row.created_at,
+    }
+}
+
+#[cfg(test)]
+mod config_redact_tests {
+    use super::*;
+    use amigo_core::config::{Config, WebhookEndpoint};
+
+    fn config_with_secrets() -> Config {
+        let mut cfg = Config::default();
+        cfg.server.api_token = Some("ApiTokenAbc123".into());
+        cfg.server.admin_password_hash = Some("$argon2id$v=19$...".into());
+        cfg.nzbget_api.password = "nzbpass".into();
+        cfg.feedback.github_token = "ghp_realtoken".into();
+        cfg.webhooks.push(WebhookEndpoint {
+            id: "hook-1".into(),
+            name: "test".into(),
+            url: "https://example.com".into(),
+            secret: Some("hmacsecret".into()),
+            events: vec!["*".into()],
+            enabled: true,
+            retry_count: 3,
+            retry_delay_secs: 10,
+        });
+        cfg
+    }
+
+    #[test]
+    fn redact_replaces_every_secret_field() {
+        let redacted = redact_config(config_with_secrets());
+        assert_eq!(redacted.server.api_token.as_deref(), Some(REDACTED_SENTINEL));
+        assert_eq!(
+            redacted.server.admin_password_hash.as_deref(),
+            Some(REDACTED_SENTINEL)
+        );
+        assert_eq!(redacted.nzbget_api.password, REDACTED_SENTINEL);
+        assert_eq!(redacted.feedback.github_token, REDACTED_SENTINEL);
+        assert_eq!(
+            redacted.webhooks[0].secret.as_deref(),
+            Some(REDACTED_SENTINEL)
+        );
+    }
+
+    #[test]
+    fn redact_leaves_unset_fields_unset() {
+        let redacted = redact_config(Config::default());
+        assert!(redacted.server.api_token.is_none());
+        assert!(redacted.server.admin_password_hash.is_none());
+        assert_eq!(redacted.nzbget_api.password, "");
+        assert_eq!(redacted.feedback.github_token, "");
+        assert!(redacted.webhooks.is_empty());
+    }
+
+    #[test]
+    fn redacted_response_does_not_serialize_real_secrets() {
+        // Belt-and-braces: serialise the redacted config to JSON and grep
+        // for the plaintext secret values. They must not appear anywhere.
+        let cfg = config_with_secrets();
+        let redacted = redact_config(cfg);
+        let json = serde_json::to_string(&redacted).expect("serialise");
+        for needle in [
+            "ApiTokenAbc123",
+            "$argon2id$v=19$",
+            "nzbpass",
+            "ghp_realtoken",
+            "hmacsecret",
+        ] {
+            assert!(
+                !json.contains(needle),
+                "redacted config still contains plaintext '{needle}': {json}"
+            );
+        }
+    }
+
+    #[test]
+    fn passthrough_restores_sentinel_secrets_on_put() {
+        let existing = config_with_secrets();
+        let mut incoming = redact_config(existing.clone());
+        // The UI hands the masked sentinel back to us unchanged.
+        apply_secret_passthrough(&mut incoming, &existing);
+        assert_eq!(incoming.server.api_token, existing.server.api_token);
+        assert_eq!(
+            incoming.server.admin_password_hash,
+            existing.server.admin_password_hash
+        );
+        assert_eq!(incoming.nzbget_api.password, existing.nzbget_api.password);
+        assert_eq!(
+            incoming.feedback.github_token,
+            existing.feedback.github_token
+        );
+        assert_eq!(incoming.webhooks[0].secret, existing.webhooks[0].secret);
+    }
+
+    #[test]
+    fn passthrough_accepts_real_replacement_values() {
+        let existing = config_with_secrets();
+        let mut incoming = config_with_secrets();
+        incoming.feedback.github_token = "ghp_replaced".into();
+        incoming.nzbget_api.password = "newpass".into();
+        apply_secret_passthrough(&mut incoming, &existing);
+        // Non-sentinel secrets must come through unchanged so operators
+        // can actually rotate them.
+        assert_eq!(incoming.feedback.github_token, "ghp_replaced");
+        assert_eq!(incoming.nzbget_api.password, "newpass");
     }
 }
