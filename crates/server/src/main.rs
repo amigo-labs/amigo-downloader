@@ -283,10 +283,15 @@ async fn main() -> anyhow::Result<()> {
         .merge(pairing::pairing_router(state.clone(), auth_state.clone()));
 
     // NZBGet JSON-RPC has its own HTTP Basic Auth layer (Sonarr/Radarr
-    // compatibility) and static files are public.
-    let app = protected
-        .merge(open)
-        .merge(nzbget_api::nzbget_router(state.clone()))
+    // compatibility) and static files are public. Refuse to start when the
+    // operator turned the API on without setting credentials — fail-loud at
+    // startup is safer than mounting an open RPC endpoint.
+    nzbget_api::validate_nzbget_config(&config.nzbget_api).map_err(|e| anyhow::anyhow!(e))?;
+    let mut app = protected.merge(open);
+    if let Some(nzb) = nzbget_api::nzbget_router(state.clone(), &config.nzbget_api) {
+        app = app.merge(nzb);
+    }
+    let app = app
         .merge(static_files::static_router())
         .layer(setup_guard_layer)
         .layer(cors);

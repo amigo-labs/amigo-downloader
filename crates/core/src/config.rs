@@ -140,24 +140,20 @@ impl Default for ServerConfig {
 }
 
 /// NZBGet-compatible JSON-RPC API credentials for Sonarr/Radarr integration.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// `enabled` defaults to `false` via `Default`, so a fresh install does not
+/// expose the JSON-RPC surface (which can queue/pause/delete downloads)
+/// before the operator turns it on and sets credentials.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct NzbGetApiConfig {
     /// Enable the NZBGet-compatible JSON-RPC API.
     pub enabled: bool,
-    /// Username for HTTP Basic Auth. Empty string disables auth.
+    /// Username for HTTP Basic Auth. Both fields must be non-empty when
+    /// `enabled` is true; the server refuses to start otherwise (see
+    /// `nzbget_api::validate_nzbget_config`).
     pub username: String,
-    /// Password for HTTP Basic Auth. Empty string disables auth.
+    /// Password for HTTP Basic Auth. Same non-empty requirement as `username`.
     pub password: String,
-}
-
-impl Default for NzbGetApiConfig {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            username: String::new(),
-            password: String::new(),
-        }
-    }
 }
 
 /// Retry behavior for failed downloads.
