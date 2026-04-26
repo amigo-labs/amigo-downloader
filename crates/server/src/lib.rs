@@ -9,6 +9,8 @@ mod feedback;
 pub mod login;
 pub mod net_guard;
 mod nzbget_api;
+mod security_headers;
+pub use security_headers::security_headers as security_headers_layer;
 pub mod pairing;
 pub mod password;
 mod resolver;

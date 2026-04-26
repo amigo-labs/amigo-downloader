@@ -6,6 +6,7 @@ mod feedback;
 mod login;
 mod net_guard;
 mod nzbget_api;
+mod security_headers;
 mod pairing;
 mod password;
 mod resolver;
@@ -295,7 +296,12 @@ async fn main() -> anyhow::Result<()> {
     let app = app
         .merge(static_files::static_router())
         .layer(setup_guard_layer)
-        .layer(cors);
+        .layer(cors)
+        // Set baseline security headers (X-Content-Type-Options, X-Frame-
+        // Options, Referrer-Policy, CSP, Permissions-Policy) on every
+        // response. Outermost layer so even error / redirect responses
+        // carry them.
+        .layer(axum::middleware::from_fn(security_headers::security_headers));
 
     // Start background tasks (NZB watch folder, RSS poller)
     background::spawn_background_tasks(
