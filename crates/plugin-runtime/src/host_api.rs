@@ -26,6 +26,60 @@ pub type CaptchaFuture =
 /// Per-plugin cookie jars: `plugin_id → domain → name → value`.
 type CookieJars = HashMap<String, HashMap<String, HashMap<String, String>>>;
 
+// --- Input-size limits for the parsing helpers (audit finding #11) ---
+//
+// All of these guard the host *outside* the QuickJS context. The 64 MiB
+// memory cap on the JS side does not protect against `amigo.htmlQueryAll`
+// allocating gigabytes on the host heap, so we cap inputs before they reach
+// `scraper`, `regex`, or the base64 decoder.
+
+/// Cap on regex pattern length. Real-world hoster regexes top out at a few
+/// hundred chars; anything bigger is almost certainly a ReDoS payload or a
+/// plugin bug.
+const MAX_REGEX_PATTERN_BYTES: usize = 4 * 1024;
+
+/// Cap on the haystack passed to regex helpers. 4 MiB is comfortably larger
+/// than any HTML page a plugin needs to parse with regex (use the proper
+/// `htmlQuery*` family for big documents anyway).
+const MAX_REGEX_TEXT_BYTES: usize = 4 * 1024 * 1024;
+
+/// Compile-time cap for a single regex's NFA.
+const REGEX_COMPILE_SIZE_LIMIT: usize = 1024 * 1024;
+
+/// Compile-time cap for a regex's DFA cache.
+const REGEX_DFA_SIZE_LIMIT: usize = 2 * 1024 * 1024;
+
+/// Cap on HTML inputs to scraper-based helpers. 8 MiB is well past any
+/// legitimate page; bigger inputs are pathological-nesting OOM bombs.
+const MAX_HTML_BYTES: usize = 8 * 1024 * 1024;
+
+/// Cap on base64 input length. The host-side decoder allocates ~3/4 of the
+/// input length on the heap, so unbounded inputs map to unbounded host RAM.
+const MAX_BASE64_INPUT_BYTES: usize = 8 * 1024 * 1024;
+
+fn enforce_input_limit(field: &str, len: usize, max: usize) -> Result<(), String> {
+    if len > max {
+        Err(format!(
+            "{field} too large ({} bytes; limit {} bytes)",
+            len, max
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+/// Compile a regex with the global plugin-side size limits applied. Returns
+/// the compiled `Regex` or a string error suitable for surfacing to the JS
+/// caller.
+fn compile_plugin_regex(pattern: &str) -> Result<regex::Regex, String> {
+    enforce_input_limit("regex pattern", pattern.len(), MAX_REGEX_PATTERN_BYTES)?;
+    regex::RegexBuilder::new(pattern)
+        .size_limit(REGEX_COMPILE_SIZE_LIMIT)
+        .dfa_size_limit(REGEX_DFA_SIZE_LIMIT)
+        .build()
+        .map_err(|e| format!("invalid regex: {e}"))
+}
+
 /// Shared state for the Host API, passed into every plugin call.
 #[derive(Clone)]
 pub struct HostApi {
@@ -280,7 +334,10 @@ impl HostApi {
     // --- Parsing helpers ---
 
     pub fn regex_match(&self, pattern: &str, text: &str) -> Option<String> {
-        let re = regex::Regex::new(pattern).ok()?;
+        if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
+            return None;
+        }
+        let re = compile_plugin_regex(pattern).ok()?;
         let caps = re.captures(text)?;
         caps.get(1)
             .or_else(|| caps.get(0))
@@ -288,7 +345,10 @@ impl HostApi {
     }
 
     pub fn regex_match_all(&self, pattern: &str, text: &str) -> Vec<String> {
-        let re = match regex::Regex::new(pattern) {
+        if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
+            return Vec::new();
+        }
+        let re = match compile_plugin_regex(pattern) {
             Ok(r) => r,
             Err(_) => return Vec::new(),
         };
@@ -542,6 +602,7 @@ impl HostApi {
 
     pub fn html_query_all(&self, html: &str, selector: &str) -> Result<Vec<String>, String> {
         use scraper::{Html, Selector};
+        enforce_input_limit("html", html.len(), MAX_HTML_BYTES)?;
         let doc = Html::parse_document(html);
         let sel =
             Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
@@ -550,6 +611,7 @@ impl HostApi {
 
     pub fn html_query_text(&self, html: &str, selector: &str) -> Result<Option<String>, String> {
         use scraper::{Html, Selector};
+        enforce_input_limit("html", html.len(), MAX_HTML_BYTES)?;
         let doc = Html::parse_document(html);
         let sel =
             Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
@@ -566,6 +628,7 @@ impl HostApi {
         attr: &str,
     ) -> Result<Option<String>, String> {
         use scraper::{Html, Selector};
+        enforce_input_limit("html", html.len(), MAX_HTML_BYTES)?;
         let doc = Html::parse_document(html);
         let sel =
             Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
@@ -577,6 +640,9 @@ impl HostApi {
 
     pub fn html_search_meta(&self, html: &str, names: &[String]) -> Option<String> {
         use scraper::{Html, Selector};
+        if enforce_input_limit("html", html.len(), MAX_HTML_BYTES).is_err() {
+            return None;
+        }
         let doc = Html::parse_document(html);
         let selectors = ["meta[name='{name}']", "meta[property='{name}']"];
         for name in names {
@@ -597,6 +663,9 @@ impl HostApi {
 
     pub fn html_extract_title(&self, html: &str) -> Option<String> {
         use scraper::{Html, Selector};
+        if enforce_input_limit("html", html.len(), MAX_HTML_BYTES).is_err() {
+            return None;
+        }
         let doc = Html::parse_document(html);
         let sel = Selector::parse("title").ok()?;
         doc.select(&sel)
@@ -606,6 +675,9 @@ impl HostApi {
 
     pub fn html_hidden_inputs(&self, html: &str) -> HashMap<String, String> {
         use scraper::{Html, Selector};
+        if enforce_input_limit("html", html.len(), MAX_HTML_BYTES).is_err() {
+            return HashMap::new();
+        }
         let doc = Html::parse_document(html);
         let sel = match Selector::parse("input[type='hidden']") {
             Ok(s) => s,
@@ -621,7 +693,10 @@ impl HostApi {
     }
 
     pub fn search_json(&self, start_pattern: &str, html: &str) -> Option<String> {
-        let re = regex::Regex::new(start_pattern).ok()?;
+        if enforce_input_limit("search_json html", html.len(), MAX_HTML_BYTES).is_err() {
+            return None;
+        }
+        let re = compile_plugin_regex(start_pattern).ok()?;
         let m = re.find(html)?;
         let rest = &html[m.end()..];
 
@@ -672,18 +747,27 @@ impl HostApi {
     // --- Additional regex helpers ---
 
     pub fn regex_replace(&self, pattern: &str, text: &str, replacement: &str) -> Option<String> {
-        let re = regex::Regex::new(pattern).ok()?;
+        if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
+            return None;
+        }
+        let re = compile_plugin_regex(pattern).ok()?;
         Some(re.replace_all(text, replacement).into_owned())
     }
 
     pub fn regex_test(&self, pattern: &str, text: &str) -> bool {
-        regex::Regex::new(pattern)
+        if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
+            return false;
+        }
+        compile_plugin_regex(pattern)
             .map(|re| re.is_match(text))
             .unwrap_or(false)
     }
 
     pub fn regex_split(&self, pattern: &str, text: &str) -> Vec<String> {
-        match regex::Regex::new(pattern) {
+        if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
+            return vec![text.to_string()];
+        }
+        match compile_plugin_regex(pattern) {
             Ok(re) => re.split(text).map(|s| s.to_string()).collect(),
             Err(_) => vec![text.to_string()],
         }
@@ -820,6 +904,7 @@ impl HostApi {
         attr: &str,
     ) -> Result<Vec<String>, String> {
         use scraper::{Html, Selector};
+        enforce_input_limit("html", html.len(), MAX_HTML_BYTES)?;
         let doc = Html::parse_document(html);
         let sel =
             Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
@@ -1745,6 +1830,7 @@ pub fn register_host_api(
 // --- Base64 helpers ---
 
 fn base64_decode_bytes(input: &str) -> Result<Vec<u8>, String> {
+    enforce_input_limit("base64 input", input.len(), MAX_BASE64_INPUT_BYTES)?;
     let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut table = [0u8; 256];
     for (i, &c) in alphabet.iter().enumerate() {
@@ -2156,5 +2242,62 @@ mod tests {
             api.html_query_attr(html, "a", "href").unwrap(),
             Some("/file.zip".to_string())
         );
+    }
+
+    // --- Resource-limit regression tests (audit #11) ---
+
+    #[test]
+    fn regex_helpers_reject_oversize_text() {
+        let api = HostApi::new(20);
+        let huge = "a".repeat(MAX_REGEX_TEXT_BYTES + 1);
+        assert_eq!(huge.len(), MAX_REGEX_TEXT_BYTES + 1, "sanity");
+        // Match returns None instead of grinding through gigabytes.
+        assert!(api.regex_match(r"a+", &huge).is_none());
+        // match_all degrades gracefully to an empty result.
+        assert!(api.regex_match_all(r"a+", &huge).is_empty());
+        // replace returns None when the text is oversized. Arg order is
+        // regex_replace(pattern, text, replacement) — putting the huge
+        // string in the replacement slot is a different test.
+        let replaced = api.regex_replace(r"a", &huge, "b");
+        assert!(
+            replaced.is_none(),
+            "regex_replace must short-circuit on oversize input"
+        );
+        // test returns false.
+        assert!(!api.regex_test(r"a", &huge));
+        // split returns the input untouched.
+        let split = api.regex_split(r"a", &huge);
+        assert_eq!(split.len(), 1);
+        assert_eq!(split[0].len(), huge.len());
+    }
+
+    #[test]
+    fn regex_helpers_reject_oversize_pattern() {
+        // A pathologically long pattern is rejected at compile time so we
+        // never even try to run it.
+        let api = HostApi::new(20);
+        let pattern = "a".repeat(MAX_REGEX_PATTERN_BYTES + 1);
+        assert_eq!(api.regex_match(&pattern, "aaaa"), None);
+    }
+
+    #[test]
+    fn html_helpers_reject_oversize_input() {
+        let api = HostApi::new(20);
+        let huge = "<p>".repeat(MAX_HTML_BYTES); // > 8 MiB
+        assert!(api.html_query_all(&huge, "p").is_err());
+        assert!(api.html_query_text(&huge, "p").is_err());
+        assert!(
+            api.html_query_attr(&huge, "p", "x").is_err()
+        );
+        assert_eq!(api.html_extract_title(&huge), None);
+        assert!(api.html_hidden_inputs(&huge).is_empty());
+    }
+
+    #[test]
+    fn base64_decode_rejects_oversize_input() {
+        let api = HostApi::new(20);
+        let huge = "A".repeat(MAX_BASE64_INPUT_BYTES + 1);
+        let err = api.base64_decode(&huge).expect_err("must reject");
+        assert!(err.contains("base64 input too large"), "msg: {err}");
     }
 }
