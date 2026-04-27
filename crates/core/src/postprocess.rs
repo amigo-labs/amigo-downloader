@@ -147,8 +147,9 @@ fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
 
         let name = entry.name().to_string();
 
-        // Zip Slip protection: reject traversal components and sanitize each
-        // path segment for platform-invalid characters (NUL, ':', etc.).
+        // Zip Slip protection (path components):
+        //   1. reject `..`, `.`, and empty segments after normalising `\`→`/`
+        //   2. sanitise each segment for NUL / `:` / control chars
         let sanitized = name
             .replace('\\', "/")
             .split('/')
@@ -168,6 +169,29 @@ fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
             continue;
         }
 
+        // Zip Slip protection (symlinks): refuse symlink entries entirely.
+        // The original guard only checked the *normalised* path; a symlink
+        // entry pointing at `..` followed by a regular entry under the same
+        // prefix would still escape the output dir at write time.
+        if is_symlink_entry(&entry) {
+            warn!(
+                "ZIP entry {:?} is a symlink — skipping (symlink-extraction disabled)",
+                name
+            );
+            continue;
+        }
+
+        // Defence in depth: if any intermediate component on disk is
+        // already a symlink (e.g. created by a previous corrupt extraction),
+        // refuse to write through it.
+        if has_symlink_ancestor(output_dir, &out_path)? {
+            warn!(
+                "ZIP entry {:?} would traverse a pre-existing symlink — skipping",
+                name
+            );
+            continue;
+        }
+
         if entry.is_dir() {
             std::fs::create_dir_all(&out_path)?;
         } else {
@@ -181,6 +205,39 @@ fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
     }
 
     Ok(())
+}
+
+/// True for ZIP entries whose Unix mode marks them as a symbolic link.
+/// On non-Unix platforms `unix_mode()` returns `None` and we fall back to
+/// `false` — Windows does not honour Unix symlink bits in zips, but the
+/// `has_symlink_ancestor` check still protects against real-on-disk
+/// symlinks.
+fn is_symlink_entry(entry: &zip::read::ZipFile<'_>) -> bool {
+    const S_IFMT: u32 = 0o170000;
+    const S_IFLNK: u32 = 0o120000;
+    matches!(entry.unix_mode(), Some(mode) if mode & S_IFMT == S_IFLNK)
+}
+
+/// Walk every component between `root` and `path` and return true if any
+/// already-existing component is a symlink. `path` itself is NOT checked
+/// because it doesn't exist yet at extraction time (and `File::create`
+/// O_CREAT|O_TRUNC will overwrite a symlink target — that is the very thing
+/// we want to refuse).
+fn has_symlink_ancestor(root: &Path, path: &Path) -> Result<bool, crate::Error> {
+    let mut cur = path.parent();
+    while let Some(p) = cur {
+        if p == root || !p.starts_with(root) {
+            break;
+        }
+        match std::fs::symlink_metadata(p) {
+            Ok(meta) if meta.file_type().is_symlink() => return Ok(true),
+            Ok(_) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+        cur = p.parent();
+    }
+    Ok(false)
 }
 
 fn extract_7z(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
@@ -424,6 +481,77 @@ fn run_external(cmd: &str, args: &[&str]) -> Result<(), crate::Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Build a zip in memory containing one symlink entry pointing at an
+    /// absolute path outside the output directory, plus a regular file.
+    /// Uses `ZipWriter::add_symlink` so the central-directory entry has
+    /// `external_attributes` flagged as S_IFLNK (the writer sets this
+    /// itself; `unix_permissions` alone is masked to 0o777).
+    #[cfg(unix)]
+    fn write_symlink_zip(dir: &Path) -> std::path::PathBuf {
+        use std::io::Write;
+        use zip::write::SimpleFileOptions;
+
+        let zip_path = dir.join("evil.zip");
+        let file = std::fs::File::create(&zip_path).unwrap();
+        let mut zw = zip::ZipWriter::new(file);
+
+        let opts = SimpleFileOptions::default();
+        zw.add_symlink("evil", "/tmp/should-not-exist-here", opts)
+            .unwrap();
+
+        zw.start_file("hello.txt", opts).unwrap();
+        zw.write_all(b"hi").unwrap();
+
+        zw.finish().unwrap();
+        zip_path
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn extract_zip_skips_symlink_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let zip_path = write_symlink_zip(dir.path());
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+
+        extract_zip(&zip_path, &out).expect("extraction should not fail");
+
+        // The regular file extracted normally.
+        assert!(out.join("hello.txt").exists());
+        // The symlink entry was refused — `evil` must not exist as a
+        // symlink, regular file, or anything else.
+        let evil = out.join("evil");
+        assert!(
+            std::fs::symlink_metadata(&evil).is_err(),
+            "symlink entry must not have been created"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn has_symlink_ancestor_detects_pre_existing_link() {
+        // A previous corrupt extraction left a symlink in the output dir;
+        // a later well-formed entry that traverses through it must be
+        // refused.
+        let dir = tempfile::tempdir().unwrap();
+        let target = dir.path().join("real");
+        std::fs::create_dir_all(&target).unwrap();
+        let link = dir.path().join("through");
+        std::os::unix::fs::symlink(&target, &link).unwrap();
+
+        let bad = link.join("payload.bin");
+        assert!(
+            has_symlink_ancestor(dir.path(), &bad).unwrap(),
+            "ancestor symlink must be detected"
+        );
+
+        let safe = dir.path().join("real").join("payload.bin");
+        assert!(
+            !has_symlink_ancestor(dir.path(), &safe).unwrap(),
+            "no symlink in this path"
+        );
+    }
 
     #[test]
     fn test_archive_type_detection() {
