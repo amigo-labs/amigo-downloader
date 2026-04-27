@@ -91,19 +91,21 @@ pub fn client_ip(
             return t.to_string();
         }
     }
-    if trust_proxy
-        && let Some(fwd) = headers.get("forwarded").and_then(|v| v.to_str().ok())
-    {
+    if trust_proxy && let Some(fwd) = headers.get("forwarded").and_then(|v| v.to_str().ok()) {
         for part in fwd.split(';').flat_map(|s| s.split(',')) {
             if let Some(v) = part.trim().strip_prefix("for=") {
-                let t = v.trim_matches('"').trim_start_matches('[').trim_end_matches(']');
+                let t = v
+                    .trim_matches('"')
+                    .trim_start_matches('[')
+                    .trim_end_matches(']');
                 if !t.is_empty() {
                     return t.to_string();
                 }
             }
         }
     }
-    peer.map(|s| s.ip().to_string()).unwrap_or_else(|| "unknown".into())
+    peer.map(|s| s.ip().to_string())
+        .unwrap_or_else(|| "unknown".into())
 }
 
 /// Whether the original request came in over HTTPS. When `trust_proxy` is
@@ -171,7 +173,10 @@ fn extract_session_cookie(headers: &HeaderMap) -> Option<&str> {
 #[allow(dead_code)]
 pub enum Principal {
     /// Browser session — carries the username.
-    Session { username: String, session_id: String },
+    Session {
+        username: String,
+        session_id: String,
+    },
     /// API-token holder (CLI / script).
     ApiToken { id: String, name: String },
     /// Legacy pre-shared token.
@@ -179,11 +184,7 @@ pub enum Principal {
 }
 
 /// Try every supported credential type. Returns `None` if nothing validates.
-pub async fn authenticate(
-    auth: &AuthState,
-    headers: &HeaderMap,
-    uri: &Uri,
-) -> Option<Principal> {
+pub async fn authenticate(auth: &AuthState, headers: &HeaderMap, uri: &Uri) -> Option<Principal> {
     let now = chrono::Utc::now().timestamp();
 
     // Session cookie.
@@ -191,12 +192,7 @@ pub async fn authenticate(
         && let Ok(Some(row)) = auth.app.coordinator.storage().get_session(sid).await
         && row.expires_at > now
     {
-        let _ = auth
-            .app
-            .coordinator
-            .storage()
-            .touch_session(sid, now)
-            .await;
+        let _ = auth.app.coordinator.storage().touch_session(sid, now).await;
         return Some(Principal::Session {
             username: row.username,
             session_id: row.id,
@@ -363,7 +359,10 @@ mod tests {
 
         // Legacy RFC 7239 Forwarded header.
         let mut h2 = HeaderMap::new();
-        h2.insert("forwarded", r#"for="198.51.100.7";proto=https"#.parse().unwrap());
+        h2.insert(
+            "forwarded",
+            r#"for="198.51.100.7";proto=https"#.parse().unwrap(),
+        );
         assert_eq!(client_ip(&h2, Some(peer), true), "198.51.100.7");
     }
 

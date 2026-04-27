@@ -40,17 +40,18 @@ async fn serve_static(req: Request) -> Response {
 
     // SPA fallback: serve index.html for all non-file paths
     if (!path.contains('.') || path.is_empty())
-        && let Some(index) = WebUiAssets::get("index.html") {
-            return (
-                StatusCode::OK,
-                [
-                    (header::CONTENT_TYPE, "text/html".to_string()),
-                    (header::CACHE_CONTROL, "no-cache".to_string()),
-                ],
-                index.data.to_vec(),
-            )
-                .into_response();
-        }
+        && let Some(index) = WebUiAssets::get("index.html")
+    {
+        return (
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, "text/html".to_string()),
+                (header::CACHE_CONTROL, "no-cache".to_string()),
+            ],
+            index.data.to_vec(),
+        )
+            .into_response();
+    }
 
     StatusCode::NOT_FOUND.into_response()
 }

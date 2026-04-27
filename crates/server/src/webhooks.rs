@@ -188,7 +188,8 @@ async fn dispatch_with_retry(
         }
 
         if attempt < endpoint.retry_count {
-            let delay = Duration::from_secs(endpoint.retry_delay_secs as u64 * (attempt as u64 + 1));
+            let delay =
+                Duration::from_secs(endpoint.retry_delay_secs as u64 * (attempt as u64 + 1));
             tokio::time::sleep(delay).await;
         }
     }

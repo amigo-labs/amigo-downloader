@@ -350,14 +350,19 @@ async fn reorder_queue(
 async fn delete_history(
     State(state): State<AppState>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    state.coordinator.storage().clear_history().await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse {
-                error: e.to_string(),
-            }),
-        )
-    })?;
+    state
+        .coordinator
+        .storage()
+        .clear_history()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -422,14 +427,14 @@ async fn suggest_plugin(
     if let Ok(index) = index
         && let Some(plugin) =
             amigo_plugin_runtime::registry::suggest_plugin_for_url(&index, &req.url)
-        {
-            return Json(SuggestPluginResponse {
-                found: true,
-                plugin_id: Some(plugin.id.clone()),
-                plugin_name: Some(plugin.name.clone()),
-                install_command: Some(format!("amigo-dl plugins install {}", plugin.id)),
-            });
-        }
+    {
+        return Json(SuggestPluginResponse {
+            found: true,
+            plugin_id: Some(plugin.id.clone()),
+            plugin_name: Some(plugin.name.clone()),
+            install_command: Some(format!("amigo-dl plugins install {}", plugin.id)),
+        });
+    }
 
     Json(SuggestPluginResponse {
         found: false,
@@ -882,9 +887,7 @@ fn apply_secret_passthrough(
     }
 }
 
-async fn get_config(
-    State(state): State<AppState>,
-) -> Json<amigo_core::config::Config> {
+async fn get_config(State(state): State<AppState>) -> Json<amigo_core::config::Config> {
     let config = state.coordinator.config().await;
     Json(redact_config(config))
 }
@@ -902,7 +905,9 @@ async fn put_config(
     new_config.save(&state.config_path).map_err(|e| {
         (
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
         )
     })?;
 
@@ -948,12 +953,19 @@ async fn list_rss_feeds(
         return Ok(Json(Vec::new()));
     }
 
-    let rows = state.coordinator.storage().list_rss_feeds().await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
-        )
-    })?;
+    let rows = state
+        .coordinator
+        .storage()
+        .list_rss_feeds()
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
     Ok(Json(
         rows.into_iter()
@@ -1012,12 +1024,19 @@ async fn add_rss_feed(
         created_at: String::new(),
     };
 
-    state.coordinator.storage().insert_rss_feed(&row).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
-        )
-    })?;
+    state
+        .coordinator
+        .storage()
+        .insert_rss_feed(&row)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
 
     Ok((
         StatusCode::CREATED,
@@ -1038,12 +1057,19 @@ async fn delete_rss_feed(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    state.coordinator.storage().delete_rss_feed(&id).await.map_err(|e| {
-        (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
-        )
-    })?;
+    state
+        .coordinator
+        .storage()
+        .delete_rss_feed(&id)
+        .await
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(ErrorResponse {
+                    error: e.to_string(),
+                }),
+            )
+        })?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -1214,7 +1240,10 @@ mod config_redact_tests {
     #[test]
     fn redact_replaces_every_secret_field() {
         let redacted = redact_config(config_with_secrets());
-        assert_eq!(redacted.server.api_token.as_deref(), Some(REDACTED_SENTINEL));
+        assert_eq!(
+            redacted.server.api_token.as_deref(),
+            Some(REDACTED_SENTINEL)
+        );
         assert_eq!(
             redacted.server.admin_password_hash.as_deref(),
             Some(REDACTED_SENTINEL)

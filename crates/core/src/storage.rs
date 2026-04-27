@@ -418,21 +418,15 @@ impl Storage {
         Ok(())
     }
 
-    pub async fn get_download_metadata(
-        &self,
-        id: &str,
-    ) -> Result<Option<String>, crate::Error> {
+    pub async fn get_download_metadata(&self, id: &str) -> Result<Option<String>, crate::Error> {
         let db = self.db.lock().await;
         let mut stmt = db.prepare("SELECT metadata FROM downloads WHERE id = ?1")?;
-        let mut rows = stmt.query_map(rusqlite::params![id], |row| row.get::<_, Option<String>>(0))?;
+        let mut rows =
+            stmt.query_map(rusqlite::params![id], |row| row.get::<_, Option<String>>(0))?;
         Ok(rows.next().transpose()?.flatten())
     }
 
-    pub async fn set_download_priority(
-        &self,
-        id: &str,
-        priority: i32,
-    ) -> Result<(), crate::Error> {
+    pub async fn set_download_priority(&self, id: &str, priority: i32) -> Result<(), crate::Error> {
         let db = self.db.lock().await;
         db.execute(
             "UPDATE downloads SET priority = ?1 WHERE id = ?2",
@@ -678,8 +672,12 @@ impl Storage {
             "INSERT INTO rss_feeds (id, name, url, category, interval_minutes, enabled)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             rusqlite::params![
-                row.id, row.name, row.url, row.category,
-                row.interval_minutes as i64, row.enabled as i64,
+                row.id,
+                row.name,
+                row.url,
+                row.category,
+                row.interval_minutes as i64,
+                row.enabled as i64,
             ],
         )?;
         Ok(())
@@ -752,9 +750,7 @@ impl Storage {
             "SELECT id, username, created_at, expires_at, last_seen_at \
              FROM sessions WHERE id = ?1",
         )?;
-        let result = stmt
-            .query_row(rusqlite::params![id], row_to_session)
-            .ok();
+        let result = stmt.query_row(rusqlite::params![id], row_to_session).ok();
         Ok(result)
     }
 
@@ -887,9 +883,7 @@ impl Storage {
             "SELECT id, poll_token_hash, device_name, source_ip, user_agent, fingerprint, status, api_token_plain, api_token_id, created_at, expires_at \
              FROM pairing_requests WHERE poll_token_hash = ?1",
         )?;
-        let result = stmt
-            .query_row(rusqlite::params![hash], row_to_pairing)
-            .ok();
+        let result = stmt.query_row(rusqlite::params![hash], row_to_pairing).ok();
         Ok(result)
     }
 
@@ -1195,7 +1189,13 @@ mod tests {
 
         storage.revoke_api_token("tok-1").await.unwrap();
         // Revoked rows are filtered out of the auth-lookup path.
-        assert!(storage.get_api_token_by_hash("hash-aaa").await.unwrap().is_none());
+        assert!(
+            storage
+                .get_api_token_by_hash("hash-aaa")
+                .await
+                .unwrap()
+                .is_none()
+        );
         // …but still show up in the management list.
         assert_eq!(storage.list_api_tokens().await.unwrap().len(), 1);
     }
@@ -1230,10 +1230,7 @@ mod tests {
         assert!(ok);
 
         // Second approve is a no-op because the row is no longer pending.
-        let ok2 = storage
-            .approve_pairing("pair-1", "x", "y")
-            .await
-            .unwrap();
+        let ok2 = storage.approve_pairing("pair-1", "x", "y").await.unwrap();
         assert!(!ok2);
 
         let consumed = storage
@@ -1244,11 +1241,13 @@ mod tests {
         assert_eq!(consumed.api_token_plain.as_deref(), Some("plain-token"));
 
         // Subsequent consume returns nothing — the row was deleted.
-        assert!(storage
-            .consume_pairing_by_poll_hash("poll-hash")
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            storage
+                .consume_pairing_by_poll_hash("poll-hash")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 
     #[tokio::test]
@@ -1272,11 +1271,13 @@ mod tests {
         assert!(storage.deny_pairing("pair-2").await.unwrap());
 
         // Consume returns None because the row is denied, not approved.
-        assert!(storage
-            .consume_pairing_by_poll_hash("deny-hash")
-            .await
-            .unwrap()
-            .is_none());
+        assert!(
+            storage
+                .consume_pairing_by_poll_hash("deny-hash")
+                .await
+                .unwrap()
+                .is_none()
+        );
 
         // Status is visible via the hash-lookup.
         let row = storage

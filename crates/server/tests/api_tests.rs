@@ -671,10 +671,7 @@ async fn test_delete_nonexistent_webhook_returns_404() {
     let client = test_client();
 
     let resp = client
-        .delete(format!(
-            "{}/api/v1/webhooks/nonexistent",
-            base_url(addr)
-        ))
+        .delete(format!("{}/api/v1/webhooks/nonexistent", base_url(addr)))
         .send()
         .await
         .unwrap();

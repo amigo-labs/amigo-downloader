@@ -35,9 +35,10 @@ impl NzbFile {
     pub fn filename(&self) -> String {
         // Try to extract quoted filename
         if let Some(start) = self.subject.find('"')
-            && let Some(end) = self.subject[start + 1..].find('"') {
-                return crate::sanitize_filename(&self.subject[start + 1..start + 1 + end]);
-            }
+            && let Some(end) = self.subject[start + 1..].find('"')
+        {
+            return crate::sanitize_filename(&self.subject[start + 1..start + 1 + end]);
+        }
         // Fallback: use subject as-is, sanitized
         crate::sanitize_filename(&self.subject)
     }

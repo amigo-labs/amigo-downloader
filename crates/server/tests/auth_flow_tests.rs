@@ -66,11 +66,7 @@ fn url(addr: SocketAddr, path: &str) -> String {
 async fn setup_guard_blocks_api_before_wizard() {
     let (addr, _) = spawn(None).await;
     let c = client();
-    let res = c
-        .get(url(addr, "/api/v1/downloads"))
-        .send()
-        .await
-        .unwrap();
+    let res = c.get(url(addr, "/api/v1/downloads")).send().await.unwrap();
     assert_eq!(res.status(), 503);
     let body: serde_json::Value = res.json().await.unwrap();
     assert_eq!(body["error"], "setup_required");

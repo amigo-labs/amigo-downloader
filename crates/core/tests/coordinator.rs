@@ -64,12 +64,7 @@ async fn test_add_download_with_filename() {
 async fn test_add_download_with_priority() {
     let coord = test_coordinator();
     let id = coord
-        .add_download_with_options(
-            "https://example.com/movie.mp4",
-            None,
-            None,
-            5,
-        )
+        .add_download_with_options("https://example.com/movie.mp4", None, None, 5)
         .await
         .unwrap();
 

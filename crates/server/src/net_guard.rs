@@ -172,7 +172,10 @@ mod tests {
             let err = validate_outbound_url(url, false)
                 .await
                 .expect_err("non-public v6 must be blocked");
-            assert!(matches!(err, GuardError::BlockedAddress { .. }), "{url} → {err}");
+            assert!(
+                matches!(err, GuardError::BlockedAddress { .. }),
+                "{url} → {err}"
+            );
         }
     }
 

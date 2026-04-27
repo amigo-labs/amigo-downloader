@@ -130,10 +130,11 @@ pub async fn load_index(
 ) -> Result<RegistryIndex, crate::Error> {
     // Try local cache first
     if let Some(cache_path) = &config.cache_path
-        && let Some(index) = load_cached_index(cache_path, config.cache_max_age_secs) {
-            debug!("Using cached registry index from {:?}", cache_path);
-            return Ok(index);
-        }
+        && let Some(index) = load_cached_index(cache_path, config.cache_max_age_secs)
+    {
+        debug!("Using cached registry index from {:?}", cache_path);
+        return Ok(index);
+    }
 
     // Fetch from remote
     let index = fetch_index_remote(client, config).await?;
@@ -227,9 +228,7 @@ async fn fetch_index_remote(
             verify_ed25519(&raw, &sig_hex, pubkey)?;
             debug!("Registry index signature verified");
         }
-        None => warn!(
-            "Registry signature verification DISABLED — only safe for local development"
-        ),
+        None => warn!("Registry signature verification DISABLED — only safe for local development"),
     }
 
     let index: RegistryIndex = serde_json::from_slice(&raw)
@@ -242,10 +241,7 @@ async fn fetch_index_remote(
 /// Fetch the detached signature file alongside `index.json` (same URL with
 /// a `.sig` suffix). The body is expected to be a hex-encoded Ed25519
 /// signature — 64 bytes / 128 hex chars, optionally trailing whitespace.
-async fn fetch_signature(
-    client: &reqwest::Client,
-    sig_url: &str,
-) -> Result<String, crate::Error> {
+async fn fetch_signature(client: &reqwest::Client, sig_url: &str) -> Result<String, crate::Error> {
     let resp = client
         .get(sig_url)
         .header("User-Agent", "amigo-downloader")
@@ -262,9 +258,9 @@ async fn fetch_signature(
             resp.status()
         )));
     }
-    resp.text().await.map_err(|e| {
-        crate::Error::RegistryUnavailable(format!("signature body unreadable: {e}"))
-    })
+    resp.text()
+        .await
+        .map_err(|e| crate::Error::RegistryUnavailable(format!("signature body unreadable: {e}")))
 }
 
 /// Verify that `payload` carries the Ed25519 signature `sig_hex` produced
@@ -274,9 +270,8 @@ pub fn verify_ed25519(
     sig_hex: &str,
     pubkey: &[u8; 32],
 ) -> Result<(), crate::Error> {
-    let sig_bytes = hex::decode(sig_hex.trim()).map_err(|e| {
-        crate::Error::RegistryUnavailable(format!("signature is not hex: {e}"))
-    })?;
+    let sig_bytes = hex::decode(sig_hex.trim())
+        .map_err(|e| crate::Error::RegistryUnavailable(format!("signature is not hex: {e}")))?;
     if sig_bytes.len() != 64 {
         return Err(crate::Error::RegistryUnavailable(format!(
             "signature has wrong length {} (want 64)",
@@ -286,9 +281,8 @@ pub fn verify_ed25519(
     let mut sig_arr = [0u8; 64];
     sig_arr.copy_from_slice(&sig_bytes);
     let sig = Signature::from_bytes(&sig_arr);
-    let vk = VerifyingKey::from_bytes(pubkey).map_err(|e| {
-        crate::Error::RegistryUnavailable(format!("bad registry pubkey: {e}"))
-    })?;
+    let vk = VerifyingKey::from_bytes(pubkey)
+        .map_err(|e| crate::Error::RegistryUnavailable(format!("bad registry pubkey: {e}")))?;
     vk.verify(payload, &sig).map_err(|_| {
         crate::Error::RegistryUnavailable(
             "registry signature did not verify against the trusted key".into(),
@@ -353,9 +347,10 @@ pub fn suggest_plugin_for_url<'a>(
 ) -> Option<&'a RegistryPlugin> {
     for plugin in &index.plugins {
         if let Ok(re) = regex::Regex::new(&plugin.url_pattern)
-            && re.is_match(url) {
-                return Some(plugin);
-            }
+            && re.is_match(url)
+        {
+            return Some(plugin);
+        }
     }
     None
 }
@@ -571,8 +566,7 @@ mod tests {
     #[test]
     fn verify_ed25519_rejects_short_signature() {
         let pk = [0u8; 32];
-        let err =
-            verify_ed25519(b"x", "aa", &pk).expect_err("short signature must error");
+        let err = verify_ed25519(b"x", "aa", &pk).expect_err("short signature must error");
         assert!(format!("{err}").contains("wrong length"));
     }
 

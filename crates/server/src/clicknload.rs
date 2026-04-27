@@ -40,8 +40,7 @@ pub async fn start_clicknload(coordinator: Arc<Coordinator>) -> anyhow::Result<(
         )
         .route(
             "/flash/addcrypted2",
-            post(flash_addcrypted2)
-                .layer(DefaultBodyLimit::max(MAX_FLASH_ADDCRYPTED_BYTES)),
+            post(flash_addcrypted2).layer(DefaultBodyLimit::max(MAX_FLASH_ADDCRYPTED_BYTES)),
         )
         .with_state(coordinator);
 

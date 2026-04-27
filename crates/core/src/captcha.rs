@@ -137,9 +137,9 @@ impl CaptchaManager {
         match result {
             Ok(Ok(CaptchaAnswer::Solved(answer))) => {
                 debug!("Captcha solved: {captcha_id}");
-                let _ = self.event_tx.send(DownloadEvent::CaptchaSolved {
-                    id: captcha_id,
-                });
+                let _ = self
+                    .event_tx
+                    .send(DownloadEvent::CaptchaSolved { id: captcha_id });
                 Ok(answer)
             }
             Ok(Ok(CaptchaAnswer::Cancelled)) => {
@@ -153,9 +153,9 @@ impl CaptchaManager {
             }
             Err(_) => {
                 warn!("Captcha timed out: {captcha_id}");
-                let _ = self.event_tx.send(DownloadEvent::CaptchaTimeout {
-                    id: captcha_id,
-                });
+                let _ = self
+                    .event_tx
+                    .send(DownloadEvent::CaptchaTimeout { id: captcha_id });
                 Err(CaptchaError::Timeout(self.timeout.as_secs()))
             }
         }

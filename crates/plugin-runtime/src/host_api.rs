@@ -406,7 +406,12 @@ impl HostApi {
         Ok(hex::encode(mac.finalize().into_bytes()))
     }
 
-    pub fn aes_decrypt_cbc(&self, data_b64: &str, key_hex: &str, iv_hex: &str) -> Result<String, String> {
+    pub fn aes_decrypt_cbc(
+        &self,
+        data_b64: &str,
+        key_hex: &str,
+        iv_hex: &str,
+    ) -> Result<String, String> {
         use aes::cipher::{BlockDecryptMut, KeyIvInit};
         type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
 
@@ -422,8 +427,8 @@ impl HostApi {
         }
 
         let mut buf = data.clone();
-        let decryptor = Aes128CbcDec::new_from_slices(&key, &iv)
-            .map_err(|e| format!("AES init error: {e}"))?;
+        let decryptor =
+            Aes128CbcDec::new_from_slices(&key, &iv).map_err(|e| format!("AES init error: {e}"))?;
         let decrypted = decryptor
             .decrypt_padded_mut::<aes::cipher::block_padding::Pkcs7>(&mut buf)
             .map_err(|e| format!("AES decrypt error: {e}"))?;
@@ -431,7 +436,12 @@ impl HostApi {
         Ok(base64_encode_bytes(decrypted))
     }
 
-    pub fn aes_encrypt_cbc(&self, data_b64: &str, key_hex: &str, iv_hex: &str) -> Result<String, String> {
+    pub fn aes_encrypt_cbc(
+        &self,
+        data_b64: &str,
+        key_hex: &str,
+        iv_hex: &str,
+    ) -> Result<String, String> {
         use aes::cipher::{BlockEncryptMut, KeyIvInit};
         type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
 
@@ -452,8 +462,8 @@ impl HostApi {
         let mut buf = vec![0u8; padded_len];
         buf[..data.len()].copy_from_slice(&data);
 
-        let encryptor = Aes128CbcEnc::new_from_slices(&key, &iv)
-            .map_err(|e| format!("AES init error: {e}"))?;
+        let encryptor =
+            Aes128CbcEnc::new_from_slices(&key, &iv).map_err(|e| format!("AES init error: {e}"))?;
         let encrypted = encryptor
             .encrypt_padded_mut::<aes::cipher::block_padding::Pkcs7>(&mut buf, data.len())
             .map_err(|e| format!("AES encrypt error: {e}"))?;
@@ -474,12 +484,7 @@ impl HostApi {
     /// map after the proposed write; an oversize write is rejected without
     /// mutating state. Returns `Err` with a human-readable message on quota
     /// breach so the JS binding can surface it as a thrown exception.
-    pub async fn storage_set(
-        &self,
-        plugin_id: &str,
-        key: &str,
-        value: &str,
-    ) -> Result<(), String> {
+    pub async fn storage_set(&self, plugin_id: &str, key: &str, value: &str) -> Result<(), String> {
         let mut storage = self.storage.lock().await;
         let map = storage.entry(plugin_id.to_string()).or_default();
 
@@ -604,8 +609,7 @@ impl HostApi {
         use scraper::{Html, Selector};
         enforce_input_limit("html", html.len(), MAX_HTML_BYTES)?;
         let doc = Html::parse_document(html);
-        let sel =
-            Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
+        let sel = Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
         Ok(doc.select(&sel).map(|el| el.html()).collect())
     }
 
@@ -613,8 +617,7 @@ impl HostApi {
         use scraper::{Html, Selector};
         enforce_input_limit("html", html.len(), MAX_HTML_BYTES)?;
         let doc = Html::parse_document(html);
-        let sel =
-            Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
+        let sel = Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
         Ok(doc
             .select(&sel)
             .next()
@@ -630,8 +633,7 @@ impl HostApi {
         use scraper::{Html, Selector};
         enforce_input_limit("html", html.len(), MAX_HTML_BYTES)?;
         let doc = Html::parse_document(html);
-        let sel =
-            Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
+        let sel = Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
         Ok(doc
             .select(&sel)
             .next()
@@ -653,9 +655,9 @@ impl HostApi {
                         .select(&sel)
                         .next()
                         .and_then(|el| el.value().attr("content"))
-                    {
-                        return Some(content.to_string());
-                    }
+                {
+                    return Some(content.to_string());
+                }
             }
         }
         None
@@ -906,8 +908,7 @@ impl HostApi {
         use scraper::{Html, Selector};
         enforce_input_limit("html", html.len(), MAX_HTML_BYTES)?;
         let doc = Html::parse_document(html);
-        let sel =
-            Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
+        let sel = Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
         Ok(doc
             .select(&sel)
             .filter_map(|el| el.value().attr(attr).map(|s| s.to_string()))
@@ -1269,7 +1270,9 @@ pub fn register_host_api(
     amigo
         .set(
             "md5",
-            Function::new(ctx.clone(), move |input: String| -> String { h.md5(&input) }),
+            Function::new(ctx.clone(), move |input: String| -> String {
+                h.md5(&input)
+            }),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
@@ -1277,7 +1280,9 @@ pub fn register_host_api(
     amigo
         .set(
             "sha1",
-            Function::new(ctx.clone(), move |input: String| -> String { h.sha1(&input) }),
+            Function::new(ctx.clone(), move |input: String| -> String {
+                h.sha1(&input)
+            }),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
@@ -1468,10 +1473,9 @@ pub fn register_host_api(
     amigo
         .set(
             "urlFilename",
-            Function::new(
-                ctx.clone(),
-                move |url: String| -> Option<String> { h.url_filename(&url) },
-            ),
+            Function::new(ctx.clone(), move |url: String| -> Option<String> {
+                h.url_filename(&url)
+            }),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
@@ -1591,10 +1595,9 @@ pub fn register_host_api(
     amigo
         .set(
             "regexTest",
-            Function::new(
-                ctx.clone(),
-                move |pattern: String, text: String| -> bool { h.regex_test(&pattern, &text) },
-            ),
+            Function::new(ctx.clone(), move |pattern: String, text: String| -> bool {
+                h.regex_test(&pattern, &text)
+            }),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
@@ -1617,10 +1620,9 @@ pub fn register_host_api(
     amigo
         .set(
             "parseDuration",
-            Function::new(
-                ctx.clone(),
-                move |input: String| -> Option<f64> { h.parse_duration(&input) },
-            ),
+            Function::new(ctx.clone(), move |input: String| -> Option<f64> {
+                h.parse_duration(&input)
+            }),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
@@ -1704,8 +1706,7 @@ pub fn register_host_api(
                     let result = tokio::task::block_in_place(|| {
                         rt.block_on(async { h.http_get_binary(&url, headers).await })
                     });
-                    result
-                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
+                    result.map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
                 },
             ),
         )
@@ -1726,8 +1727,7 @@ pub fn register_host_api(
                     let result = tokio::task::block_in_place(|| {
                         rt.block_on(async { h.http_follow_redirects(&url, headers).await })
                     });
-                    result
-                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
+                    result.map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
                 },
             ),
         )
@@ -1739,10 +1739,7 @@ pub fn register_host_api(
             "__rawHtmlQueryAllAttrs",
             Function::new(
                 ctx.clone(),
-                move |html: String,
-                      selector: String,
-                      attr: String|
-                      -> rquickjs::Result<String> {
+                move |html: String, selector: String, attr: String| -> rquickjs::Result<String> {
                     h.html_query_all_attrs(&html, &selector, &attr)
                         .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()))
                         .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
@@ -1767,9 +1764,7 @@ pub fn register_host_api(
                     let ct = captcha_type.unwrap_or_else(|| "image".to_string());
                     let rt = tokio::runtime::Handle::current();
                     let result = tokio::task::block_in_place(|| {
-                        rt.block_on(async {
-                            h.solve_captcha(&pid, "", &image_url, &ct).await
-                        })
+                        rt.block_on(async { h.solve_captcha(&pid, "", &image_url, &ct).await })
                     });
                     result.map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
                 },
@@ -1820,9 +1815,8 @@ pub fn register_host_api(
 
     // Inject JS shim layer: wraps __raw* functions to return objects instead of JSON strings.
     // This keeps the Rust→JS boundary simple (string returns) while giving plugins a clean API.
-    ctx.eval::<JsValue<'_>, _>(JS_SHIM).map_err(|e| {
-        crate::Error::Execution(format!("Failed to inject JS shim: {e}"))
-    })?;
+    ctx.eval::<JsValue<'_>, _>(JS_SHIM)
+        .map_err(|e| crate::Error::Execution(format!("Failed to inject JS shim: {e}")))?;
 
     Ok(())
 }
@@ -1961,7 +1955,9 @@ mod tests {
         // IPv4-mapped loopback
         assert!(is_blocked_ip("::ffff:127.0.0.1".parse::<IpAddr>().unwrap()));
         // Public v6 is allowed.
-        assert!(!is_blocked_ip("2606:4700:4700::1111".parse::<IpAddr>().unwrap()));
+        assert!(!is_blocked_ip(
+            "2606:4700:4700::1111".parse::<IpAddr>().unwrap()
+        ));
     }
 
     #[tokio::test]
@@ -1987,7 +1983,10 @@ mod tests {
     #[tokio::test]
     async fn ssrf_rejects_non_http_scheme() {
         let api = HostApi::new(20);
-        let err = api.check_url_allowed("file:///etc/passwd").await.unwrap_err();
+        let err = api
+            .check_url_allowed("file:///etc/passwd")
+            .await
+            .unwrap_err();
         assert!(err.contains("scheme not allowed"), "{err}");
     }
 
@@ -2047,7 +2046,8 @@ mod tests {
         api.set_cookie("attacker", "real-debrid.com", "auth", "secret-B")
             .await;
         assert_eq!(
-            api.get_cookie("real-debrid", "real-debrid.com", "auth").await,
+            api.get_cookie("real-debrid", "real-debrid.com", "auth")
+                .await,
             Some("secret-A".to_string())
         );
         assert_eq!(
@@ -2061,7 +2061,8 @@ mod tests {
             None
         );
         assert_eq!(
-            api.get_cookie("real-debrid", "real-debrid.com", "auth").await,
+            api.get_cookie("real-debrid", "real-debrid.com", "auth")
+                .await,
             Some("secret-A".to_string())
         );
     }
@@ -2157,7 +2158,10 @@ mod tests {
     #[test]
     fn test_sha1() {
         let api = HostApi::new(20);
-        assert_eq!(api.sha1("hello"), "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d");
+        assert_eq!(
+            api.sha1("hello"),
+            "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d"
+        );
     }
 
     #[test]
@@ -2217,7 +2221,8 @@ mod tests {
     fn test_url_helpers() {
         let api = HostApi::new(20);
         assert_eq!(
-            api.url_resolve("https://example.com/page/", "../file.zip").unwrap(),
+            api.url_resolve("https://example.com/page/", "../file.zip")
+                .unwrap(),
             "https://example.com/file.zip"
         );
         assert_eq!(
@@ -2286,9 +2291,7 @@ mod tests {
         let huge = "<p>".repeat(MAX_HTML_BYTES); // > 8 MiB
         assert!(api.html_query_all(&huge, "p").is_err());
         assert!(api.html_query_text(&huge, "p").is_err());
-        assert!(
-            api.html_query_attr(&huge, "p", "x").is_err()
-        );
+        assert!(api.html_query_attr(&huge, "p", "x").is_err());
         assert_eq!(api.html_extract_title(&huge), None);
         assert!(api.html_hidden_inputs(&huge).is_empty());
     }

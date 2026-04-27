@@ -27,10 +27,7 @@ impl UrlResolver for PluginUrlResolver {
         let package = match self.loader.resolve(&plugin_meta.id, url).await {
             Ok(pkg) => pkg,
             Err(e) => {
-                tracing::warn!(
-                    "Plugin '{}' failed to resolve {url}: {e}",
-                    plugin_meta.name
-                );
+                tracing::warn!("Plugin '{}' failed to resolve {url}: {e}", plugin_meta.name);
                 return None;
             }
         };

@@ -137,8 +137,8 @@ fn extract_rar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
 
 fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
     let file = std::fs::File::open(archive)?;
-    let mut zip = zip::ZipArchive::new(file)
-        .map_err(|e| crate::Error::Other(format!("Invalid ZIP: {e}")))?;
+    let mut zip =
+        zip::ZipArchive::new(file).map_err(|e| crate::Error::Other(format!("Invalid ZIP: {e}")))?;
 
     for i in 0..zip.len() {
         let mut entry = zip
@@ -322,7 +322,10 @@ fn run_par2_phase(download_dir: &Path, config: &PostProcessConfig) -> Result<(),
         }
     } else {
         // Full mode: use all PAR2 files from the start (assumes all pre-downloaded)
-        info!("PAR2 verify+repair (full — all volumes loaded): {:?}", par2_file);
+        info!(
+            "PAR2 verify+repair (full — all volumes loaded): {:?}",
+            par2_file
+        );
 
         match run_external("par2", &["r", &par2_file.to_string_lossy()]) {
             Ok(()) => info!("PAR2 verify+repair complete"),
@@ -455,7 +458,9 @@ fn delete_rar_volumes(dir: &Path) {
                 .unwrap_or("")
                 .to_lowercase();
             // Delete .r00, .r01, .r02, ... (multipart rar volumes)
-            if ext.starts_with('r') && ext.len() >= 2 && ext[1..].chars().all(|c| c.is_ascii_digit())
+            if ext.starts_with('r')
+                && ext.len() >= 2
+                && ext[1..].chars().all(|c| c.is_ascii_digit())
             {
                 debug!("Deleting RAR volume: {:?}", entry.path());
                 let _ = std::fs::remove_file(entry.path());

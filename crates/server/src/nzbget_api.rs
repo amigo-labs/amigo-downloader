@@ -33,7 +33,10 @@ static SERVER_START: std::sync::LazyLock<Instant> = std::sync::LazyLock::new(Ins
 /// caller (main.rs) refuses to start in the latter case via
 /// [`validate_nzbget_config`], so a `None` here always means "intentionally
 /// off".
-pub fn nzbget_router(state: AppState, config: &amigo_core::config::NzbGetApiConfig) -> Option<Router> {
+pub fn nzbget_router(
+    state: AppState,
+    config: &amigo_core::config::NzbGetApiConfig,
+) -> Option<Router> {
     if !config.enabled {
         debug!("NZBGet JSON-RPC API disabled");
         return None;
@@ -153,7 +156,11 @@ async fn jsonrpc_handler(
     Json(req): Json<JsonRpcRequest>,
 ) -> impl IntoResponse {
     let config = state.coordinator.config().await;
-    if !check_basic_auth(&headers, &config.nzbget_api.username, &config.nzbget_api.password) {
+    if !check_basic_auth(
+        &headers,
+        &config.nzbget_api.username,
+        &config.nzbget_api.password,
+    ) {
         return (
             StatusCode::UNAUTHORIZED,
             Json(json!({"id": null, "error": {"code": -32000, "message": "Unauthorized"}})),
@@ -198,10 +205,7 @@ async fn jsonrpc_handler(
     };
 
     match result {
-        Ok(value) => (
-            StatusCode::OK,
-            Json(json!({"id": id, "result": value})),
-        ),
+        Ok(value) => (StatusCode::OK, Json(json!({"id": id, "result": value}))),
         Err((code, msg)) => (
             StatusCode::OK, // JSON-RPC errors still return 200
             Json(json!({"id": id, "error": {"code": code, "message": msg}})),
@@ -270,7 +274,10 @@ async fn handle_status(coordinator: &Arc<Coordinator>) -> RpcResult {
 
 async fn handle_append(coordinator: &Arc<Coordinator>, params: &[Value]) -> RpcResult {
     // append(NZBFilename, NZBContent, Category, Priority, AddToTop, AddPaused, DupeKey, DupeScore, DupeMode, PPParameters)
-    let nzb_filename = params.first().and_then(|v| v.as_str()).unwrap_or("upload.nzb");
+    let nzb_filename = params
+        .first()
+        .and_then(|v| v.as_str())
+        .unwrap_or("upload.nzb");
     let nzb_content = params.get(1).and_then(|v| v.as_str()).unwrap_or("");
     let _category = params.get(2).and_then(|v| v.as_str()).unwrap_or("");
     let _priority = params.get(3).and_then(|v| v.as_i64()).unwrap_or(0);
@@ -302,8 +309,8 @@ async fn handle_append(coordinator: &Arc<Coordinator>, params: &[Value]) -> RpcR
             .map_err(|e| (-32602, format!("Invalid base64 NZB content: {e}")))?
     };
 
-    let nzb_str = String::from_utf8(nzb_data)
-        .map_err(|e| (-32602, format!("Invalid UTF-8 in NZB: {e}")))?;
+    let nzb_str =
+        String::from_utf8(nzb_data).map_err(|e| (-32602, format!("Invalid UTF-8 in NZB: {e}")))?;
 
     // Validate NZB
     amigo_core::protocol::usenet::nzb::parse_nzb(&nzb_str)
@@ -485,7 +492,11 @@ async fn handle_editqueue(coordinator: &Arc<Coordinator>, params: &[Value]) -> R
         }
 
         // Find download by nzbid
-        let all = coordinator.storage().list_downloads().await.unwrap_or_default();
+        let all = coordinator
+            .storage()
+            .list_downloads()
+            .await
+            .unwrap_or_default();
         let download = all.iter().find(|d| id_to_nzbid(&d.id) == nzbid as i32);
 
         if let Some(dl) = download {
@@ -578,10 +589,7 @@ mod tests {
         let mut h = HeaderMap::new();
         let creds = format!("{user}:{pass}");
         let encoded = base64::engine::general_purpose::STANDARD.encode(creds);
-        h.insert(
-            "authorization",
-            format!("Basic {encoded}").parse().unwrap(),
-        );
+        h.insert("authorization", format!("Basic {encoded}").parse().unwrap());
         h
     }
 
@@ -660,10 +668,7 @@ mod tests {
         // Header is valid base64 but does not contain a colon.
         let mut no_colon = HeaderMap::new();
         let encoded = base64::engine::general_purpose::STANDARD.encode("nocolonhere");
-        no_colon.insert(
-            "authorization",
-            format!("Basic {encoded}").parse().unwrap(),
-        );
+        no_colon.insert("authorization", format!("Basic {encoded}").parse().unwrap());
         assert!(!check_basic_auth(&no_colon, "alice", "secret"));
     }
 

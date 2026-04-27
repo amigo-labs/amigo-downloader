@@ -174,18 +174,19 @@ fn parse_dlc_xml(xml: &str) -> Result<Vec<ContainerPackage>, crate::Error> {
 
             if let Some(url_b64) = extract_tag(file_content, "url")
                 && let Ok(url_bytes) = b64_decode(&url_b64)
-                    && let Ok(url) = String::from_utf8(url_bytes) {
-                        let filename = extract_tag(file_content, "filename")
-                            .and_then(|f| String::from_utf8(b64_decode(&f).ok()?).ok())
-                            .map(|f| crate::sanitize_filename(&f));
-                        let filesize =
-                            extract_tag(file_content, "size").and_then(|s| s.parse::<u64>().ok());
-                        links.push(ContainerLink {
-                            url,
-                            filename,
-                            filesize,
-                        });
-                    }
+                && let Ok(url) = String::from_utf8(url_bytes)
+            {
+                let filename = extract_tag(file_content, "filename")
+                    .and_then(|f| String::from_utf8(b64_decode(&f).ok()?).ok())
+                    .map(|f| crate::sanitize_filename(&f));
+                let filesize =
+                    extract_tag(file_content, "size").and_then(|s| s.parse::<u64>().ok());
+                links.push(ContainerLink {
+                    url,
+                    filename,
+                    filesize,
+                });
+            }
 
             fpos = file_end + 7;
         }

@@ -41,14 +41,15 @@ pub fn setup_router(state: AppState, auth: AuthState) -> Router {
         axum::middleware::from_fn_with_state(auth.clone(), crate::auth::require_setup_pin);
 
     Router::new()
-        .route("/api/v1/setup/complete", post(complete).route_layer(pin_layer))
+        .route(
+            "/api/v1/setup/complete",
+            post(complete).route_layer(pin_layer),
+        )
         .route("/api/v1/setup/status", get(status))
         .with_state((state, auth))
 }
 
-async fn status(
-    State((_app, auth)): State<(AppState, AuthState)>,
-) -> Json<SetupStatus> {
+async fn status(State((_app, auth)): State<(AppState, AuthState)>) -> Json<SetupStatus> {
     Json(SetupStatus {
         needs_setup: !auth.setup_complete().await,
         needs_pin: auth.setup_pin.is_some(),
@@ -90,7 +91,13 @@ async fn complete(
 
     // Issue a session cookie so the wizard can drop the user straight into
     // the app without a separate login round-trip.
-    let session_id = match login::create_session(&app, cfg.server.admin_username.as_deref().unwrap_or(""), cfg.server.session_ttl_secs).await {
+    let session_id = match login::create_session(
+        &app,
+        cfg.server.admin_username.as_deref().unwrap_or(""),
+        cfg.server.session_ttl_secs,
+    )
+    .await
+    {
         Ok(id) => id,
         Err(e) => {
             tracing::error!("setup: session create failed: {e}");

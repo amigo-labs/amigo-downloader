@@ -11,13 +11,13 @@ use uuid::Uuid;
 use crate::bandwidth::BandwidthLimiter;
 use crate::config::Config;
 use crate::postprocess;
-use crate::protocol::{Protocol, ResolvedDownload, UrlResolver};
-use crate::protocol::http::{DownloadProgress, HttpDownloader};
-use crate::protocol::hls::HlsDownloader;
 use crate::protocol::dash::DashDownloader;
-use crate::protocol::usenet::nntp::NntpServerConfig;
+use crate::protocol::hls::HlsDownloader;
+use crate::protocol::http::{DownloadProgress, HttpDownloader};
 use crate::protocol::usenet::UsenetConfig;
 use crate::protocol::usenet::UsenetDownloader;
+use crate::protocol::usenet::nntp::NntpServerConfig;
+use crate::protocol::{Protocol, ResolvedDownload, UrlResolver};
 use crate::queue::QueueStatus;
 use crate::retry::{RetryOutcome, RetryPolicy, retry_with_policy};
 use crate::storage::{DownloadRow, Storage};
@@ -171,7 +171,9 @@ impl Coordinator {
 
     /// Update the config at runtime and propagate to subsystems.
     pub async fn update_config(&self, new_config: Config) {
-        self.bandwidth.update_config(new_config.bandwidth.clone()).await;
+        self.bandwidth
+            .update_config(new_config.bandwidth.clone())
+            .await;
         *self.retry_policy.lock().await = RetryPolicy::from(new_config.retry.clone());
         *self.config.lock().await = new_config;
     }
@@ -409,11 +411,12 @@ impl Coordinator {
                         .await
                     } else {
                         // HTTP, HLS, DASH — use ProtocolBackend trait dispatch
-                        let backend: Box<dyn crate::protocol::ProtocolBackend> = match protocol.as_str() {
-                            "hls" => Box::new(HlsDownloader::new(user_agent, 8)),
-                            "dash" => Box::new(DashDownloader::new(user_agent, 8)),
-                            _ => Box::new(HttpDownloader::new(user_agent, bandwidth.clone())),
-                        };
+                        let backend: Box<dyn crate::protocol::ProtocolBackend> =
+                            match protocol.as_str() {
+                                "hls" => Box::new(HlsDownloader::new(user_agent, 8)),
+                                "dash" => Box::new(DashDownloader::new(user_agent, 8)),
+                                _ => Box::new(HttpDownloader::new(user_agent, bandwidth.clone())),
+                            };
                         backend.download(&job, ptx, crx).await
                     };
 
@@ -441,8 +444,7 @@ impl Coordinator {
                         if let Err(e) = postprocess::run_usenet_pipeline(dir, &pp_config).await {
                             warn!("Usenet post-processing failed for {download_id}: {e}");
                         }
-                    } else if let Err(e) =
-                        postprocess::run_pipeline(&actual_path, &pp_config).await
+                    } else if let Err(e) = postprocess::run_pipeline(&actual_path, &pp_config).await
                     {
                         warn!("Post-processing failed for {download_id}: {e}");
                     }
