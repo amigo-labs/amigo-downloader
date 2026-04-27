@@ -238,7 +238,8 @@ function pageFromHash(): Page {
 export const currentPage = writable<Page>(pageFromHash());
 export const protocolFilter = writable<ProtocolFilter>("all");
 
-// Sync URL hash
+// Sync URL hash on every page change (subscriptions have no teardown
+// concern — Svelte stores keep the subscription as long as the store lives).
 if (typeof window !== "undefined") {
   currentPage.subscribe((page) => {
     if (location.hash !== `#${page}`) {
@@ -246,9 +247,30 @@ if (typeof window !== "undefined") {
     }
     document.title = `${page.charAt(0).toUpperCase() + page.slice(1)} — amigo-downloader`;
   });
-  window.addEventListener("popstate", () => {
+}
+
+/**
+ * Wire the browser's `popstate` event to the {@link currentPage} store.
+ *
+ * Returns an unsubscriber that removes the listener. Call from a Svelte
+ * component's `onMount` and surface the returned function as the cleanup,
+ * so HMR / component teardown / tests don't leak listeners on `window`.
+ *
+ * Previous code attached the listener at module-init time with no removal
+ * path. In production that's a singleton (one tab, one window), but during
+ * HMR each module reload would stack another listener on `window`.
+ */
+export function attachRouterPopstateListener(): () => void {
+  if (typeof window === "undefined") {
+    return () => {};
+  }
+  const handler = () => {
     currentPage.set(pageFromHash());
-  });
+  };
+  window.addEventListener("popstate", handler);
+  return () => {
+    window.removeEventListener("popstate", handler);
+  };
 }
 
 // ========================================

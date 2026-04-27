@@ -43,6 +43,7 @@
     updateDownloadProgress,
     updateDownloadStatus,
     wsConnected,
+    attachRouterPopstateListener,
     type CaptchaChallenge,
     type ColorPalette,
     type Page,
@@ -205,9 +206,15 @@
       loadData();
     });
 
+    // Hash-based router: attached here so HMR / component teardown doesn't
+    // leak `popstate` listeners on `window`. Previously the listener was
+    // registered once at module-init time with no removal path.
+    const detachPopstate = attachRouterPopstateListener();
+
     return () => {
       clearInterval(interval);
       ws.close();
+      detachPopstate();
     };
   });
 
