@@ -23,11 +23,19 @@ pub type CaptchaSolveCallback =
 pub type CaptchaFuture =
     std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>>;
 
+/// Per-plugin cookie jars: `plugin_id → domain → name → value`.
+type CookieJars = HashMap<String, HashMap<String, HashMap<String, String>>>;
+
 /// Shared state for the Host API, passed into every plugin call.
 #[derive(Clone)]
 pub struct HostApi {
     http_client: reqwest::Client,
-    cookies: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
+    /// Per-plugin cookie jars (`plugin_id → domain → name → value`). The
+    /// outer key is the calling plugin's id, set at register-time via
+    /// `register_host_api` and not under JS control, so
+    /// `getCookie("real-debrid.com", "auth")` from plugin A cannot read a
+    /// cookie that plugin B stashed under the same domain.
+    cookies: Arc<Mutex<CookieJars>>,
     storage: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
     request_count: Arc<Mutex<u32>>,
     max_requests: u32,
@@ -241,23 +249,32 @@ impl HostApi {
     }
 
     // --- Cookie management ---
+    //
+    // Each plugin sees its own private cookie jar. The plugin_id argument is
+    // captured at register-time by the JS bindings (see register_host_api)
+    // so a malicious plugin cannot pass a different plugin_id from JS to
+    // read another plugin's cookies.
 
-    pub async fn set_cookie(&self, domain: &str, name: &str, value: &str) {
+    pub async fn set_cookie(&self, plugin_id: &str, domain: &str, name: &str, value: &str) {
         let mut cookies = self.cookies.lock().await;
         cookies
+            .entry(plugin_id.to_string())
+            .or_default()
             .entry(domain.to_string())
             .or_default()
             .insert(name.to_string(), value.to_string());
     }
 
-    pub async fn get_cookie(&self, domain: &str, name: &str) -> Option<String> {
+    pub async fn get_cookie(&self, plugin_id: &str, domain: &str, name: &str) -> Option<String> {
         let cookies = self.cookies.lock().await;
-        cookies.get(domain)?.get(name).cloned()
+        cookies.get(plugin_id)?.get(domain)?.get(name).cloned()
     }
 
-    pub async fn clear_cookies(&self, domain: &str) {
+    pub async fn clear_cookies(&self, plugin_id: &str, domain: &str) {
         let mut cookies = self.cookies.lock().await;
-        cookies.remove(domain);
+        if let Some(jar) = cookies.get_mut(plugin_id) {
+            jar.remove(domain);
+        }
     }
 
     // --- Parsing helpers ---
@@ -1054,6 +1071,10 @@ pub fn register_host_api(
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
     // --- Cookies ---
+    // plugin_id is captured at register-time and is NOT exposed to JS, so a
+    // plugin's setCookie / getCookie / clearCookies always operate on its
+    // own private cookie jar.
+    let pid = plugin_id.to_string();
     let h = host.clone();
     amigo
         .set(
@@ -1062,15 +1083,17 @@ pub fn register_host_api(
                 ctx.clone(),
                 move |domain: String, name: String, value: String| {
                     let h = h.clone();
+                    let pid = pid.clone();
                     let rt = tokio::runtime::Handle::current();
                     tokio::task::block_in_place(|| {
-                        rt.block_on(async { h.set_cookie(&domain, &name, &value).await })
+                        rt.block_on(async { h.set_cookie(&pid, &domain, &name, &value).await })
                     });
                 },
             ),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
+    let pid = plugin_id.to_string();
     let h = host.clone();
     amigo
         .set(
@@ -1079,24 +1102,27 @@ pub fn register_host_api(
                 ctx.clone(),
                 move |domain: String, name: String| -> rquickjs::Result<Option<String>> {
                     let h = h.clone();
+                    let pid = pid.clone();
                     let rt = tokio::runtime::Handle::current();
                     Ok(tokio::task::block_in_place(|| {
-                        rt.block_on(async { h.get_cookie(&domain, &name).await })
+                        rt.block_on(async { h.get_cookie(&pid, &domain, &name).await })
                     }))
                 },
             ),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
+    let pid = plugin_id.to_string();
     let h = host.clone();
     amigo
         .set(
             "clearCookies",
             Function::new(ctx.clone(), move |domain: String| {
                 let h = h.clone();
+                let pid = pid.clone();
                 let rt = tokio::runtime::Handle::current();
                 tokio::task::block_in_place(|| {
-                    rt.block_on(async { h.clear_cookies(&domain).await })
+                    rt.block_on(async { h.clear_cookies(&pid, &domain).await })
                 });
             }),
         )
@@ -1911,13 +1937,47 @@ mod tests {
     #[tokio::test]
     async fn test_cookie_management() {
         let api = HostApi::new(20);
-        api.set_cookie("example.com", "session", "abc123").await;
+        api.set_cookie("plugin-x", "example.com", "session", "abc123")
+            .await;
         assert_eq!(
-            api.get_cookie("example.com", "session").await,
+            api.get_cookie("plugin-x", "example.com", "session").await,
             Some("abc123".to_string())
         );
-        api.clear_cookies("example.com").await;
-        assert_eq!(api.get_cookie("example.com", "session").await, None);
+        api.clear_cookies("plugin-x", "example.com").await;
+        assert_eq!(
+            api.get_cookie("plugin-x", "example.com", "session").await,
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn cookies_isolated_between_plugins() {
+        // The previous shared-jar implementation let plugin B read a
+        // cookie that plugin A had stashed under the same domain. Each
+        // plugin must now see only its own cookies.
+        let api = HostApi::new(20);
+        api.set_cookie("real-debrid", "real-debrid.com", "auth", "secret-A")
+            .await;
+        api.set_cookie("attacker", "real-debrid.com", "auth", "secret-B")
+            .await;
+        assert_eq!(
+            api.get_cookie("real-debrid", "real-debrid.com", "auth").await,
+            Some("secret-A".to_string())
+        );
+        assert_eq!(
+            api.get_cookie("attacker", "real-debrid.com", "auth").await,
+            Some("secret-B".to_string())
+        );
+        // Clearing one plugin's jar must not touch the other's.
+        api.clear_cookies("attacker", "real-debrid.com").await;
+        assert_eq!(
+            api.get_cookie("attacker", "real-debrid.com", "auth").await,
+            None
+        );
+        assert_eq!(
+            api.get_cookie("real-debrid", "real-debrid.com", "auth").await,
+            Some("secret-A".to_string())
+        );
     }
 
     #[tokio::test]
