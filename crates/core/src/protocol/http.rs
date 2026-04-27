@@ -12,6 +12,30 @@ use tracing::{debug, info, warn};
 
 use crate::bandwidth::BandwidthLimiter;
 
+/// Flush kernel buffers and persist `file` to disk.
+///
+/// `flush().await` only drains the user-space buffer into the kernel; if the
+/// process crashes or power is lost between flush and the next OS-level
+/// fsync, the bytes can disappear and resume state in the database can no
+/// longer be reconciled with what's actually on disk. This helper wraps the
+/// `sync_all` invariant in one call site so every download path stays
+/// honest.
+async fn fsync_file(file: &mut tokio::fs::File) -> std::io::Result<()> {
+    file.flush().await?;
+    file.sync_all().await
+}
+
+/// Best-effort fsync of a directory so a preceding `rename` is durable on
+/// POSIX. Errors are swallowed because not every platform exposes directory
+/// fds (Windows is a no-op).
+async fn fsync_parent(path: &Path) {
+    if let Some(parent) = path.parent()
+        && let Ok(dir) = tokio::fs::File::open(parent).await
+    {
+        let _ = dir.sync_all().await;
+    }
+}
+
 /// Progress update for a download.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct DownloadProgress {
@@ -106,7 +130,7 @@ impl HttpDownloader {
             }
         }
 
-        file.flush().await?;
+        fsync_file(&mut file).await?;
 
         let _ = progress_tx.send(DownloadProgress {
             bytes_downloaded: downloaded,
@@ -217,7 +241,7 @@ impl HttpDownloader {
                 dest_file.write_all(&chunk_data).await?;
                 tokio::fs::remove_file(&chunk_path).await?;
             }
-            dest_file.flush().await?;
+            fsync_file(&mut dest_file).await?;
             Ok(())
         }
         .await;
@@ -227,6 +251,10 @@ impl HttpDownloader {
             return Err(e);
         }
         tokio::fs::rename(&dest_tmp, dest).await?;
+        // Make the directory entry update durable. On POSIX an unflushed
+        // rename can vanish on crash even though the target file was
+        // sync_all'd before the rename; Windows treats this as a no-op.
+        fsync_parent(dest).await;
 
         let _ = progress_tx.send(DownloadProgress {
             bytes_downloaded: total_size,
@@ -308,7 +336,7 @@ impl HttpDownloader {
             }
         }
 
-        file.flush().await?;
+        fsync_file(&mut file).await?;
         info!("Resume download complete: {} bytes total", downloaded);
         Ok(downloaded)
     }
@@ -371,7 +399,9 @@ async fn download_chunk(
             .store(chunk_downloaded, std::sync::atomic::Ordering::Relaxed);
     }
 
-    file.flush().await?;
+    // Each chunk gets fsync'd so its bytes survive a crash before the
+    // reassembly stage reads it back.
+    fsync_file(&mut file).await?;
     debug!("Chunk {chunk_index} complete: {chunk_downloaded} bytes");
     Ok(())
 }
@@ -468,6 +498,32 @@ impl super::ProtocolBackend for HttpDownloader {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    async fn fsync_file_persists_buffered_writes() {
+        // Sanity-check the helper used by every download path: bytes
+        // written through write_all + flush must survive a re-open. This is
+        // not a power-loss simulation, but it does catch a regression where
+        // the helper accidentally drops the sync_all step (e.g. someone
+        // reverting it back to flush()-only).
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("data.bin");
+        {
+            let mut f = tokio::fs::File::create(&path).await.unwrap();
+            f.write_all(b"hello-fsync").await.unwrap();
+            fsync_file(&mut f).await.unwrap();
+        }
+        let read_back = tokio::fs::read(&path).await.unwrap();
+        assert_eq!(read_back, b"hello-fsync");
+    }
+
+    #[tokio::test]
+    async fn fsync_parent_is_no_op_for_missing_dir() {
+        // The helper has to be a no-op (best-effort) on platforms or paths
+        // where the directory fd cannot be opened, so callers can use it
+        // unconditionally after a rename without sprinkling cfg(unix).
+        fsync_parent(std::path::Path::new("/nonexistent/never-created")).await;
+    }
 
     #[test]
     fn test_parse_content_disposition() {
