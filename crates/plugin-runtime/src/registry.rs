@@ -14,11 +14,49 @@ use crate::types::PluginMeta;
 
 /// Ed25519 public key of the amigo-labs plugin registry signer.
 ///
-/// This is a **placeholder** — replace with the real project key before the
-/// 1.0 release. Rotate by shipping a new amigo-server version; clients that
-/// haven't updated will reject the new signatures, which is the safer
+/// Injected at compile time from the `AMIGO_REGISTRY_PUBKEY_HEX` environment
+/// variable (64 hex chars). When unset the value falls back to the all-zero
+/// placeholder, which [`RegistryConfig::default`] explicitly rejects so that
+/// signature verification is disabled (with a runtime warning) in dev builds
+/// instead of trusting a forgeable key. `build.rs` refuses to compile a
+/// release build when the env var is unset, so production binaries always
+/// pin a real key. Rotate by shipping a new amigo-server release; clients
+/// that haven't updated will reject the new signatures, which is the safer
 /// failure mode.
-pub const AMIGO_REGISTRY_PUBLIC_KEY: [u8; 32] = [0u8; 32];
+pub const AMIGO_REGISTRY_PUBLIC_KEY: [u8; 32] = registry_pubkey_from_env();
+
+const ZERO_PUBKEY: [u8; 32] = [0u8; 32];
+
+const fn registry_pubkey_from_env() -> [u8; 32] {
+    match option_env!("AMIGO_REGISTRY_PUBKEY_HEX") {
+        Some(hex) => parse_hex32(hex),
+        None => ZERO_PUBKEY,
+    }
+}
+
+const fn parse_hex32(s: &str) -> [u8; 32] {
+    let bytes = s.as_bytes();
+    assert!(
+        bytes.len() == 64,
+        "AMIGO_REGISTRY_PUBKEY_HEX must be 64 hex chars (32-byte Ed25519 public key)"
+    );
+    let mut out = [0u8; 32];
+    let mut i = 0;
+    while i < 32 {
+        out[i] = (hex_nibble(bytes[i * 2]) << 4) | hex_nibble(bytes[i * 2 + 1]);
+        i += 1;
+    }
+    out
+}
+
+const fn hex_nibble(b: u8) -> u8 {
+    match b {
+        b'0'..=b'9' => b - b'0',
+        b'a'..=b'f' => b - b'a' + 10,
+        b'A'..=b'F' => b - b'A' + 10,
+        _ => panic!("AMIGO_REGISTRY_PUBKEY_HEX contains non-hex character"),
+    }
+}
 
 /// Registry index as served from the plugin repository.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -67,11 +105,20 @@ pub struct RegistryConfig {
 
 impl Default for RegistryConfig {
     fn default() -> Self {
+        // If no real key was injected at compile time, refuse to trust the
+        // zero placeholder. Disabling verification with a warning is safer
+        // than verifying against a key whose private half is publicly
+        // derivable.
+        let trusted_signing_key = if AMIGO_REGISTRY_PUBLIC_KEY == ZERO_PUBKEY {
+            None
+        } else {
+            Some(AMIGO_REGISTRY_PUBLIC_KEY)
+        };
         Self {
             index_url: "https://raw.githubusercontent.com/amigo-labs/amigo-downloader-plugins/main/index.json".into(),
             cache_path: Some(PathBuf::from("plugins/index.json")),
             cache_max_age_secs: 24 * 60 * 60, // 24 hours
-            trusted_signing_key: Some(AMIGO_REGISTRY_PUBLIC_KEY),
+            trusted_signing_key,
         }
     }
 }
@@ -83,10 +130,11 @@ pub async fn load_index(
 ) -> Result<RegistryIndex, crate::Error> {
     // Try local cache first
     if let Some(cache_path) = &config.cache_path
-        && let Some(index) = load_cached_index(cache_path, config.cache_max_age_secs) {
-            debug!("Using cached registry index from {:?}", cache_path);
-            return Ok(index);
-        }
+        && let Some(index) = load_cached_index(cache_path, config.cache_max_age_secs)
+    {
+        debug!("Using cached registry index from {:?}", cache_path);
+        return Ok(index);
+    }
 
     // Fetch from remote
     let index = fetch_index_remote(client, config).await?;
@@ -180,9 +228,7 @@ async fn fetch_index_remote(
             verify_ed25519(&raw, &sig_hex, pubkey)?;
             debug!("Registry index signature verified");
         }
-        None => warn!(
-            "Registry signature verification DISABLED — only safe for local development"
-        ),
+        None => warn!("Registry signature verification DISABLED — only safe for local development"),
     }
 
     let index: RegistryIndex = serde_json::from_slice(&raw)
@@ -195,10 +241,7 @@ async fn fetch_index_remote(
 /// Fetch the detached signature file alongside `index.json` (same URL with
 /// a `.sig` suffix). The body is expected to be a hex-encoded Ed25519
 /// signature — 64 bytes / 128 hex chars, optionally trailing whitespace.
-async fn fetch_signature(
-    client: &reqwest::Client,
-    sig_url: &str,
-) -> Result<String, crate::Error> {
+async fn fetch_signature(client: &reqwest::Client, sig_url: &str) -> Result<String, crate::Error> {
     let resp = client
         .get(sig_url)
         .header("User-Agent", "amigo-downloader")
@@ -215,9 +258,9 @@ async fn fetch_signature(
             resp.status()
         )));
     }
-    resp.text().await.map_err(|e| {
-        crate::Error::RegistryUnavailable(format!("signature body unreadable: {e}"))
-    })
+    resp.text()
+        .await
+        .map_err(|e| crate::Error::RegistryUnavailable(format!("signature body unreadable: {e}")))
 }
 
 /// Verify that `payload` carries the Ed25519 signature `sig_hex` produced
@@ -227,9 +270,8 @@ pub fn verify_ed25519(
     sig_hex: &str,
     pubkey: &[u8; 32],
 ) -> Result<(), crate::Error> {
-    let sig_bytes = hex::decode(sig_hex.trim()).map_err(|e| {
-        crate::Error::RegistryUnavailable(format!("signature is not hex: {e}"))
-    })?;
+    let sig_bytes = hex::decode(sig_hex.trim())
+        .map_err(|e| crate::Error::RegistryUnavailable(format!("signature is not hex: {e}")))?;
     if sig_bytes.len() != 64 {
         return Err(crate::Error::RegistryUnavailable(format!(
             "signature has wrong length {} (want 64)",
@@ -239,9 +281,8 @@ pub fn verify_ed25519(
     let mut sig_arr = [0u8; 64];
     sig_arr.copy_from_slice(&sig_bytes);
     let sig = Signature::from_bytes(&sig_arr);
-    let vk = VerifyingKey::from_bytes(pubkey).map_err(|e| {
-        crate::Error::RegistryUnavailable(format!("bad registry pubkey: {e}"))
-    })?;
+    let vk = VerifyingKey::from_bytes(pubkey)
+        .map_err(|e| crate::Error::RegistryUnavailable(format!("bad registry pubkey: {e}")))?;
     vk.verify(payload, &sig).map_err(|_| {
         crate::Error::RegistryUnavailable(
             "registry signature did not verify against the trusted key".into(),
@@ -306,9 +347,10 @@ pub fn suggest_plugin_for_url<'a>(
 ) -> Option<&'a RegistryPlugin> {
     for plugin in &index.plugins {
         if let Ok(re) = regex::Regex::new(&plugin.url_pattern)
-            && re.is_match(url) {
-                return Some(plugin);
-            }
+            && re.is_match(url)
+        {
+            return Some(plugin);
+        }
     }
     None
 }
@@ -524,9 +566,34 @@ mod tests {
     #[test]
     fn verify_ed25519_rejects_short_signature() {
         let pk = [0u8; 32];
-        let err =
-            verify_ed25519(b"x", "aa", &pk).expect_err("short signature must error");
+        let err = verify_ed25519(b"x", "aa", &pk).expect_err("short signature must error");
         assert!(format!("{err}").contains("wrong length"));
+    }
+
+    #[test]
+    fn default_config_disables_verification_when_pubkey_is_zero() {
+        // The default impl must never trust the all-zero placeholder pubkey.
+        // When no real key was injected at compile time the field has to be
+        // None so that fetch_index_remote logs the explicit "verification
+        // DISABLED" warning instead of silently accepting a forgeable signature.
+        if AMIGO_REGISTRY_PUBLIC_KEY == ZERO_PUBKEY {
+            let cfg = RegistryConfig::default();
+            assert!(
+                cfg.trusted_signing_key.is_none(),
+                "default must not trust the zero placeholder"
+            );
+        } else {
+            let cfg = RegistryConfig::default();
+            assert_eq!(cfg.trusted_signing_key, Some(AMIGO_REGISTRY_PUBLIC_KEY));
+        }
+    }
+
+    #[test]
+    fn parse_hex32_round_trip() {
+        let pk = parse_hex32("0102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f20");
+        assert_eq!(pk[0], 0x01);
+        assert_eq!(pk[15], 0x10);
+        assert_eq!(pk[31], 0x20);
     }
 
     #[test]

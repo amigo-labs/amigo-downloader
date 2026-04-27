@@ -7,7 +7,10 @@ mod background;
 pub mod clicknload;
 mod feedback;
 pub mod login;
+pub mod net_guard;
 mod nzbget_api;
+mod security_headers;
+pub use security_headers::security_headers as security_headers_layer;
 pub mod pairing;
 pub mod password;
 mod resolver;
@@ -59,10 +62,8 @@ pub fn build_test_state(config: Config) -> api::AppState {
 
     let webhook_dispatcher = Arc::new(webhooks::WebhookDispatcher::new(Vec::new()));
 
-    let config_path = std::env::temp_dir().join(format!(
-        "amigo-test-config-{}.toml",
-        uuid::Uuid::new_v4()
-    ));
+    let config_path =
+        std::env::temp_dir().join(format!("amigo-test-config-{}.toml", uuid::Uuid::new_v4()));
 
     api::AppState {
         coordinator,
@@ -77,8 +78,7 @@ pub fn build_test_state(config: Config) -> api::AppState {
 
 /// Build the full Axum router for testing (API + WS, no static files).
 pub fn build_test_router(state: api::AppState) -> axum::Router {
-    api::router(state.clone())
-        .merge(ws::ws_router(state.clone()))
+    api::router(state.clone()).merge(ws::ws_router(state.clone()))
 }
 
 /// Build the full router including setup / login / pairing routes and the

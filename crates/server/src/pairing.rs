@@ -77,8 +77,7 @@ pub fn pairing_router(state: AppState, auth: AuthState) -> Router {
         auth: auth.clone(),
         rl: Arc::new(Mutex::new(HashMap::new())),
     };
-    let auth_layer =
-        axum::middleware::from_fn_with_state(auth.clone(), crate::auth::require_auth);
+    let auth_layer = axum::middleware::from_fn_with_state(auth.clone(), crate::auth::require_auth);
 
     Router::new()
         .route(
@@ -89,10 +88,7 @@ pub fn pairing_router(state: AppState, auth: AuthState) -> Router {
             "/api/v1/pairing/approve",
             post(approve).route_layer(auth_layer.clone()),
         )
-        .route(
-            "/api/v1/pairing/deny",
-            post(deny).route_layer(auth_layer),
-        )
+        .route("/api/v1/pairing/deny", post(deny).route_layer(auth_layer))
         .route("/api/v1/pairing/start", post(start))
         .route("/api/v1/pairing/status", get(status))
         .with_state(ps)
@@ -227,10 +223,7 @@ async fn start(
     .into_response()
 }
 
-async fn status(
-    State(ps): State<PairingState>,
-    Query(q): Query<StatusQuery>,
-) -> Response {
+async fn status(State(ps): State<PairingState>, Query(q): Query<StatusQuery>) -> Response {
     let hash = auth::hash_api_token(&q.poll_token);
 
     // Housekeeping: flip stale pending rows to 'expired' before we look.
@@ -303,10 +296,7 @@ async fn list_pending(State(ps): State<PairingState>) -> Response {
     }
 }
 
-async fn approve(
-    State(ps): State<PairingState>,
-    Json(req): Json<IdRequest>,
-) -> Response {
+async fn approve(State(ps): State<PairingState>, Json(req): Json<IdRequest>) -> Response {
     // Generate a fresh bearer token; store hashed on api_tokens, plain on
     // the pairing row (consumed exactly once by `/status`).
     let plain = rand_hex(32);

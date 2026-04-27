@@ -126,11 +126,7 @@ async fn logout(
 ) -> Response {
     let (app, _) = &*s;
     if let Some(Principal::Session { session_id, .. }) = req.extensions().get::<Principal>() {
-        let _ = app
-            .coordinator
-            .storage()
-            .delete_session(session_id)
-            .await;
+        let _ = app.coordinator.storage().delete_session(session_id).await;
     }
     // Clear the cookie regardless; the client may be a stale bearer user.
     let clear = Cookie::build((SESSION_COOKIE, ""))

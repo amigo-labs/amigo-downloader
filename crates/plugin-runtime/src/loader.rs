@@ -13,7 +13,9 @@ use tracing::{debug, info, warn};
 use crate::engine::{EngineConfig, PluginContext, PluginEngine};
 use crate::host_api::{self, HostApi};
 use crate::sandbox::SandboxLimits;
-use crate::types::{DownloadPackage, PluginMeta, PluginType, PostProcessContext, PostProcessResult};
+use crate::types::{
+    DownloadPackage, PluginMeta, PluginType, PostProcessContext, PostProcessResult,
+};
 
 /// A loaded, ready-to-execute plugin.
 struct LoadedPlugin {
@@ -91,9 +93,10 @@ impl PluginLoader {
                 for sub_entry in sub_entries.flatten() {
                     let sub_dir = sub_entry.path();
                     if sub_dir.is_dir()
-                        && let Some(path) = find_plugin_entry(&sub_dir) {
-                            self.try_load_plugin(&path, &mut metas).await;
-                        }
+                        && let Some(path) = find_plugin_entry(&sub_dir)
+                    {
+                        self.try_load_plugin(&path, &mut metas).await;
+                    }
                 }
             }
         }

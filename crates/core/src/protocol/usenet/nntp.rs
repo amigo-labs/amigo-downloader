@@ -2,10 +2,53 @@
 //!
 //! Implements the NNTP protocol (RFC 3977) over TCP/TLS.
 //! Supports authentication, GROUP, ARTICLE, and BODY commands.
+//!
+//! Network reads/writes are wrapped in [`NNTP_IO_TIMEOUT`] so a stalled
+//! upstream cannot wedge a worker forever; the hostname is sanity-checked
+//! before [`TcpStream::connect`] so a corrupted config cannot turn a Usenet
+//! server entry into an SSRF gadget.
+
+use std::time::Duration;
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
+use tokio::time::timeout;
 use tracing::debug;
+
+/// Cap on how long a single NNTP read/write may block. Servers that go quiet
+/// mid-article should be dropped instead of holding a connection slot
+/// forever; the connection pool can reconnect on the next attempt.
+const NNTP_IO_TIMEOUT: Duration = Duration::from_secs(60);
+
+/// Validate that `host` looks like a real DNS name or IP literal before
+/// handing it to the resolver. The previous code passed `&*config.host`
+/// straight into `TcpStream::connect`, so a bad config (e.g. a stray
+/// `"://"` prefix from copy-paste) would either fail with a confusing
+/// resolver error or, worse, accept a URI-style input that some resolvers
+/// special-case. This guard keeps the input shape predictable.
+fn validate_nntp_host(host: &str) -> Result<(), crate::Error> {
+    if host.is_empty() || host.len() > 253 {
+        return Err(crate::Error::Other(format!(
+            "NNTP host has invalid length: {} char(s)",
+            host.len()
+        )));
+    }
+    if host.contains("://") || host.contains('/') || host.contains(' ') {
+        return Err(crate::Error::Other(format!(
+            "NNTP host '{host}' contains URI / path / whitespace characters"
+        )));
+    }
+    // Allow IPv6 literals in bracketed or unbracketed form, or any DNS label
+    // (alnum, hyphen, dot, plus the colon separator some configs include
+    // for v6 zones — that case is filtered above by the / / ' ' rejections).
+    let allowed = |c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | '.' | ':' | '[' | ']');
+    if !host.chars().all(allowed) {
+        return Err(crate::Error::Other(format!(
+            "NNTP host '{host}' contains characters outside [A-Za-z0-9.-:[]]"
+        )));
+    }
+    Ok(())
+}
 
 /// NNTP server configuration.
 #[derive(Debug, Clone)]
@@ -39,21 +82,37 @@ impl NntpConnection {
     pub async fn connect(config: &NntpServerConfig) -> Result<Self, crate::Error> {
         debug!("Connecting to NNTP server {}:{}", config.host, config.port);
 
-        let tcp = TcpStream::connect((&*config.host, config.port))
-            .await
-            .map_err(|e| crate::Error::Other(format!("NNTP connect failed: {e}")))?;
+        validate_nntp_host(&config.host)?;
+
+        let tcp = timeout(
+            NNTP_IO_TIMEOUT,
+            TcpStream::connect((&*config.host, config.port)),
+        )
+        .await
+        .map_err(|_| crate::Error::Other("NNTP connect timed out".into()))?
+        .map_err(|e| crate::Error::Other(format!("NNTP connect failed: {e}")))?;
 
         let (reader, writer): (
             Box<dyn tokio::io::AsyncRead + Unpin + Send>,
             Box<dyn tokio::io::AsyncWrite + Unpin + Send>,
         ) = if config.ssl {
+            // Build the TLS connector explicitly so the certificate /
+            // hostname checks stay enabled even if a future refactor
+            // swaps the helper. native_tls defaults are correct (verify
+            // cert chain + hostname); the explicit `false` calls below
+            // make a regression — e.g. someone toggling them on for
+            // local debugging — visible in code review.
+            let mut builder = native_tls::TlsConnector::builder();
+            builder.danger_accept_invalid_certs(false);
+            builder.danger_accept_invalid_hostnames(false);
             let connector = tokio_native_tls::TlsConnector::from(
-                native_tls::TlsConnector::new()
+                builder
+                    .build()
                     .map_err(|e| crate::Error::Other(format!("TLS error: {e}")))?,
             );
-            let tls = connector
-                .connect(&config.host, tcp)
+            let tls = timeout(NNTP_IO_TIMEOUT, connector.connect(&config.host, tcp))
                 .await
+                .map_err(|_| crate::Error::Other("NNTP TLS handshake timed out".into()))?
                 .map_err(|e| crate::Error::Other(format!("TLS handshake failed: {e}")))?;
             let (r, w) = tokio::io::split(tls);
             (Box::new(r), Box::new(w))
@@ -148,13 +207,14 @@ impl NntpConnection {
 
     /// Send a raw NNTP command.
     async fn send_command(&mut self, cmd: &str) -> Result<(), crate::Error> {
-        self.writer
-            .write_all(format!("{cmd}\r\n").as_bytes())
+        let payload = format!("{cmd}\r\n");
+        timeout(NNTP_IO_TIMEOUT, self.writer.write_all(payload.as_bytes()))
             .await
+            .map_err(|_| crate::Error::Other("NNTP write timed out".into()))?
             .map_err(|e| crate::Error::Other(format!("NNTP write error: {e}")))?;
-        self.writer
-            .flush()
+        timeout(NNTP_IO_TIMEOUT, self.writer.flush())
             .await
+            .map_err(|_| crate::Error::Other("NNTP flush timed out".into()))?
             .map_err(|e| crate::Error::Other(format!("NNTP flush error: {e}")))?;
         Ok(())
     }
@@ -162,9 +222,9 @@ impl NntpConnection {
     /// Read a single-line NNTP response.
     async fn read_response(&mut self) -> Result<NntpResponse, crate::Error> {
         let mut line = String::new();
-        self.reader
-            .read_line(&mut line)
+        timeout(NNTP_IO_TIMEOUT, self.reader.read_line(&mut line))
             .await
+            .map_err(|_| crate::Error::Other("NNTP read timed out".into()))?
             .map_err(|e| crate::Error::Other(format!("NNTP read error: {e}")))?;
 
         let line = line.trim_end();
@@ -184,10 +244,9 @@ impl NntpConnection {
 
         loop {
             line.clear();
-            let n = self
-                .reader
-                .read_line(&mut line)
+            let n = timeout(NNTP_IO_TIMEOUT, self.reader.read_line(&mut line))
                 .await
+                .map_err(|_| crate::Error::Other("NNTP read timed out".into()))?
                 .map_err(|e| crate::Error::Other(format!("NNTP read error: {e}")))?;
 
             if n == 0 {
@@ -263,5 +322,48 @@ impl NntpConnectionPool {
 
     pub fn priority(&self) -> u32 {
         self.config.priority
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_nntp_host;
+
+    #[test]
+    fn validate_accepts_dns_names_and_ip_literals() {
+        for ok in [
+            "news.example.com",
+            "alt.binaries.example.org",
+            "1.2.3.4",
+            "[::1]",
+            "[2001:db8::1]",
+        ] {
+            validate_nntp_host(ok).unwrap_or_else(|e| panic!("{ok} should be accepted: {e}"));
+        }
+    }
+
+    #[test]
+    fn validate_rejects_uri_like_inputs() {
+        // Misconfiguration patterns the previous code passed straight to
+        // resolver/connect, sometimes with surprising fallback behaviour.
+        for bad in [
+            "",
+            "nntps://news.example.com",
+            "news.example.com/path",
+            "news.example.com:563/extra",
+            "news .example.com",
+            "news.example.com\nfoo",
+        ] {
+            assert!(
+                validate_nntp_host(bad).is_err(),
+                "{bad:?} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn validate_rejects_overlong_host() {
+        let huge = "a".repeat(254);
+        assert!(validate_nntp_host(&huge).is_err());
     }
 }

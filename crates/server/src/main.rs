@@ -4,10 +4,12 @@ mod background;
 mod clicknload;
 mod feedback;
 mod login;
+mod net_guard;
 mod nzbget_api;
 mod pairing;
 mod password;
 mod resolver;
+mod security_headers;
 mod setup;
 mod static_files;
 mod update_api;
@@ -86,8 +88,8 @@ async fn main() -> anyhow::Result<()> {
             );
             anyhow::bail!("invalid setup env vars");
         }
-        let hash = password::hash_password(&pw)
-            .map_err(|e| anyhow::anyhow!("setup hash failed: {e}"))?;
+        let hash =
+            password::hash_password(&pw).map_err(|e| anyhow::anyhow!("setup hash failed: {e}"))?;
         config.server.admin_username = Some(user);
         config.server.admin_password_hash = Some(hash);
         config.server.setup_complete = true;
@@ -136,23 +138,21 @@ async fn main() -> anyhow::Result<()> {
     // Wire captcha callback: plugin → CaptchaManager → WebSocket → UI → REST → plugin
     {
         let cm = captcha_manager.clone();
-        plugin_host_api.set_captcha_callback(Arc::new(move |plugin_id, download_id, image_url, captcha_type| {
-            let cm = cm.clone();
-            Box::pin(async move {
-                cm.request_solve(&plugin_id, &download_id, &image_url, &captcha_type)
-                    .await
-                    .map_err(|e| e.to_string())
-            })
-        }));
+        plugin_host_api.set_captcha_callback(Arc::new(
+            move |plugin_id, download_id, image_url, captcha_type| {
+                let cm = cm.clone();
+                Box::pin(async move {
+                    cm.request_solve(&plugin_id, &download_id, &image_url, &captcha_type)
+                        .await
+                        .map_err(|e| e.to_string())
+                })
+            },
+        ));
     }
 
     let plugin_loader = Arc::new(
-        PluginLoader::new_with_host_api(
-            PathBuf::from("plugins"),
-            sandbox_limits,
-            plugin_host_api,
-        )
-        .expect("Failed to initialize plugin runtime — cannot start server"),
+        PluginLoader::new_with_host_api(PathBuf::from("plugins"), sandbox_limits, plugin_host_api)
+            .expect("Failed to initialize plugin runtime — cannot start server"),
     );
     let discovered = plugin_loader.discover().await.unwrap_or_default();
     tracing::info!("Loaded {} plugins", discovered.len());
@@ -261,14 +261,9 @@ async fn main() -> anyhow::Result<()> {
             bind = config.server.bind
         );
     }
-    let auth_layer = axum::middleware::from_fn_with_state(
-        auth_state.clone(),
-        auth::require_auth,
-    );
-    let setup_guard_layer = axum::middleware::from_fn_with_state(
-        auth_state.clone(),
-        auth::setup_guard,
-    );
+    let auth_layer = axum::middleware::from_fn_with_state(auth_state.clone(), auth::require_auth);
+    let setup_guard_layer =
+        axum::middleware::from_fn_with_state(auth_state.clone(), auth::setup_guard);
 
     let protected = api::router(state.clone())
         .merge(ws::ws_router(state.clone()))
@@ -283,13 +278,25 @@ async fn main() -> anyhow::Result<()> {
         .merge(pairing::pairing_router(state.clone(), auth_state.clone()));
 
     // NZBGet JSON-RPC has its own HTTP Basic Auth layer (Sonarr/Radarr
-    // compatibility) and static files are public.
-    let app = protected
-        .merge(open)
-        .merge(nzbget_api::nzbget_router(state.clone()))
+    // compatibility) and static files are public. Refuse to start when the
+    // operator turned the API on without setting credentials — fail-loud at
+    // startup is safer than mounting an open RPC endpoint.
+    nzbget_api::validate_nzbget_config(&config.nzbget_api).map_err(|e| anyhow::anyhow!(e))?;
+    let mut app = protected.merge(open);
+    if let Some(nzb) = nzbget_api::nzbget_router(state.clone(), &config.nzbget_api) {
+        app = app.merge(nzb);
+    }
+    let app = app
         .merge(static_files::static_router())
         .layer(setup_guard_layer)
-        .layer(cors);
+        .layer(cors)
+        // Set baseline security headers (X-Content-Type-Options, X-Frame-
+        // Options, Referrer-Policy, CSP, Permissions-Policy) on every
+        // response. Outermost layer so even error / redirect responses
+        // carry them.
+        .layer(axum::middleware::from_fn(
+            security_headers::security_headers,
+        ));
 
     // Start background tasks (NZB watch folder, RSS poller)
     background::spawn_background_tasks(

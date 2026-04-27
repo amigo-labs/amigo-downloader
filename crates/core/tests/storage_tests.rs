@@ -224,7 +224,10 @@ async fn test_count_by_status() {
     let storage = Storage::open_memory().unwrap();
 
     for i in 0..5 {
-        let dl = make_download(&format!("dl-cnt-{i}"), &format!("https://example.com/{i}.zip"));
+        let dl = make_download(
+            &format!("dl-cnt-{i}"),
+            &format!("https://example.com/{i}.zip"),
+        );
         storage.insert_download(&dl).await.unwrap();
     }
 
@@ -273,7 +276,10 @@ async fn test_clear_history() {
             &format!("https://example.com/{i}.zip"),
         );
         storage.insert_download(&dl).await.unwrap();
-        storage.move_to_history(&format!("dl-hc-{i}")).await.unwrap();
+        storage
+            .move_to_history(&format!("dl-hc-{i}"))
+            .await
+            .unwrap();
     }
 
     let history = storage.get_history().await.unwrap();
@@ -421,14 +427,8 @@ async fn test_update_state_roundtrip() {
 async fn test_update_state_overwrite() {
     let storage = Storage::open_memory().unwrap();
 
-    storage
-        .set_update_state("key", "value1")
-        .await
-        .unwrap();
-    storage
-        .set_update_state("key", "value2")
-        .await
-        .unwrap();
+    storage.set_update_state("key", "value1").await.unwrap();
+    storage.set_update_state("key", "value2").await.unwrap();
 
     let val = storage.get_update_state("key").await.unwrap();
     assert_eq!(val.as_deref(), Some("value2"));
@@ -614,10 +614,7 @@ async fn test_on_disk_persistence() {
         let storage = Storage::open(db_path, dl_dir, tmp_dir).unwrap();
         let fetched = storage.get_download("persist-1").await.unwrap();
         assert!(fetched.is_some());
-        assert_eq!(
-            fetched.unwrap().url,
-            "https://example.com/persist.zip"
-        );
+        assert_eq!(fetched.unwrap().url, "https://example.com/persist.zip");
     }
 }
 

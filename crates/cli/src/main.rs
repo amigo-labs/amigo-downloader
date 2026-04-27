@@ -10,10 +10,10 @@ use tracing::debug;
 use amigo_core::bandwidth::{BandwidthConfig, BandwidthLimiter};
 use amigo_core::config::Config;
 use amigo_core::coordinator::Coordinator;
-use amigo_core::protocol::{DownloadJob, Protocol, ProtocolBackend};
 use amigo_core::protocol::dash::DashDownloader;
 use amigo_core::protocol::hls::HlsDownloader;
 use amigo_core::protocol::http::{DownloadProgress, HttpDownloader};
+use amigo_core::protocol::{DownloadJob, Protocol, ProtocolBackend};
 use amigo_core::queue::QueueStatus;
 use amigo_core::storage::Storage;
 use amigo_plugin_runtime::loader::PluginLoader;
@@ -232,10 +232,7 @@ fn print_banner(mode: OutputMode) {
         style("amigo-dl").bold().cyan(),
         style(format!("v{}", amigo_core::updater::CURRENT_VERSION)).dim()
     );
-    eprintln!(
-        "  {}",
-        style("Fast, modular download manager").dim()
-    );
+    eprintln!("  {}", style("Fast, modular download manager").dim());
     eprintln!();
 }
 
@@ -253,7 +250,9 @@ impl Tui {
     /// Print a success message.
     fn success(&self, msg: &str) {
         match self.mode {
-            OutputMode::Fancy => eprintln!("  {} {}", style("✔").green().bold(), style(msg).green()),
+            OutputMode::Fancy => {
+                eprintln!("  {} {}", style("✔").green().bold(), style(msg).green())
+            }
             OutputMode::Plain => println!("OK: {msg}"),
             OutputMode::Json => {} // JSON mode uses structured output
         }
@@ -314,7 +313,10 @@ impl Tui {
     /// Output pretty JSON (only in JSON mode).
     fn json_pretty(&self, value: &serde_json::Value) {
         if self.mode == OutputMode::Json {
-            println!("{}", serde_json::to_string_pretty(value).unwrap_or_default());
+            println!(
+                "{}",
+                serde_json::to_string_pretty(value).unwrap_or_default()
+            );
         }
     }
 
@@ -322,18 +324,17 @@ impl Tui {
     fn progress_style(&self) -> ProgressStyle {
         match self.mode {
             OutputMode::Fancy => ProgressStyle::with_template(
-                "  {spinner:.cyan} [{bar:35.cyan/dim}] {bytes}/{total_bytes} {wide_msg}"
+                "  {spinner:.cyan} [{bar:35.cyan/dim}] {bytes}/{total_bytes} {wide_msg}",
             )
             .unwrap()
             .progress_chars("━╸─")
             .tick_strings(&["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏", "✔"]),
-            OutputMode::Plain => ProgressStyle::with_template(
-                "  [{bar:30}] {bytes}/{total_bytes} {msg}"
-            )
-            .unwrap()
-            .progress_chars("#>-"),
-            OutputMode::Json => ProgressStyle::with_template("")
-                .unwrap(),
+            OutputMode::Plain => {
+                ProgressStyle::with_template("  [{bar:30}] {bytes}/{total_bytes} {msg}")
+                    .unwrap()
+                    .progress_chars("#>-")
+            }
+            OutputMode::Json => ProgressStyle::with_template("").unwrap(),
         }
     }
 
@@ -374,11 +375,19 @@ impl Tui {
                     "dash" => "📡",
                     _ => "⬇",
                 };
-                eprintln!("  {} {} {}", style(icon).cyan(), style(protocol.to_uppercase()).bold().cyan(), style(url).dim());
+                eprintln!(
+                    "  {} {} {}",
+                    style(icon).cyan(),
+                    style(protocol.to_uppercase()).bold().cyan(),
+                    style(url).dim()
+                );
             }
             OutputMode::Plain => println!("[{protocol}] {url}"),
             OutputMode::Json => {
-                println!("{}", serde_json::json!({"event": "start", "url": url, "protocol": protocol}));
+                println!(
+                    "{}",
+                    serde_json::json!({"event": "start", "url": url, "protocol": protocol})
+                );
             }
         }
     }
@@ -448,7 +457,9 @@ async fn resolve_url(
     // Fall back to protocol detection + HEAD
     let path = url.split('?').next().unwrap_or(url);
     if path.ends_with(".m3u8") || path.ends_with(".m3u") {
-        let filename = filename_from_url(url).replace(".m3u8", ".ts").replace(".m3u", ".ts");
+        let filename = filename_from_url(url)
+            .replace(".m3u8", ".ts")
+            .replace(".m3u", ".ts");
         return Ok((url.to_string(), filename, None, Protocol::Hls));
     }
     if path.ends_with(".mpd") {
@@ -457,10 +468,21 @@ async fn resolve_url(
     }
 
     // Plain HTTP — HEAD request for filename/size
-    let http = HttpDownloader::new(user_agent, BandwidthLimiter::new(BandwidthConfig::default()));
+    let http = HttpDownloader::new(
+        user_agent,
+        BandwidthLimiter::new(BandwidthConfig::default()),
+    );
     let head = http.head(url).await?;
-    let filename = head.filename.clone().unwrap_or_else(|| filename_from_url(url));
-    Ok((url.to_string(), filename, head.content_length, Protocol::Http))
+    let filename = head
+        .filename
+        .clone()
+        .unwrap_or_else(|| filename_from_url(url));
+    Ok((
+        url.to_string(),
+        filename,
+        head.content_length,
+        Protocol::Http,
+    ))
 }
 
 /// Run a direct download using the ProtocolBackend trait (same path as server).
@@ -600,8 +622,11 @@ async fn run_direct_downloads(
     let plugin_loader = PluginLoader::new(PathBuf::from("plugins"), SandboxLimits::default())
         .unwrap_or_else(|e| {
             tracing::warn!("Failed to load plugin runtime: {e}");
-            PluginLoader::new(PathBuf::from("/etc/amigo/plugins"), SandboxLimits::default())
-                .expect("Failed to initialize plugin runtime")
+            PluginLoader::new(
+                PathBuf::from("/etc/amigo/plugins"),
+                SandboxLimits::default(),
+            )
+            .expect("Failed to initialize plugin runtime")
         });
     let discovered = plugin_loader.discover().await.unwrap_or_default();
     if !discovered.is_empty() {
@@ -780,14 +805,19 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 match mode {
                     OutputMode::Json => {
-                        let list: Vec<_> = downloads.iter().map(|d| serde_json::json!({
-                            "id": d.id,
-                            "status": d.status,
-                            "url": d.url,
-                            "filename": d.filename,
-                            "filesize": d.filesize,
-                            "bytes_downloaded": d.bytes_downloaded,
-                        })).collect();
+                        let list: Vec<_> = downloads
+                            .iter()
+                            .map(|d| {
+                                serde_json::json!({
+                                    "id": d.id,
+                                    "status": d.status,
+                                    "url": d.url,
+                                    "filename": d.filename,
+                                    "filesize": d.filesize,
+                                    "bytes_downloaded": d.bytes_downloaded,
+                                })
+                            })
+                            .collect();
                         tui.json(&serde_json::json!({"downloads": list}));
                     }
                     OutputMode::Fancy => {
@@ -858,7 +888,9 @@ async fn main() -> anyhow::Result<()> {
             coord.cancel(&id).await?;
             match mode {
                 OutputMode::Json => tui.json(&serde_json::json!({"action": "cancelled", "id": id})),
-                OutputMode::Fancy => tui.step("🗑", &format!("Cancelled: {}", style(&id[..8]).dim())),
+                OutputMode::Fancy => {
+                    tui.step("🗑", &format!("Cancelled: {}", style(&id[..8]).dim()))
+                }
                 OutputMode::Plain => println!("Cancelled: {id}"),
             }
         }
@@ -877,11 +909,16 @@ async fn main() -> anyhow::Result<()> {
             } else {
                 match mode {
                     OutputMode::Json => {
-                        let list: Vec<_> = queued.iter().map(|d| serde_json::json!({
-                            "id": d.id,
-                            "url": d.url,
-                            "filename": d.filename,
-                        })).collect();
+                        let list: Vec<_> = queued
+                            .iter()
+                            .map(|d| {
+                                serde_json::json!({
+                                    "id": d.id,
+                                    "url": d.url,
+                                    "filename": d.filename,
+                                })
+                            })
+                            .collect();
                         tui.json(&serde_json::json!({"queue": list}));
                     }
                     OutputMode::Fancy => {
@@ -897,7 +934,12 @@ async fn main() -> anyhow::Result<()> {
                     }
                     OutputMode::Plain => {
                         for (i, d) in queued.iter().enumerate() {
-                            println!("{}. {} — {}", i + 1, d.filename.as_deref().unwrap_or(&d.url), d.id);
+                            println!(
+                                "{}. {} — {}",
+                                i + 1,
+                                d.filename.as_deref().unwrap_or(&d.url),
+                                d.id
+                            );
                         }
                     }
                 }
@@ -928,18 +970,33 @@ async fn main() -> anyhow::Result<()> {
                 }
                 OutputMode::Fancy => {
                     print_banner(mode);
-                    tui.step("📊", &format!(
-                        "Active: {}  Queued: {}  Completed: {}  Failed: {}",
-                        style(active).cyan().bold(),
-                        style(queued).yellow(),
-                        style(completed).green(),
-                        if failed > 0 { style(failed).red().bold().to_string() } else { style(failed).dim().to_string() },
-                    ));
-                    tui.step("🚀", &format!("Speed: {}", style(format!("{}/s", format_bytes(speed))).bold()));
+                    tui.step(
+                        "📊",
+                        &format!(
+                            "Active: {}  Queued: {}  Completed: {}  Failed: {}",
+                            style(active).cyan().bold(),
+                            style(queued).yellow(),
+                            style(completed).green(),
+                            if failed > 0 {
+                                style(failed).red().bold().to_string()
+                            } else {
+                                style(failed).dim().to_string()
+                            },
+                        ),
+                    );
+                    tui.step(
+                        "🚀",
+                        &format!(
+                            "Speed: {}",
+                            style(format!("{}/s", format_bytes(speed))).bold()
+                        ),
+                    );
                 }
                 OutputMode::Plain => {
                     println!("amigo-dl v{}", amigo_core::updater::CURRENT_VERSION);
-                    println!("Active: {active}  Queued: {queued}  Completed: {completed}  Failed: {failed}");
+                    println!(
+                        "Active: {active}  Queued: {queued}  Completed: {completed}  Failed: {failed}"
+                    );
                     println!("Speed: {} KB/s", speed / 1024);
                 }
             }
@@ -950,7 +1007,10 @@ async fn main() -> anyhow::Result<()> {
             let speed = coord.total_speed().await;
             match mode {
                 OutputMode::Json => tui.json(&serde_json::json!({"speed_bytes_per_sec": speed})),
-                OutputMode::Fancy => tui.step("🚀", &format!("{}", style(format!("{}/s", format_bytes(speed))).bold())),
+                OutputMode::Fancy => tui.step(
+                    "🚀",
+                    &format!("{}", style(format!("{}/s", format_bytes(speed))).bold()),
+                ),
                 OutputMode::Plain => println!("{} KB/s", speed / 1024),
             }
         }
@@ -1019,9 +1079,7 @@ async fn main() -> anyhow::Result<()> {
                 // (`extractors/`), and great-grandparent is the root (`plugins/`).
                 // We go up to the category level so discover finds the plugin dir.
                 let plugin_parent = path.parent().unwrap_or(std::path::Path::new("."));
-                let plugin_dir = plugin_parent
-                    .parent()
-                    .unwrap_or(plugin_parent);
+                let plugin_dir = plugin_parent.parent().unwrap_or(plugin_parent);
                 let loader = PluginLoader::new(plugin_dir.to_path_buf(), SandboxLimits::default())
                     .map_err(|e| anyhow::anyhow!("{e}"))?;
                 loader
@@ -1078,10 +1136,8 @@ async fn main() -> anyhow::Result<()> {
                                 }
                             }
                             println!();
-                            let mut summary = format!(
-                                "{} passed, {} failed",
-                                results.passed, results.failed
-                            );
+                            let mut summary =
+                                format!("{} passed, {} failed", results.passed, results.failed);
                             if results.skipped > 0 {
                                 summary.push_str(&format!(", {} skipped", results.skipped));
                             }
@@ -1192,7 +1248,11 @@ async fn main() -> anyhow::Result<()> {
                     tui.info("No remotes configured. Run `amigo-dl login <url>`.");
                 } else {
                     for (alias, remote) in &r.remotes {
-                        let marker = if r.default.as_deref() == Some(alias) { "*" } else { " " };
+                        let marker = if r.default.as_deref() == Some(alias) {
+                            "*"
+                        } else {
+                            " "
+                        };
                         println!("{marker} {alias:<16} {}", remote.url);
                     }
                 }
@@ -1212,7 +1272,9 @@ async fn main() -> anyhow::Result<()> {
             RemoteAction::Use { name } => {
                 let mut r = remotes::load();
                 if !r.remotes.contains_key(&name) {
-                    tui.error(&format!("No remote named {name} — run `amigo-dl login` first."));
+                    tui.error(&format!(
+                        "No remote named {name} — run `amigo-dl login` first."
+                    ));
                 } else {
                     r.default = Some(name.clone());
                     remotes::save(&r).map_err(|e| anyhow::anyhow!(e))?;
@@ -1227,11 +1289,7 @@ async fn main() -> anyhow::Result<()> {
 
 /// Start a pairing request against `url`, poll until the admin approves/denies,
 /// and persist the resulting API token.
-async fn pair_with_remote(
-    url: &str,
-    name_override: Option<&str>,
-    tui: &Tui,
-) -> anyhow::Result<()> {
+async fn pair_with_remote(url: &str, name_override: Option<&str>, tui: &Tui) -> anyhow::Result<()> {
     let base = url.trim_end_matches('/').to_string();
     let hostname = std::env::var("HOSTNAME")
         .ok()
@@ -1328,12 +1386,14 @@ async fn pair_with_remote(
 
 fn hostname_fallback() -> Option<String> {
     // Portable "what's my hostname" without a crate: read /etc/hostname on unix.
-    std::fs::read_to_string("/etc/hostname")
-        .ok()
-        .and_then(|s| {
-            let t = s.trim();
-            if t.is_empty() { None } else { Some(t.to_string()) }
-        })
+    std::fs::read_to_string("/etc/hostname").ok().and_then(|s| {
+        let t = s.trim();
+        if t.is_empty() {
+            None
+        } else {
+            Some(t.to_string())
+        }
+    })
 }
 
 fn alias_from_url(url: &str) -> String {

@@ -22,8 +22,8 @@ use crate::traits::{ExtractedMedia, Extractor, MediaStream, StreamProtocol};
 
 /// Media file extensions that indicate a direct download.
 const MEDIA_EXTENSIONS: &[&str] = &[
-    ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".ts",
-    ".mp3", ".flac", ".wav", ".ogg", ".aac", ".m4a", ".opus", ".wma",
+    ".mp4", ".mkv", ".avi", ".mov", ".wmv", ".flv", ".webm", ".m4v", ".ts", ".mp3", ".flac",
+    ".wav", ".ogg", ".aac", ".m4a", ".opus", ".wma",
 ];
 
 /// Streaming manifest extensions.
@@ -156,7 +156,9 @@ impl GenericExtractor {
         // Phase 7: iframe recursion
         if depth < MAX_IFRAME_DEPTH
             && streams.is_empty()
-            && let Ok(iframe_streams) = self.extract_from_iframes(client, html, page_url, depth).await
+            && let Ok(iframe_streams) = self
+                .extract_from_iframes(client, html, page_url, depth)
+                .await
         {
             streams.extend(iframe_streams);
         }
@@ -173,7 +175,8 @@ impl GenericExtractor {
         let mut streams = Vec::new();
 
         // Find m3u8 URLs
-        let m3u8_re = Regex::new(r#"["\']?(https?://[^"'\s]+\.m3u8(?:\?[^"'\s]*)?)["\']?"#).unwrap();
+        let m3u8_re =
+            Regex::new(r#"["\']?(https?://[^"'\s]+\.m3u8(?:\?[^"'\s]*)?)["\']?"#).unwrap();
         for cap in m3u8_re.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 debug!("Found m3u8 in script: {}", url.as_str());
@@ -191,12 +194,16 @@ impl GenericExtractor {
         }
 
         // Find direct mp4/webm URLs in JavaScript (but not in HTML href/src which we handle elsewhere)
-        let mp4_re = Regex::new(r#"["\']?(https?://[^"'\s]+\.(?:mp4|webm)(?:\?[^"'\s]*)?)["\']?"#).unwrap();
+        let mp4_re =
+            Regex::new(r#"["\']?(https?://[^"'\s]+\.(?:mp4|webm)(?:\?[^"'\s]*)?)["\']?"#).unwrap();
         for cap in mp4_re.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 let url_str = url.as_str();
                 // Skip obvious non-video mp4 URLs (thumbnails, etc.)
-                if !url_str.contains("thumb") && !url_str.contains("poster") && !url_str.contains("preview") {
+                if !url_str.contains("thumb")
+                    && !url_str.contains("poster")
+                    && !url_str.contains("preview")
+                {
                     debug!("Found media URL in script: {}", url_str);
                     streams.push(Self::stream_from_url(url_str, StreamProtocol::Http));
                 }
@@ -214,7 +221,11 @@ impl GenericExtractor {
         // <video src="..."> and <audio src="...">
         let media_sel = Selector::parse("video[src], audio[src]").unwrap();
         for elem in document.select(&media_sel) {
-            if let Some(url) = elem.value().attr("src").and_then(|src| resolve_url(base_url, src)) {
+            if let Some(url) = elem
+                .value()
+                .attr("src")
+                .and_then(|src| resolve_url(base_url, src))
+            {
                 let proto = Self::protocol_from_url(&url).unwrap_or(StreamProtocol::Http);
                 streams.push(Self::stream_from_url(&url, proto));
             }
@@ -223,7 +234,11 @@ impl GenericExtractor {
         // <source> tags inside <video> or <audio>
         let source_sel = Selector::parse("video source, audio source").unwrap();
         for elem in document.select(&source_sel) {
-            if let Some(url) = elem.value().attr("src").and_then(|src| resolve_url(base_url, src)) {
+            if let Some(url) = elem
+                .value()
+                .attr("src")
+                .and_then(|src| resolve_url(base_url, src))
+            {
                 let proto = Self::protocol_from_url(&url).unwrap_or(StreamProtocol::Http);
                 let mime = elem.value().attr("type").unwrap_or("").to_string();
                 let mut stream = Self::stream_from_url(&url, proto);
@@ -242,14 +257,17 @@ impl GenericExtractor {
         let mut streams = Vec::new();
 
         // RSS <enclosure url="..." type="..."/>
-        let enclosure_re = Regex::new(
-            r#"<enclosure[^>]+url=["']([^"']+)["'][^>]*(?:type=["']([^"']+)["'])?"#
-        ).unwrap();
+        let enclosure_re =
+            Regex::new(r#"<enclosure[^>]+url=["']([^"']+)["'][^>]*(?:type=["']([^"']+)["'])?"#)
+                .unwrap();
         for cap in enclosure_re.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 let url_str = url.as_str();
                 let ct = cap.get(2).map(|m| m.as_str()).unwrap_or("");
-                if ct.starts_with("video/") || ct.starts_with("audio/") || Self::is_media_url(url_str) {
+                if ct.starts_with("video/")
+                    || ct.starts_with("audio/")
+                    || Self::is_media_url(url_str)
+                {
                     let proto = Self::protocol_from_url(url_str).unwrap_or(StreamProtocol::Http);
                     streams.push(Self::stream_from_url(url_str, proto));
                 }
@@ -275,7 +293,8 @@ impl GenericExtractor {
                 .select(&iframe_sel)
                 .filter_map(|elem| {
                     let src = elem.value().attr("src")?;
-                    if src.is_empty() || src.starts_with("about:") || src.starts_with("javascript:") {
+                    if src.is_empty() || src.starts_with("about:") || src.starts_with("javascript:")
+                    {
                         return None;
                     }
                     resolve_url(base_url, src)
@@ -344,16 +363,14 @@ impl Extractor for GenericExtractor {
 
         // Phase 1b: HEAD request to check Content-Type
         if let Ok(resp) = client.head(url).send().await
-            && let Some(proto) = resp.headers().get("content-type")
+            && let Some(proto) = resp
+                .headers()
+                .get("content-type")
                 .and_then(|ct| ct.to_str().ok())
                 .and_then(Self::protocol_from_content_type)
         {
             return Ok(ExtractedMedia {
-                title: url
-                    .rsplit('/')
-                    .next()
-                    .unwrap_or("Download")
-                    .to_string(),
+                title: url.rsplit('/').next().unwrap_or("Download").to_string(),
                 streams: vec![Self::stream_from_url(url, proto)],
             });
         }
@@ -468,8 +485,7 @@ mod tests {
                 </video>
             </body></html>
         "#;
-        let streams =
-            GenericExtractor::extract_html5_media(html, "https://example.com");
+        let streams = GenericExtractor::extract_html5_media(html, "https://example.com");
         assert_eq!(streams.len(), 2);
         assert!(streams[0].url.ends_with("/video/720p.mp4"));
         assert!(streams[1].url.ends_with("/video/stream.m3u8"));
@@ -525,9 +541,6 @@ mod tests {
     #[test]
     fn test_page_title() {
         let html = "<html><head><title>My Video Page</title></head><body></body></html>";
-        assert_eq!(
-            extract_page_title(html),
-            Some("My Video Page".to_string())
-        );
+        assert_eq!(extract_page_title(html), Some("My Video Page".to_string()));
     }
 }

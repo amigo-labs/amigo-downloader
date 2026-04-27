@@ -7,8 +7,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[derive(Default)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub struct BandwidthConfig {
     /// Global limit in bytes/s, 0 = unlimited.
     pub global_limit: u64,
@@ -34,7 +33,6 @@ pub struct BandwidthSchedule {
     /// Bandwidth limit during this period (bytes/s, 0 = unlimited).
     pub limit: u64,
 }
-
 
 /// Token-bucket based bandwidth limiter with time-based scheduling.
 #[derive(Clone)]

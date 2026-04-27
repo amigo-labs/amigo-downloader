@@ -34,9 +34,7 @@ fn main() {
     }
 
     // Initialize logging
-    tracing_subscriber::fmt()
-        .with_env_filter("info")
-        .init();
+    tracing_subscriber::fmt().with_env_filter("info").init();
 
     // Load config
     let config = amigo_core::config::Config::load_auto();
@@ -48,18 +46,14 @@ fn main() {
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_updater::Builder::new().build())
-        .invoke_handler(tauri::generate_handler![
-            cmd_add_download,
-            cmd_get_stats,
-        ])
+        .invoke_handler(tauri::generate_handler![cmd_add_download, cmd_get_stats,])
         .setup(move |app| {
             // Resolve platform data dir via Tauri v2 API
             let data_dir = app
                 .path()
                 .app_data_dir()
                 .unwrap_or_else(|_| PathBuf::from("."));
-            std::fs::create_dir_all(&data_dir)
-                .expect("Failed to create app data directory");
+            std::fs::create_dir_all(&data_dir).expect("Failed to create app data directory");
             let db_path = data_dir.join("amigo.db");
             let download_dir = PathBuf::from(&config.download_dir);
             let temp_dir = PathBuf::from(&config.temp_dir);
@@ -85,7 +79,8 @@ fn main() {
                     // Start Click'n'Load listener on port 9666
                     let cnl_coord = coord.clone();
                     tokio::spawn(async move {
-                        if let Err(e) = amigo_server::clicknload::start_clicknload(cnl_coord).await {
+                        if let Err(e) = amigo_server::clicknload::start_clicknload(cnl_coord).await
+                        {
                             tracing::warn!("Click'n'Load failed to start: {e}");
                         }
                     });

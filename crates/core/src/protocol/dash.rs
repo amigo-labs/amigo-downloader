@@ -349,13 +349,14 @@ impl super::ProtocolBackend for DashDownloader {
         progress_tx: watch::Sender<DownloadProgress>,
         cancel_rx: tokio::sync::oneshot::Receiver<()>,
     ) -> Result<(u64, std::path::PathBuf), crate::Error> {
-        let fname = job
-            .filename
-            .clone()
-            .unwrap_or_else(|| {
-                job.url.rsplit('/').next().unwrap_or("stream").to_string()
-                    .replace(".mpd", ".mp4")
-            });
+        let fname = job.filename.clone().unwrap_or_else(|| {
+            job.url
+                .rsplit('/')
+                .next()
+                .unwrap_or("stream")
+                .to_string()
+                .replace(".mpd", ".mp4")
+        });
         let dest = job.download_dir.join(&fname);
         tokio::fs::create_dir_all(&job.download_dir).await?;
 

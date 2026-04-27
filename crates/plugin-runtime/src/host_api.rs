@@ -23,20 +23,89 @@ pub type CaptchaSolveCallback =
 pub type CaptchaFuture =
     std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send>>;
 
+/// Per-plugin cookie jars: `plugin_id → domain → name → value`.
+type CookieJars = HashMap<String, HashMap<String, HashMap<String, String>>>;
+
+// --- Input-size limits for the parsing helpers (audit finding #11) ---
+//
+// All of these guard the host *outside* the QuickJS context. The 64 MiB
+// memory cap on the JS side does not protect against `amigo.htmlQueryAll`
+// allocating gigabytes on the host heap, so we cap inputs before they reach
+// `scraper`, `regex`, or the base64 decoder.
+
+/// Cap on regex pattern length. Real-world hoster regexes top out at a few
+/// hundred chars; anything bigger is almost certainly a ReDoS payload or a
+/// plugin bug.
+const MAX_REGEX_PATTERN_BYTES: usize = 4 * 1024;
+
+/// Cap on the haystack passed to regex helpers. 4 MiB is comfortably larger
+/// than any HTML page a plugin needs to parse with regex (use the proper
+/// `htmlQuery*` family for big documents anyway).
+const MAX_REGEX_TEXT_BYTES: usize = 4 * 1024 * 1024;
+
+/// Compile-time cap for a single regex's NFA.
+const REGEX_COMPILE_SIZE_LIMIT: usize = 1024 * 1024;
+
+/// Compile-time cap for a regex's DFA cache.
+const REGEX_DFA_SIZE_LIMIT: usize = 2 * 1024 * 1024;
+
+/// Cap on HTML inputs to scraper-based helpers. 8 MiB is well past any
+/// legitimate page; bigger inputs are pathological-nesting OOM bombs.
+const MAX_HTML_BYTES: usize = 8 * 1024 * 1024;
+
+/// Cap on base64 input length. The host-side decoder allocates ~3/4 of the
+/// input length on the heap, so unbounded inputs map to unbounded host RAM.
+const MAX_BASE64_INPUT_BYTES: usize = 8 * 1024 * 1024;
+
+fn enforce_input_limit(field: &str, len: usize, max: usize) -> Result<(), String> {
+    if len > max {
+        Err(format!(
+            "{field} too large ({} bytes; limit {} bytes)",
+            len, max
+        ))
+    } else {
+        Ok(())
+    }
+}
+
+/// Compile a regex with the global plugin-side size limits applied. Returns
+/// the compiled `Regex` or a string error suitable for surfacing to the JS
+/// caller.
+fn compile_plugin_regex(pattern: &str) -> Result<regex::Regex, String> {
+    enforce_input_limit("regex pattern", pattern.len(), MAX_REGEX_PATTERN_BYTES)?;
+    regex::RegexBuilder::new(pattern)
+        .size_limit(REGEX_COMPILE_SIZE_LIMIT)
+        .dfa_size_limit(REGEX_DFA_SIZE_LIMIT)
+        .build()
+        .map_err(|e| format!("invalid regex: {e}"))
+}
+
 /// Shared state for the Host API, passed into every plugin call.
 #[derive(Clone)]
 pub struct HostApi {
     http_client: reqwest::Client,
-    cookies: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
+    /// Per-plugin cookie jars (`plugin_id → domain → name → value`). The
+    /// outer key is the calling plugin's id, set at register-time via
+    /// `register_host_api` and not under JS control, so
+    /// `getCookie("real-debrid.com", "auth")` from plugin A cannot read a
+    /// cookie that plugin B stashed under the same domain.
+    cookies: Arc<Mutex<CookieJars>>,
     storage: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
     request_count: Arc<Mutex<u32>>,
     max_requests: u32,
+    /// Per-plugin storage quota (bytes). Counted across all `(key, value)`
+    /// pairs of a single plugin's storage map.
+    max_storage_bytes: u64,
     notify_callback: Option<NotifyCallback>,
     captcha_callback: Option<CaptchaSolveCallback>,
     /// When false, reject plugin HTTP requests whose resolved IP is loopback,
     /// private (RFC1918), link-local, CGNAT, or otherwise non-public.
     allow_private_network: bool,
 }
+
+/// Default per-plugin storage quota when constructed via [`HostApi::new`]
+/// without a SandboxLimits. Matches `SandboxLimits::default().max_storage_bytes`.
+const DEFAULT_MAX_STORAGE_BYTES: u64 = 1024 * 1024;
 
 impl HostApi {
     pub fn new(max_requests: u32) -> Self {
@@ -49,6 +118,7 @@ impl HostApi {
             storage: Arc::new(Mutex::new(HashMap::new())),
             request_count: Arc::new(Mutex::new(0)),
             max_requests,
+            max_storage_bytes: DEFAULT_MAX_STORAGE_BYTES,
             notify_callback: None,
             captcha_callback: None,
             allow_private_network: false,
@@ -60,6 +130,7 @@ impl HostApi {
     pub fn from_sandbox(limits: &crate::sandbox::SandboxLimits) -> Self {
         let mut api = Self::new(limits.max_http_requests);
         api.allow_private_network = limits.allow_private_network;
+        api.max_storage_bytes = limits.max_storage_bytes;
         api
     }
 
@@ -232,29 +303,41 @@ impl HostApi {
     }
 
     // --- Cookie management ---
+    //
+    // Each plugin sees its own private cookie jar. The plugin_id argument is
+    // captured at register-time by the JS bindings (see register_host_api)
+    // so a malicious plugin cannot pass a different plugin_id from JS to
+    // read another plugin's cookies.
 
-    pub async fn set_cookie(&self, domain: &str, name: &str, value: &str) {
+    pub async fn set_cookie(&self, plugin_id: &str, domain: &str, name: &str, value: &str) {
         let mut cookies = self.cookies.lock().await;
         cookies
+            .entry(plugin_id.to_string())
+            .or_default()
             .entry(domain.to_string())
             .or_default()
             .insert(name.to_string(), value.to_string());
     }
 
-    pub async fn get_cookie(&self, domain: &str, name: &str) -> Option<String> {
+    pub async fn get_cookie(&self, plugin_id: &str, domain: &str, name: &str) -> Option<String> {
         let cookies = self.cookies.lock().await;
-        cookies.get(domain)?.get(name).cloned()
+        cookies.get(plugin_id)?.get(domain)?.get(name).cloned()
     }
 
-    pub async fn clear_cookies(&self, domain: &str) {
+    pub async fn clear_cookies(&self, plugin_id: &str, domain: &str) {
         let mut cookies = self.cookies.lock().await;
-        cookies.remove(domain);
+        if let Some(jar) = cookies.get_mut(plugin_id) {
+            jar.remove(domain);
+        }
     }
 
     // --- Parsing helpers ---
 
     pub fn regex_match(&self, pattern: &str, text: &str) -> Option<String> {
-        let re = regex::Regex::new(pattern).ok()?;
+        if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
+            return None;
+        }
+        let re = compile_plugin_regex(pattern).ok()?;
         let caps = re.captures(text)?;
         caps.get(1)
             .or_else(|| caps.get(0))
@@ -262,7 +345,10 @@ impl HostApi {
     }
 
     pub fn regex_match_all(&self, pattern: &str, text: &str) -> Vec<String> {
-        let re = match regex::Regex::new(pattern) {
+        if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
+            return Vec::new();
+        }
+        let re = match compile_plugin_regex(pattern) {
             Ok(r) => r,
             Err(_) => return Vec::new(),
         };
@@ -320,7 +406,12 @@ impl HostApi {
         Ok(hex::encode(mac.finalize().into_bytes()))
     }
 
-    pub fn aes_decrypt_cbc(&self, data_b64: &str, key_hex: &str, iv_hex: &str) -> Result<String, String> {
+    pub fn aes_decrypt_cbc(
+        &self,
+        data_b64: &str,
+        key_hex: &str,
+        iv_hex: &str,
+    ) -> Result<String, String> {
         use aes::cipher::{BlockDecryptMut, KeyIvInit};
         type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
 
@@ -336,8 +427,8 @@ impl HostApi {
         }
 
         let mut buf = data.clone();
-        let decryptor = Aes128CbcDec::new_from_slices(&key, &iv)
-            .map_err(|e| format!("AES init error: {e}"))?;
+        let decryptor =
+            Aes128CbcDec::new_from_slices(&key, &iv).map_err(|e| format!("AES init error: {e}"))?;
         let decrypted = decryptor
             .decrypt_padded_mut::<aes::cipher::block_padding::Pkcs7>(&mut buf)
             .map_err(|e| format!("AES decrypt error: {e}"))?;
@@ -345,7 +436,12 @@ impl HostApi {
         Ok(base64_encode_bytes(decrypted))
     }
 
-    pub fn aes_encrypt_cbc(&self, data_b64: &str, key_hex: &str, iv_hex: &str) -> Result<String, String> {
+    pub fn aes_encrypt_cbc(
+        &self,
+        data_b64: &str,
+        key_hex: &str,
+        iv_hex: &str,
+    ) -> Result<String, String> {
         use aes::cipher::{BlockEncryptMut, KeyIvInit};
         type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
 
@@ -366,8 +462,8 @@ impl HostApi {
         let mut buf = vec![0u8; padded_len];
         buf[..data.len()].copy_from_slice(&data);
 
-        let encryptor = Aes128CbcEnc::new_from_slices(&key, &iv)
-            .map_err(|e| format!("AES init error: {e}"))?;
+        let encryptor =
+            Aes128CbcEnc::new_from_slices(&key, &iv).map_err(|e| format!("AES init error: {e}"))?;
         let encrypted = encryptor
             .encrypt_padded_mut::<aes::cipher::block_padding::Pkcs7>(&mut buf, data.len())
             .map_err(|e| format!("AES encrypt error: {e}"))?;
@@ -382,12 +478,35 @@ impl HostApi {
         storage.get(plugin_id)?.get(key).cloned()
     }
 
-    pub async fn storage_set(&self, plugin_id: &str, key: &str, value: &str) {
+    /// Persist `value` under `(plugin_id, key)`. Enforces the per-plugin
+    /// quota configured via [`SandboxLimits::max_storage_bytes`]. The total
+    /// is computed across all `(key, value)` byte lengths in this plugin's
+    /// map after the proposed write; an oversize write is rejected without
+    /// mutating state. Returns `Err` with a human-readable message on quota
+    /// breach so the JS binding can surface it as a thrown exception.
+    pub async fn storage_set(&self, plugin_id: &str, key: &str, value: &str) -> Result<(), String> {
         let mut storage = self.storage.lock().await;
-        storage
-            .entry(plugin_id.to_string())
-            .or_default()
-            .insert(key.to_string(), value.to_string());
+        let map = storage.entry(plugin_id.to_string()).or_default();
+
+        let old_size = map
+            .get(key)
+            .map(|v| v.len() as u64 + key.len() as u64)
+            .unwrap_or(0);
+        let new_pair = key.len() as u64 + value.len() as u64;
+        let mut total: u64 = map
+            .iter()
+            .map(|(k, v)| k.len() as u64 + v.len() as u64)
+            .sum();
+        total = total.saturating_sub(old_size).saturating_add(new_pair);
+
+        if total > self.max_storage_bytes {
+            return Err(format!(
+                "storage quota exceeded for plugin '{plugin_id}': {total} > {} bytes",
+                self.max_storage_bytes
+            ));
+        }
+        map.insert(key.to_string(), value.to_string());
+        Ok(())
     }
 
     pub async fn storage_delete(&self, plugin_id: &str, key: &str) {
@@ -488,17 +607,17 @@ impl HostApi {
 
     pub fn html_query_all(&self, html: &str, selector: &str) -> Result<Vec<String>, String> {
         use scraper::{Html, Selector};
+        enforce_input_limit("html", html.len(), MAX_HTML_BYTES)?;
         let doc = Html::parse_document(html);
-        let sel =
-            Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
+        let sel = Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
         Ok(doc.select(&sel).map(|el| el.html()).collect())
     }
 
     pub fn html_query_text(&self, html: &str, selector: &str) -> Result<Option<String>, String> {
         use scraper::{Html, Selector};
+        enforce_input_limit("html", html.len(), MAX_HTML_BYTES)?;
         let doc = Html::parse_document(html);
-        let sel =
-            Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
+        let sel = Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
         Ok(doc
             .select(&sel)
             .next()
@@ -512,9 +631,9 @@ impl HostApi {
         attr: &str,
     ) -> Result<Option<String>, String> {
         use scraper::{Html, Selector};
+        enforce_input_limit("html", html.len(), MAX_HTML_BYTES)?;
         let doc = Html::parse_document(html);
-        let sel =
-            Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
+        let sel = Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
         Ok(doc
             .select(&sel)
             .next()
@@ -523,6 +642,9 @@ impl HostApi {
 
     pub fn html_search_meta(&self, html: &str, names: &[String]) -> Option<String> {
         use scraper::{Html, Selector};
+        if enforce_input_limit("html", html.len(), MAX_HTML_BYTES).is_err() {
+            return None;
+        }
         let doc = Html::parse_document(html);
         let selectors = ["meta[name='{name}']", "meta[property='{name}']"];
         for name in names {
@@ -533,9 +655,9 @@ impl HostApi {
                         .select(&sel)
                         .next()
                         .and_then(|el| el.value().attr("content"))
-                    {
-                        return Some(content.to_string());
-                    }
+                {
+                    return Some(content.to_string());
+                }
             }
         }
         None
@@ -543,6 +665,9 @@ impl HostApi {
 
     pub fn html_extract_title(&self, html: &str) -> Option<String> {
         use scraper::{Html, Selector};
+        if enforce_input_limit("html", html.len(), MAX_HTML_BYTES).is_err() {
+            return None;
+        }
         let doc = Html::parse_document(html);
         let sel = Selector::parse("title").ok()?;
         doc.select(&sel)
@@ -552,6 +677,9 @@ impl HostApi {
 
     pub fn html_hidden_inputs(&self, html: &str) -> HashMap<String, String> {
         use scraper::{Html, Selector};
+        if enforce_input_limit("html", html.len(), MAX_HTML_BYTES).is_err() {
+            return HashMap::new();
+        }
         let doc = Html::parse_document(html);
         let sel = match Selector::parse("input[type='hidden']") {
             Ok(s) => s,
@@ -567,7 +695,10 @@ impl HostApi {
     }
 
     pub fn search_json(&self, start_pattern: &str, html: &str) -> Option<String> {
-        let re = regex::Regex::new(start_pattern).ok()?;
+        if enforce_input_limit("search_json html", html.len(), MAX_HTML_BYTES).is_err() {
+            return None;
+        }
+        let re = compile_plugin_regex(start_pattern).ok()?;
         let m = re.find(html)?;
         let rest = &html[m.end()..];
 
@@ -618,18 +749,27 @@ impl HostApi {
     // --- Additional regex helpers ---
 
     pub fn regex_replace(&self, pattern: &str, text: &str, replacement: &str) -> Option<String> {
-        let re = regex::Regex::new(pattern).ok()?;
+        if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
+            return None;
+        }
+        let re = compile_plugin_regex(pattern).ok()?;
         Some(re.replace_all(text, replacement).into_owned())
     }
 
     pub fn regex_test(&self, pattern: &str, text: &str) -> bool {
-        regex::Regex::new(pattern)
+        if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
+            return false;
+        }
+        compile_plugin_regex(pattern)
             .map(|re| re.is_match(text))
             .unwrap_or(false)
     }
 
     pub fn regex_split(&self, pattern: &str, text: &str) -> Vec<String> {
-        match regex::Regex::new(pattern) {
+        if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
+            return vec![text.to_string()];
+        }
+        match compile_plugin_regex(pattern) {
             Ok(re) => re.split(text).map(|s| s.to_string()).collect(),
             Err(_) => vec![text.to_string()],
         }
@@ -766,9 +906,9 @@ impl HostApi {
         attr: &str,
     ) -> Result<Vec<String>, String> {
         use scraper::{Html, Selector};
+        enforce_input_limit("html", html.len(), MAX_HTML_BYTES)?;
         let doc = Html::parse_document(html);
-        let sel =
-            Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
+        let sel = Selector::parse(selector).map_err(|e| format!("Invalid CSS selector: {e:?}"))?;
         Ok(doc
             .select(&sel)
             .filter_map(|el| el.value().attr(attr).map(|s| s.to_string()))
@@ -1017,6 +1157,10 @@ pub fn register_host_api(
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
     // --- Cookies ---
+    // plugin_id is captured at register-time and is NOT exposed to JS, so a
+    // plugin's setCookie / getCookie / clearCookies always operate on its
+    // own private cookie jar.
+    let pid = plugin_id.to_string();
     let h = host.clone();
     amigo
         .set(
@@ -1025,15 +1169,17 @@ pub fn register_host_api(
                 ctx.clone(),
                 move |domain: String, name: String, value: String| {
                     let h = h.clone();
+                    let pid = pid.clone();
                     let rt = tokio::runtime::Handle::current();
                     tokio::task::block_in_place(|| {
-                        rt.block_on(async { h.set_cookie(&domain, &name, &value).await })
+                        rt.block_on(async { h.set_cookie(&pid, &domain, &name, &value).await })
                     });
                 },
             ),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
+    let pid = plugin_id.to_string();
     let h = host.clone();
     amigo
         .set(
@@ -1042,24 +1188,27 @@ pub fn register_host_api(
                 ctx.clone(),
                 move |domain: String, name: String| -> rquickjs::Result<Option<String>> {
                     let h = h.clone();
+                    let pid = pid.clone();
                     let rt = tokio::runtime::Handle::current();
                     Ok(tokio::task::block_in_place(|| {
-                        rt.block_on(async { h.get_cookie(&domain, &name).await })
+                        rt.block_on(async { h.get_cookie(&pid, &domain, &name).await })
                     }))
                 },
             ),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
+    let pid = plugin_id.to_string();
     let h = host.clone();
     amigo
         .set(
             "clearCookies",
             Function::new(ctx.clone(), move |domain: String| {
                 let h = h.clone();
+                let pid = pid.clone();
                 let rt = tokio::runtime::Handle::current();
                 tokio::task::block_in_place(|| {
-                    rt.block_on(async { h.clear_cookies(&domain).await })
+                    rt.block_on(async { h.clear_cookies(&pid, &domain).await })
                 });
             }),
         )
@@ -1121,7 +1270,9 @@ pub fn register_host_api(
     amigo
         .set(
             "md5",
-            Function::new(ctx.clone(), move |input: String| -> String { h.md5(&input) }),
+            Function::new(ctx.clone(), move |input: String| -> String {
+                h.md5(&input)
+            }),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
@@ -1129,7 +1280,9 @@ pub fn register_host_api(
     amigo
         .set(
             "sha1",
-            Function::new(ctx.clone(), move |input: String| -> String { h.sha1(&input) }),
+            Function::new(ctx.clone(), move |input: String| -> String {
+                h.sha1(&input)
+            }),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
@@ -1255,14 +1408,18 @@ pub fn register_host_api(
     amigo
         .set(
             "storageSet",
-            Function::new(ctx.clone(), move |key: String, value: String| {
-                let h = h.clone();
-                let pid = pid.clone();
-                let rt = tokio::runtime::Handle::current();
-                tokio::task::block_in_place(|| {
-                    rt.block_on(async { h.storage_set(&pid, &key, &value).await })
-                });
-            }),
+            Function::new(
+                ctx.clone(),
+                move |key: String, value: String| -> rquickjs::Result<()> {
+                    let h = h.clone();
+                    let pid = pid.clone();
+                    let rt = tokio::runtime::Handle::current();
+                    tokio::task::block_in_place(|| {
+                        rt.block_on(async { h.storage_set(&pid, &key, &value).await })
+                    })
+                    .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
+                },
+            ),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
@@ -1316,10 +1473,9 @@ pub fn register_host_api(
     amigo
         .set(
             "urlFilename",
-            Function::new(
-                ctx.clone(),
-                move |url: String| -> Option<String> { h.url_filename(&url) },
-            ),
+            Function::new(ctx.clone(), move |url: String| -> Option<String> {
+                h.url_filename(&url)
+            }),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
@@ -1439,10 +1595,9 @@ pub fn register_host_api(
     amigo
         .set(
             "regexTest",
-            Function::new(
-                ctx.clone(),
-                move |pattern: String, text: String| -> bool { h.regex_test(&pattern, &text) },
-            ),
+            Function::new(ctx.clone(), move |pattern: String, text: String| -> bool {
+                h.regex_test(&pattern, &text)
+            }),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
@@ -1465,10 +1620,9 @@ pub fn register_host_api(
     amigo
         .set(
             "parseDuration",
-            Function::new(
-                ctx.clone(),
-                move |input: String| -> Option<f64> { h.parse_duration(&input) },
-            ),
+            Function::new(ctx.clone(), move |input: String| -> Option<f64> {
+                h.parse_duration(&input)
+            }),
         )
         .map_err(|e| crate::Error::Execution(e.to_string()))?;
 
@@ -1552,8 +1706,7 @@ pub fn register_host_api(
                     let result = tokio::task::block_in_place(|| {
                         rt.block_on(async { h.http_get_binary(&url, headers).await })
                     });
-                    result
-                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
+                    result.map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
                 },
             ),
         )
@@ -1574,8 +1727,7 @@ pub fn register_host_api(
                     let result = tokio::task::block_in_place(|| {
                         rt.block_on(async { h.http_follow_redirects(&url, headers).await })
                     });
-                    result
-                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
+                    result.map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
                 },
             ),
         )
@@ -1587,10 +1739,7 @@ pub fn register_host_api(
             "__rawHtmlQueryAllAttrs",
             Function::new(
                 ctx.clone(),
-                move |html: String,
-                      selector: String,
-                      attr: String|
-                      -> rquickjs::Result<String> {
+                move |html: String, selector: String, attr: String| -> rquickjs::Result<String> {
                     h.html_query_all_attrs(&html, &selector, &attr)
                         .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()))
                         .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
@@ -1615,9 +1764,7 @@ pub fn register_host_api(
                     let ct = captcha_type.unwrap_or_else(|| "image".to_string());
                     let rt = tokio::runtime::Handle::current();
                     let result = tokio::task::block_in_place(|| {
-                        rt.block_on(async {
-                            h.solve_captcha(&pid, "", &image_url, &ct).await
-                        })
+                        rt.block_on(async { h.solve_captcha(&pid, "", &image_url, &ct).await })
                     });
                     result.map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
                 },
@@ -1668,9 +1815,8 @@ pub fn register_host_api(
 
     // Inject JS shim layer: wraps __raw* functions to return objects instead of JSON strings.
     // This keeps the Rust→JS boundary simple (string returns) while giving plugins a clean API.
-    ctx.eval::<JsValue<'_>, _>(JS_SHIM).map_err(|e| {
-        crate::Error::Execution(format!("Failed to inject JS shim: {e}"))
-    })?;
+    ctx.eval::<JsValue<'_>, _>(JS_SHIM)
+        .map_err(|e| crate::Error::Execution(format!("Failed to inject JS shim: {e}")))?;
 
     Ok(())
 }
@@ -1678,6 +1824,7 @@ pub fn register_host_api(
 // --- Base64 helpers ---
 
 fn base64_decode_bytes(input: &str) -> Result<Vec<u8>, String> {
+    enforce_input_limit("base64 input", input.len(), MAX_BASE64_INPUT_BYTES)?;
     let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut table = [0u8; 256];
     for (i, &c) in alphabet.iter().enumerate() {
@@ -1808,7 +1955,9 @@ mod tests {
         // IPv4-mapped loopback
         assert!(is_blocked_ip("::ffff:127.0.0.1".parse::<IpAddr>().unwrap()));
         // Public v6 is allowed.
-        assert!(!is_blocked_ip("2606:4700:4700::1111".parse::<IpAddr>().unwrap()));
+        assert!(!is_blocked_ip(
+            "2606:4700:4700::1111".parse::<IpAddr>().unwrap()
+        ));
     }
 
     #[tokio::test]
@@ -1834,7 +1983,10 @@ mod tests {
     #[tokio::test]
     async fn ssrf_rejects_non_http_scheme() {
         let api = HostApi::new(20);
-        let err = api.check_url_allowed("file:///etc/passwd").await.unwrap_err();
+        let err = api
+            .check_url_allowed("file:///etc/passwd")
+            .await
+            .unwrap_err();
         assert!(err.contains("scheme not allowed"), "{err}");
     }
 
@@ -1870,25 +2022,130 @@ mod tests {
     #[tokio::test]
     async fn test_cookie_management() {
         let api = HostApi::new(20);
-        api.set_cookie("example.com", "session", "abc123").await;
+        api.set_cookie("plugin-x", "example.com", "session", "abc123")
+            .await;
         assert_eq!(
-            api.get_cookie("example.com", "session").await,
+            api.get_cookie("plugin-x", "example.com", "session").await,
             Some("abc123".to_string())
         );
-        api.clear_cookies("example.com").await;
-        assert_eq!(api.get_cookie("example.com", "session").await, None);
+        api.clear_cookies("plugin-x", "example.com").await;
+        assert_eq!(
+            api.get_cookie("plugin-x", "example.com", "session").await,
+            None
+        );
+    }
+
+    #[tokio::test]
+    async fn cookies_isolated_between_plugins() {
+        // The previous shared-jar implementation let plugin B read a
+        // cookie that plugin A had stashed under the same domain. Each
+        // plugin must now see only its own cookies.
+        let api = HostApi::new(20);
+        api.set_cookie("real-debrid", "real-debrid.com", "auth", "secret-A")
+            .await;
+        api.set_cookie("attacker", "real-debrid.com", "auth", "secret-B")
+            .await;
+        assert_eq!(
+            api.get_cookie("real-debrid", "real-debrid.com", "auth")
+                .await,
+            Some("secret-A".to_string())
+        );
+        assert_eq!(
+            api.get_cookie("attacker", "real-debrid.com", "auth").await,
+            Some("secret-B".to_string())
+        );
+        // Clearing one plugin's jar must not touch the other's.
+        api.clear_cookies("attacker", "real-debrid.com").await;
+        assert_eq!(
+            api.get_cookie("attacker", "real-debrid.com", "auth").await,
+            None
+        );
+        assert_eq!(
+            api.get_cookie("real-debrid", "real-debrid.com", "auth")
+                .await,
+            Some("secret-A".to_string())
+        );
     }
 
     #[tokio::test]
     async fn test_storage() {
         let api = HostApi::new(20);
-        api.storage_set("test-plugin", "key1", "value1").await;
+        api.storage_set("test-plugin", "key1", "value1")
+            .await
+            .expect("write within quota must succeed");
         assert_eq!(
             api.storage_get("test-plugin", "key1").await,
             Some("value1".to_string())
         );
         api.storage_delete("test-plugin", "key1").await;
         assert_eq!(api.storage_get("test-plugin", "key1").await, None);
+    }
+
+    #[tokio::test]
+    async fn storage_quota_rejects_oversized_write() {
+        // 1 KiB quota — we should be able to set a value just under the
+        // limit, then fail to grow past it.
+        let limits = crate::sandbox::SandboxLimits {
+            max_storage_bytes: 1024,
+            ..Default::default()
+        };
+        let api = HostApi::from_sandbox(&limits);
+
+        // Fill with ~900 bytes (key+value), still under quota.
+        let big = "x".repeat(900);
+        api.storage_set("p", "big", &big)
+            .await
+            .expect("first write fits");
+
+        // Try to push the total above 1 KiB with a 200-byte value.
+        let err = api
+            .storage_set("p", "extra", &"y".repeat(200))
+            .await
+            .expect_err("second write must exceed quota");
+        assert!(err.contains("storage quota exceeded"), "msg: {err}");
+
+        // The rejected write must not have mutated state.
+        assert_eq!(api.storage_get("p", "extra").await, None);
+        assert_eq!(api.storage_get("p", "big").await, Some(big));
+    }
+
+    #[tokio::test]
+    async fn storage_quota_replacing_existing_key_uses_delta() {
+        // Replacing an existing key must charge only the *delta*, not the
+        // full new value, otherwise plugins can't shrink an oversized blob
+        // even when freeing space is the goal.
+        let limits = crate::sandbox::SandboxLimits {
+            max_storage_bytes: 1024,
+            ..Default::default()
+        };
+        let api = HostApi::from_sandbox(&limits);
+        api.storage_set("p", "k", &"a".repeat(900))
+            .await
+            .expect("initial 900-byte write fits");
+        // Overwriting with the same size must succeed.
+        api.storage_set("p", "k", &"b".repeat(900))
+            .await
+            .expect("same-size overwrite must succeed");
+        // Shrinking is also fine.
+        api.storage_set("p", "k", &"c".repeat(10))
+            .await
+            .expect("shrinking write must succeed");
+    }
+
+    #[tokio::test]
+    async fn storage_quota_isolated_per_plugin() {
+        let limits = crate::sandbox::SandboxLimits {
+            max_storage_bytes: 1024,
+            ..Default::default()
+        };
+        let api = HostApi::from_sandbox(&limits);
+        api.storage_set("plugin-a", "k", &"a".repeat(900))
+            .await
+            .expect("a fits");
+        // Plugin B has its own quota — must still be able to write.
+        api.storage_set("plugin-b", "k", &"b".repeat(900))
+            .await
+            .expect("b has its own quota");
     }
 
     #[test]
@@ -1901,7 +2158,10 @@ mod tests {
     #[test]
     fn test_sha1() {
         let api = HostApi::new(20);
-        assert_eq!(api.sha1("hello"), "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d");
+        assert_eq!(
+            api.sha1("hello"),
+            "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d"
+        );
     }
 
     #[test]
@@ -1961,7 +2221,8 @@ mod tests {
     fn test_url_helpers() {
         let api = HostApi::new(20);
         assert_eq!(
-            api.url_resolve("https://example.com/page/", "../file.zip").unwrap(),
+            api.url_resolve("https://example.com/page/", "../file.zip")
+                .unwrap(),
             "https://example.com/file.zip"
         );
         assert_eq!(
@@ -1986,5 +2247,60 @@ mod tests {
             api.html_query_attr(html, "a", "href").unwrap(),
             Some("/file.zip".to_string())
         );
+    }
+
+    // --- Resource-limit regression tests (audit #11) ---
+
+    #[test]
+    fn regex_helpers_reject_oversize_text() {
+        let api = HostApi::new(20);
+        let huge = "a".repeat(MAX_REGEX_TEXT_BYTES + 1);
+        assert_eq!(huge.len(), MAX_REGEX_TEXT_BYTES + 1, "sanity");
+        // Match returns None instead of grinding through gigabytes.
+        assert!(api.regex_match(r"a+", &huge).is_none());
+        // match_all degrades gracefully to an empty result.
+        assert!(api.regex_match_all(r"a+", &huge).is_empty());
+        // replace returns None when the text is oversized. Arg order is
+        // regex_replace(pattern, text, replacement) — putting the huge
+        // string in the replacement slot is a different test.
+        let replaced = api.regex_replace(r"a", &huge, "b");
+        assert!(
+            replaced.is_none(),
+            "regex_replace must short-circuit on oversize input"
+        );
+        // test returns false.
+        assert!(!api.regex_test(r"a", &huge));
+        // split returns the input untouched.
+        let split = api.regex_split(r"a", &huge);
+        assert_eq!(split.len(), 1);
+        assert_eq!(split[0].len(), huge.len());
+    }
+
+    #[test]
+    fn regex_helpers_reject_oversize_pattern() {
+        // A pathologically long pattern is rejected at compile time so we
+        // never even try to run it.
+        let api = HostApi::new(20);
+        let pattern = "a".repeat(MAX_REGEX_PATTERN_BYTES + 1);
+        assert_eq!(api.regex_match(&pattern, "aaaa"), None);
+    }
+
+    #[test]
+    fn html_helpers_reject_oversize_input() {
+        let api = HostApi::new(20);
+        let huge = "<p>".repeat(MAX_HTML_BYTES); // > 8 MiB
+        assert!(api.html_query_all(&huge, "p").is_err());
+        assert!(api.html_query_text(&huge, "p").is_err());
+        assert!(api.html_query_attr(&huge, "p", "x").is_err());
+        assert_eq!(api.html_extract_title(&huge), None);
+        assert!(api.html_hidden_inputs(&huge).is_empty());
+    }
+
+    #[test]
+    fn base64_decode_rejects_oversize_input() {
+        let api = HostApi::new(20);
+        let huge = "A".repeat(MAX_BASE64_INPUT_BYTES + 1);
+        let err = api.base64_decode(&huge).expect_err("must reject");
+        assert!(err.contains("base64 input too large"), "msg: {err}");
     }
 }

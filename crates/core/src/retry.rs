@@ -64,10 +64,7 @@ pub enum RetryOutcome<T> {
 /// Execute an async operation with retries according to the given policy.
 ///
 /// The closure receives the current attempt number (0-based) and returns a `RetryOutcome`.
-pub async fn retry_with_policy<F, Fut, T>(
-    policy: &RetryPolicy,
-    mut f: F,
-) -> Result<T, crate::Error>
+pub async fn retry_with_policy<F, Fut, T>(policy: &RetryPolicy, mut f: F) -> Result<T, crate::Error>
 where
     F: FnMut(u32) -> Fut,
     Fut: Future<Output = RetryOutcome<T>>,
@@ -77,7 +74,10 @@ where
     for attempt in 0..=policy.max_retries {
         if attempt > 0 {
             let delay = policy.delay_for_attempt(attempt - 1);
-            warn!("Retrying (attempt {attempt}/{}) after {delay:?}", policy.max_retries);
+            warn!(
+                "Retrying (attempt {attempt}/{}) after {delay:?}",
+                policy.max_retries
+            );
             tokio::time::sleep(delay).await;
         }
 
@@ -136,9 +136,8 @@ mod tests {
             max_delay: Duration::from_millis(100),
         };
 
-        let result = retry_with_policy(&policy, |_attempt| async {
-            RetryOutcome::Success(42)
-        }).await;
+        let result =
+            retry_with_policy(&policy, |_attempt| async { RetryOutcome::Success(42) }).await;
 
         assert_eq!(result.unwrap(), 42);
     }
@@ -164,7 +163,8 @@ mod tests {
                     RetryOutcome::Success("done")
                 }
             }
-        }).await;
+        })
+        .await;
 
         assert_eq!(result.unwrap(), "done");
         assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 3);
@@ -187,7 +187,8 @@ mod tests {
                 c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
                 RetryOutcome::Abort(crate::Error::Other("fatal".into()))
             }
-        }).await;
+        })
+        .await;
 
         assert!(result.is_err());
         assert_eq!(counter.load(std::sync::atomic::Ordering::SeqCst), 1);
@@ -203,7 +204,8 @@ mod tests {
 
         let result: Result<(), _> = retry_with_policy(&policy, |_attempt| async {
             RetryOutcome::Retry(crate::Error::Other("always fails".into()))
-        }).await;
+        })
+        .await;
 
         assert!(result.is_err());
     }

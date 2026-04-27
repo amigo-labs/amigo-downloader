@@ -48,10 +48,7 @@ pub fn spawn_background_tasks(
 /// installed plugin. Controlled by `update.auto_update_plugins` in config
 /// (opt-in — defaults to off) with a lower bound of 1 hour between ticks
 /// to stop misconfigured short intervals from hammering the registry.
-fn spawn_plugin_auto_update(
-    coordinator: Arc<Coordinator>,
-    plugin_updater: Arc<PluginUpdater>,
-) {
+fn spawn_plugin_auto_update(coordinator: Arc<Coordinator>, plugin_updater: Arc<PluginUpdater>) {
     tokio::spawn(async move {
         // Sleep once before the first tick so we don't collide with startup
         // plugin discovery. Re-read config each iteration so the user can
@@ -246,6 +243,13 @@ async fn fetch_and_process_feed(
     http_client: &reqwest::Client,
     feed: &amigo_core::storage::RssFeedRow,
 ) -> Result<u32, amigo_core::Error> {
+    // Re-validate the feed URL on every poll. Even though add_rss_feed
+    // checked it at insert time, a DNS A-record can later flip to a private
+    // IP — a textbook SSRF rebinding pattern.
+    crate::net_guard::validate_outbound_url(&feed.url, false)
+        .await
+        .map_err(|e| amigo_core::Error::Other(format!("RSS feed URL rejected: {e}")))?;
+
     let resp = http_client
         .get(&feed.url)
         .header("User-Agent", "amigo-downloader/0.1.0")
@@ -298,10 +302,8 @@ fn extract_nzb_links(xml: &str) -> Vec<String> {
     let mut links = Vec::new();
 
     // Find enclosure URLs with .nzb
-    let enclosure_pattern = regex::Regex::new(
-        r#"<enclosure[^>]+url=["']([^"']+\.nzb[^"']*)["']"#,
-    )
-    .unwrap();
+    let enclosure_pattern =
+        regex::Regex::new(r#"<enclosure[^>]+url=["']([^"']+\.nzb[^"']*)["']"#).unwrap();
     for cap in enclosure_pattern.captures_iter(xml) {
         if let Some(url) = cap.get(1) {
             links.push(url.as_str().to_string());
@@ -309,8 +311,7 @@ fn extract_nzb_links(xml: &str) -> Vec<String> {
     }
 
     // Find <link> elements pointing to .nzb files
-    let link_pattern =
-        regex::Regex::new(r#"<link[^>]*>([^<]+\.nzb[^<]*)</link>"#).unwrap();
+    let link_pattern = regex::Regex::new(r#"<link[^>]*>([^<]+\.nzb[^<]*)</link>"#).unwrap();
     for cap in link_pattern.captures_iter(xml) {
         if let Some(url) = cap.get(1) {
             let url = url.as_str().trim();
@@ -321,8 +322,7 @@ fn extract_nzb_links(xml: &str) -> Vec<String> {
     }
 
     // Find href attributes pointing to .nzb
-    let href_pattern =
-        regex::Regex::new(r#"href=["']([^"']+\.nzb[^"']*)["']"#).unwrap();
+    let href_pattern = regex::Regex::new(r#"href=["']([^"']+\.nzb[^"']*)["']"#).unwrap();
     for cap in href_pattern.captures_iter(xml) {
         if let Some(url) = cap.get(1) {
             links.push(url.as_str().to_string());

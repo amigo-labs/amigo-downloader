@@ -18,7 +18,10 @@ COPY web-ui web-ui
 RUN pnpm --filter amigo-web-ui build
 
 # Stage 2: Build Rust
-FROM rust:1-bookworm AS rust-builder
+# Pinning to a minor + dated tag stops a silent base-image bump from
+# changing the toolchain mid-release. Bump deliberately when the project
+# moves to a new MSRV.
+FROM rust:1.94-bookworm AS rust-builder
 RUN apt-get update && apt-get install -y protobuf-compiler libclang-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
@@ -28,6 +31,12 @@ COPY --from=ui-builder /app/web-ui/dist web-ui/dist
 RUN cargo build --release --bin amigo-server --bin amigo-dl
 
 # Stage 3: Runtime
+# Stays on the floating bookworm-slim tag so security updates land
+# without manual intervention; rebuilds in CI are reproducible because
+# the rust-builder stage above is pinned and the runtime stage only
+# adds ca-certificates + wget on top. If reproducibility against a
+# specific debian point release matters more than auto-patching, swap
+# the tag for a dated one (e.g. debian:bookworm-20250908-slim).
 FROM debian:bookworm-slim
 
 # Install runtime dependencies (ca-certificates for TLS, wget for healthcheck)

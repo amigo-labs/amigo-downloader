@@ -12,7 +12,7 @@ use tracing::debug;
 
 use crate::traits::{MediaStream, StreamProtocol};
 
-use super::{resolve_url, GenericExtractor};
+use super::{GenericExtractor, resolve_url};
 
 /// Detect JW Player embeds and extract stream URLs.
 ///
@@ -26,8 +26,9 @@ pub fn detect_jwplayer(html: &str, base_url: &str) -> Vec<MediaStream> {
 
     // Pattern 1: jwplayer().setup() with file
     let setup_re = Regex::new(
-        r#"jwplayer\s*\([^)]*\)\s*\.\s*setup\s*\(\s*\{[^}]*?["']?file["']?\s*:\s*["']([^"']+)["']"#
-    ).unwrap();
+        r#"jwplayer\s*\([^)]*\)\s*\.\s*setup\s*\(\s*\{[^}]*?["']?file["']?\s*:\s*["']([^"']+)["']"#,
+    )
+    .unwrap();
     for cap in setup_re.captures_iter(html) {
         if let Some(url) = cap.get(1) {
             add_media_stream(&mut streams, url.as_str(), base_url, "JW Player setup.file");
@@ -36,9 +37,7 @@ pub fn detect_jwplayer(html: &str, base_url: &str) -> Vec<MediaStream> {
 
     // Pattern 2: Generic file property near jwplayer references
     if html.contains("jwplayer") || html.contains("jwDefaults") || html.contains("jw-video") {
-        let file_re = Regex::new(
-            r#"["']?file["']?\s*:\s*["'](https?://[^"']+)["']"#
-        ).unwrap();
+        let file_re = Regex::new(r#"["']?file["']?\s*:\s*["'](https?://[^"']+)["']"#).unwrap();
         for cap in file_re.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 let url_str = url.as_str();
@@ -52,12 +51,8 @@ pub fn detect_jwplayer(html: &str, base_url: &str) -> Vec<MediaStream> {
         }
 
         // Pattern 3: sources array
-        let sources_re = Regex::new(
-            r#"["']?sources["']?\s*:\s*\[([^\]]+)\]"#
-        ).unwrap();
-        let src_file_re = Regex::new(
-            r#"["']?file["']?\s*:\s*["'](https?://[^"']+)["']"#
-        ).unwrap();
+        let sources_re = Regex::new(r#"["']?sources["']?\s*:\s*\[([^\]]+)\]"#).unwrap();
+        let src_file_re = Regex::new(r#"["']?file["']?\s*:\s*["'](https?://[^"']+)["']"#).unwrap();
         for cap in sources_re.captures_iter(html) {
             if let Some(inner) = cap.get(1) {
                 for src_cap in src_file_re.captures_iter(inner.as_str()) {
@@ -81,11 +76,11 @@ pub fn detect_videojs(html: &str, base_url: &str) -> Vec<MediaStream> {
     let mut streams = Vec::new();
 
     // data-setup attribute with sources
-    let data_setup_re = Regex::new(
-        r#"data-setup\s*=\s*'([^']+)'"#
-    ).unwrap();
+    let data_setup_re = Regex::new(r#"data-setup\s*=\s*'([^']+)'"#).unwrap();
     for cap in data_setup_re.captures_iter(html) {
-        if let Some(json) = cap.get(1).and_then(|json_str| serde_json::from_str::<serde_json::Value>(json_str.as_str()).ok())
+        if let Some(json) = cap
+            .get(1)
+            .and_then(|json_str| serde_json::from_str::<serde_json::Value>(json_str.as_str()).ok())
             && let Some(sources) = json.get("sources").and_then(|s| s.as_array())
         {
             for source in sources {
@@ -98,9 +93,9 @@ pub fn detect_videojs(html: &str, base_url: &str) -> Vec<MediaStream> {
 
     // videojs().src() calls
     if html.contains("videojs") || html.contains("video-js") {
-        let src_re = Regex::new(
-            r#"\.src\s*\(\s*\{[^}]*["']?src["']?\s*:\s*["'](https?://[^"']+)["']"#
-        ).unwrap();
+        let src_re =
+            Regex::new(r#"\.src\s*\(\s*\{[^}]*["']?src["']?\s*:\s*["'](https?://[^"']+)["']"#)
+                .unwrap();
         for cap in src_re.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 add_media_stream(&mut streams, url.as_str(), base_url, "Video.js src()");
@@ -122,9 +117,9 @@ pub fn detect_brightcove(html: &str, base_url: &str) -> Vec<MediaStream> {
     // Brightcove often includes source URLs in data attributes or script configs
     if html.contains("brightcove") || html.contains("bc-player") || html.contains("data-video-id") {
         // Look for video sources in Brightcove config
-        let source_re = Regex::new(
-            r#"["']?src["']?\s*:\s*["'](https?://[^"']+\.(?:m3u8|mpd|mp4)[^"']*)["']"#
-        ).unwrap();
+        let source_re =
+            Regex::new(r#"["']?src["']?\s*:\s*["'](https?://[^"']+\.(?:m3u8|mpd|mp4)[^"']*)["']"#)
+                .unwrap();
         for cap in source_re.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 add_media_stream(&mut streams, url.as_str(), base_url, "Brightcove");
@@ -145,8 +140,9 @@ pub fn detect_flowplayer(html: &str, base_url: &str) -> Vec<MediaStream> {
     if html.contains("flowplayer") {
         // Extract clip sources
         let clip_re = Regex::new(
-            r#"["']?src["']?\s*:\s*["'](https?://[^"']+\.(?:m3u8|mpd|mp4|webm)[^"']*)["']"#
-        ).unwrap();
+            r#"["']?src["']?\s*:\s*["'](https?://[^"']+\.(?:m3u8|mpd|mp4|webm)[^"']*)["']"#,
+        )
+        .unwrap();
         for cap in clip_re.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 add_media_stream(&mut streams, url.as_str(), base_url, "Flowplayer");
@@ -168,8 +164,9 @@ pub fn detect_wistia(html: &str, base_url: &str) -> Vec<MediaStream> {
     if html.contains("wistia") {
         // Wistia often embeds asset URLs in JSON config
         let asset_re = Regex::new(
-            r#"["']?url["']?\s*:\s*["'](https?://[^"']*wistia[^"']*\.(?:m3u8|mp4|bin)[^"']*)["']"#
-        ).unwrap();
+            r#"["']?url["']?\s*:\s*["'](https?://[^"']*wistia[^"']*\.(?:m3u8|mp4|bin)[^"']*)["']"#,
+        )
+        .unwrap();
         for cap in asset_re.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 add_media_stream(&mut streams, url.as_str(), base_url, "Wistia");
@@ -201,7 +198,12 @@ fn add_media_stream(streams: &mut Vec<MediaStream>, url: &str, base_url: &str, s
     }
 
     let proto = GenericExtractor::protocol_from_url(&resolved).unwrap_or(StreamProtocol::Http);
-    debug!("Found media via {}: {} ({})", source, resolved, format!("{:?}", proto));
+    debug!(
+        "Found media via {}: {} ({})",
+        source,
+        resolved,
+        format!("{:?}", proto)
+    );
     streams.push(GenericExtractor::stream_from_url(&resolved, proto));
 }
 

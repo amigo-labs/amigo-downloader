@@ -196,12 +196,13 @@ impl UsenetDownloader {
 
         // Verify CRC if available
         if let Some(expected_crc) = decoded.part_crc32.or(decoded.crc32)
-            && !yenc::verify_crc32(&decoded.data, expected_crc) {
-                return Err(crate::Error::Other(format!(
-                    "CRC32 mismatch for segment {}",
-                    segment.message_id
-                )));
-            }
+            && !yenc::verify_crc32(&decoded.data, expected_crc)
+        {
+            return Err(crate::Error::Other(format!(
+                "CRC32 mismatch for segment {}",
+                segment.message_id
+            )));
+        }
 
         Ok(decoded.data)
     }

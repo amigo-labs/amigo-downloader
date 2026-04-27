@@ -6,13 +6,39 @@
 
 use std::collections::HashMap;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 use tracing::{debug, warn};
 
 use crate::ExtractorError;
 
-/// In-memory cache for player JS code, keyed by player URL.
-static PLAYER_JS_CACHE: std::sync::LazyLock<Mutex<HashMap<String, String>>> =
+/// Maximum age of a cached player.js entry. YouTube rotates the player JS
+/// roughly daily; refreshing every 12 h keeps us aligned without spamming
+/// their CDN. Without a TTL the previous in-memory cache held stale JS
+/// forever, which is what bit n-function extraction whenever YouTube
+/// shipped new obfuscation.
+const PLAYER_JS_CACHE_TTL: Duration = Duration::from_secs(12 * 60 * 60);
+
+/// Hard cap on the in-memory player.js cache. YouTube only has a handful of
+/// player versions live at any time; we don't need more.
+const PLAYER_JS_CACHE_MAX_ENTRIES: usize = 8;
+
+/// Cap on how long the QuickJS interpreter may run while transforming a
+/// single `n` value. The player JS comes from YouTube and is normally
+/// trusted, but a malicious or corrupted variant could otherwise hang the
+/// extractor thread indefinitely.
+const N_TRANSFORM_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[derive(Clone)]
+struct PlayerJsEntry {
+    js: String,
+    fetched_at: Instant,
+}
+
+/// In-memory cache for player JS code, keyed by player URL. Entries expire
+/// after [`PLAYER_JS_CACHE_TTL`] and the cache is capped at
+/// [`PLAYER_JS_CACHE_MAX_ENTRIES`] (oldest entry evicted on insert).
+static PLAYER_JS_CACHE: std::sync::LazyLock<Mutex<HashMap<String, PlayerJsEntry>>> =
     std::sync::LazyLock::new(|| Mutex::new(HashMap::new()));
 
 /// Fetch and cache the player JS source code.
@@ -20,12 +46,17 @@ async fn get_player_js(
     client: &reqwest::Client,
     player_js_url: &str,
 ) -> Result<String, ExtractorError> {
-    // Check cache
+    // Check cache, honouring TTL.
     {
-        let cache = PLAYER_JS_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-        if let Some(js) = cache.get(player_js_url) {
-            debug!("Player JS cache hit: {player_js_url}");
-            return Ok(js.clone());
+        let mut cache = PLAYER_JS_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(entry) = cache.get(player_js_url) {
+            if entry.fetched_at.elapsed() < PLAYER_JS_CACHE_TTL {
+                debug!("Player JS cache hit: {player_js_url}");
+                return Ok(entry.js.clone());
+            }
+            // Stale — drop the entry so the fetch path repopulates.
+            cache.remove(player_js_url);
+            debug!("Player JS cache miss (stale): {player_js_url}");
         }
     }
 
@@ -38,10 +69,24 @@ async fn get_player_js(
 
     let js = resp.text().await?;
 
-    // Cache it
+    // Cache it, evicting the oldest entry first if we're at capacity.
     {
         let mut cache = PLAYER_JS_CACHE.lock().unwrap_or_else(|e| e.into_inner());
-        cache.insert(player_js_url.to_string(), js.clone());
+        if cache.len() >= PLAYER_JS_CACHE_MAX_ENTRIES
+            && let Some(oldest) = cache
+                .iter()
+                .min_by_key(|(_, v)| v.fetched_at)
+                .map(|(k, _)| k.clone())
+        {
+            cache.remove(&oldest);
+        }
+        cache.insert(
+            player_js_url.to_string(),
+            PlayerJsEntry {
+                js: js.clone(),
+                fetched_at: Instant::now(),
+            },
+        );
     }
 
     Ok(js)
@@ -70,8 +115,13 @@ fn extract_n_function(player_js: &str) -> Result<String, ExtractorError> {
     let re = regex::Regex::new(patterns[0]).map_err(|e| ExtractorError::Other(e.to_string()))?;
 
     if let Some(caps) = re.captures(player_js) {
-        let func_name = caps.get(1)
-            .ok_or_else(|| ExtractorError::Other("N-challenge regex matched but capture group 1 missing".into()))?
+        let func_name = caps
+            .get(1)
+            .ok_or_else(|| {
+                ExtractorError::Other(
+                    "N-challenge regex matched but capture group 1 missing".into(),
+                )
+            })?
             .as_str();
         let array_idx = caps.get(2).map(|m| m.as_str());
 
@@ -120,10 +170,7 @@ fn extract_named_function(js: &str, name: &str) -> Option<String> {
         && let Some(end) = find_closing_brace(js, m.end() - 1)
     {
         let func_offset = m.as_str().find("function").unwrap_or(0);
-        return Some(format!(
-            "var {name}={}",
-            &js[m.start() + func_offset..=end]
-        ));
+        return Some(format!("var {name}={}", &js[m.start() + func_offset..=end]));
     }
 
     // Try: function name(a){...}
@@ -284,13 +331,21 @@ pub async fn transform_n_param(
 }
 
 /// Execute the N-parameter transform function using QuickJS.
+///
+/// QuickJS is configured with a 5-second deadline via its interrupt handler
+/// so a malicious or corrupt player JS can't hang the extractor thread, and
+/// a 16 MiB heap so a malformed transform can't OOM the host. The runtime is
+/// thrown away after every call — the cached player JS is the only state we
+/// keep across invocations.
 fn execute_n_transform(n_function_js: &str, n_value: &str) -> Result<String, ExtractorError> {
-    // Run JS in a blocking context since rquickjs is sync
     let n_function_js = n_function_js.to_string();
     let n_value = n_value.to_string();
 
     let rt = rquickjs::Runtime::new()
         .map_err(|e| ExtractorError::NChallenge(format!("Failed to create JS runtime: {e}")))?;
+    rt.set_memory_limit(16 * 1024 * 1024);
+    let deadline = Instant::now() + N_TRANSFORM_TIMEOUT;
+    rt.set_interrupt_handler(Some(Box::new(move || Instant::now() >= deadline)));
     let ctx = rquickjs::Context::full(&rt)
         .map_err(|e| ExtractorError::NChallenge(format!("Failed to create JS context: {e}")))?;
 

@@ -215,14 +215,15 @@ impl super::ProtocolBackend for HlsDownloader {
         progress_tx: watch::Sender<DownloadProgress>,
         cancel_rx: tokio::sync::oneshot::Receiver<()>,
     ) -> Result<(u64, std::path::PathBuf), crate::Error> {
-        let fname = job
-            .filename
-            .clone()
-            .unwrap_or_else(|| {
-                job.url.rsplit('/').next().unwrap_or("stream").to_string()
-                    .replace(".m3u8", ".ts")
-                    .replace(".m3u", ".ts")
-            });
+        let fname = job.filename.clone().unwrap_or_else(|| {
+            job.url
+                .rsplit('/')
+                .next()
+                .unwrap_or("stream")
+                .to_string()
+                .replace(".m3u8", ".ts")
+                .replace(".m3u", ".ts")
+        });
         let dest = job.download_dir.join(&fname);
         tokio::fs::create_dir_all(&job.download_dir).await?;
 
