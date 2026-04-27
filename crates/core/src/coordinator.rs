@@ -92,10 +92,23 @@ pub struct Coordinator {
     queue_notify: Arc<tokio::sync::Notify>,
 }
 
+/// Capacity of the per-coordinator broadcast channel that fans
+/// `DownloadEvent`s out to every subscriber. Sized to absorb the bursts
+/// produced at startup recovery (50+ status changes in flight) and during
+/// large parallel-download progress fan-out.
+const EVENT_CHANNEL_CAPACITY: usize = 4096;
+
 impl Coordinator {
     pub fn new(config: Config, storage: Storage) -> Self {
         let bandwidth = BandwidthLimiter::new(config.bandwidth.clone());
-        let (event_tx, _) = broadcast::channel(256);
+        // Broadcast buffer holds DownloadEvent values for every subscriber
+        // (WebSocket clients, webhook dispatcher, plugin notifications, …).
+        // The previous capacity of 256 was easy to overflow at startup —
+        // recovering 50 downloads or running a webhook dispatcher with a
+        // slow receiver triggered Lagged() and dropped progress events. A
+        // larger buffer absorbs spiky bursts; subscribers that fall behind
+        // still see Lagged but with much more headroom.
+        let (event_tx, _) = broadcast::channel(EVENT_CHANNEL_CAPACITY);
 
         let retry_policy = RetryPolicy::from(config.retry.clone());
 
@@ -334,20 +347,23 @@ impl Coordinator {
         let queue_notify = self.queue_notify.clone();
 
         tokio::spawn(async move {
-            let mut original_progress_tx = Some(progress_tx);
+            // The progress watch channel lives across all retries. The
+            // forwarder spawned earlier reads `progress_rx`; if we created
+            // a fresh `(tx, _rx)` per retry the forwarder kept its old rx
+            // and the UI silently froze at "0%" through every retry. We
+            // clone the same sender into each attempt so every byte of
+            // progress flows through the original watch.
             let mut original_cancel_rx = Some(cancel_rx);
 
             let result = retry_with_policy(&retry_policy, |attempt| {
-                // Use the original progress_tx/cancel_rx on first attempt, create new ones for retries
-                let ptx = original_progress_tx.take().unwrap_or_else(|| {
-                    let (tx, _rx) = watch::channel(DownloadProgress {
-                        bytes_downloaded: 0,
-                        total_bytes: None,
-                        speed_bytes_per_sec: 0,
-                    });
-                    tx
-                });
+                let ptx = progress_tx.clone();
 
+                // The cancel channel is still a oneshot: cancel() consumes
+                // the sender so a second cancel is a no-op (intentional).
+                // After the first attempt that consumed `cancel_rx` the
+                // download cannot be cancelled mid-retry; that branch is
+                // tracked by audit #13 follow-up. Use a placeholder rx so
+                // retries don't block on cancel forever.
                 let crx = original_cancel_rx.take().unwrap_or_else(|| {
                     let (_tx, rx) = tokio::sync::oneshot::channel();
                     rx
