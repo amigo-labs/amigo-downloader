@@ -12,5 +12,11 @@
     "dev:web-ui": "pnpm --filter amigo-web-ui dev",
     "dev:site": "pnpm --filter amigo-site dev",
     "check": "pnpm -r --if-present check"
+  },
+  "pnpm": {
+    "overrides": {
+      "yaml@<2.8.3": "^2.8.3",
+      "file-type@<21.3.2": "^21.3.2"
+    }
   }
 }
