@@ -12,6 +12,17 @@ env:
   RUSTFLAGS: "-D warnings"
 
 jobs:
+  rust-fmt:
+    name: Rust (rustfmt)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Format check
+        run: cargo fmt --all -- --check
+
   rust:
     name: Rust (clippy, test)
     runs-on: ubuntu-latest
@@ -37,6 +48,39 @@ jobs:
 
       - name: Test
         run: cargo test --workspace --exclude amigo-desktop --locked
+
+  cargo-audit:
+    name: Cargo audit (known vulnerabilities)
+    runs-on: ubuntu-latest
+    # Don't gate the merge on audit alerts — advisories land mid-week and
+    # we don't want to block unrelated PRs. Continue-on-error keeps the
+    # signal visible without making the job a hard requirement.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install cargo-audit
+        run: cargo install --locked cargo-audit
+      - name: Run cargo audit
+        run: cargo audit --deny warnings
+
+  pnpm-audit:
+    name: pnpm audit (npm advisories)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: pnpm audit (moderate+)
+        run: pnpm audit --audit-level moderate
 
   web-ui:
     name: Web UI (build + check)
