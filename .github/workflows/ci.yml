@@ -52,10 +52,6 @@ jobs:
   cargo-audit:
     name: Cargo audit (known vulnerabilities)
     runs-on: ubuntu-latest
-    # Don't gate the merge on audit alerts — advisories land mid-week and
-    # we don't want to block unrelated PRs. Continue-on-error keeps the
-    # signal visible without making the job a hard requirement.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
