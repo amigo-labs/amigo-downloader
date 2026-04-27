@@ -146,3 +146,9 @@ jobs:
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Synthetic non-zero pubkey to satisfy plugin-runtime/build.rs;
+          # this image is only loaded locally for the build smoke test
+          # and never pushed. Real release / nightly images must inject
+          # the genuine registry pubkey via secret.
+          build-args: |
+            AMIGO_REGISTRY_PUBKEY_HEX=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
