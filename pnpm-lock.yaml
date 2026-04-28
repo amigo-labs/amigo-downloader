@@ -10,11 +10,7 @@ overrides:
 
 importers:
 
-  .:
-    devDependencies:
-      wrangler:
-        specifier: ^4.85.0
-        version: 4.85.0
+  .: {}
 
   packages/ui:
     dependencies:
@@ -72,6 +68,10 @@ importers:
       typescript:
         specifier: ^5.6.0
         version: 5.9.3
+    devDependencies:
+      wrangler:
+        specifier: ^4.85.0
+        version: 4.85.0
 
   web-ui:
     dependencies:

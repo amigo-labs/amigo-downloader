@@ -12,11 +12,8 @@
     "dev:web-ui": "pnpm --filter amigo-web-ui dev",
     "dev:site": "pnpm --filter amigo-site dev",
     "check": "pnpm -r --if-present check",
-    "deploy:site": "pnpm build:site && wrangler deploy",
-    "preview:site": "pnpm build:site && wrangler dev"
-  },
-  "devDependencies": {
-    "wrangler": "^4.85.0"
+    "deploy:site": "pnpm --filter amigo-site build && pnpm --filter amigo-site deploy",
+    "preview:site": "pnpm --filter amigo-site build && pnpm --filter amigo-site wrangler:dev"
   },
   "pnpm": {
     "overrides": {
