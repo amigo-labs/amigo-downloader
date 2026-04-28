@@ -1,0 +1,42 @@
+/**
+ * Cloudflare Workers configuration — Static Assets only.
+ *
+ * The marketing site ships as a fully-static Astro build, so we deploy
+ * via Workers Static Assets: Cloudflare serves `site/dist/` from the
+ * edge directly, no Worker code involved.
+ *
+ * This config lives at the workspace root so Cloudflare Workers Builds
+ * can run `npx wrangler deploy` from the default working directory.
+ * `build.command` runs the Astro build first, then wrangler uploads the
+ * generated `site/dist/`. Wrangler 4's pnpm-workspace detection only
+ * fires when there is no wrangler config in cwd; with this file present
+ * at root, deploys from the workspace root work cleanly.
+ *
+ * Workers Builds dashboard configuration:
+ *   Root directory:    / (workspace root)
+ *   Build command:     pnpm install --frozen-lockfile
+ *   Deploy command:    npx wrangler deploy
+ *
+ * Local development:
+ *   pnpm deploy:site         deploy from workspace root
+ *   pnpm preview:site        local preview via `wrangler dev`
+ *
+ * 404 handling: `not_found_handling: "404-page"` makes Cloudflare serve
+ * `site/dist/404.html` (which Astro generates automatically) for any
+ * path that does not resolve to a static asset.
+ */
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "amigo-downloader",
+  "compatibility_date": "2026-04-27",
+  "build": {
+    "command": "pnpm --filter amigo-site build"
+  },
+  "assets": {
+    "directory": "./site/dist",
+    "not_found_handling": "404-page"
+  },
+  "observability": {
+    "enabled": true
+  }
+}
