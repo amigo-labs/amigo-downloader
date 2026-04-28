@@ -7,12 +7,7 @@
     "dev": "astro dev",
     "build": "astro build",
     "preview": "astro preview",
-    "check": "astro check",
-    "deploy": "wrangler deploy",
-    "wrangler:dev": "wrangler dev"
-  },
-  "devDependencies": {
-    "wrangler": "^4.85.0"
+    "check": "astro check"
   },
   "dependencies": {
     "@amigo/ui": "workspace:*",
