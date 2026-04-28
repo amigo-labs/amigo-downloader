@@ -1,10 +1,10 @@
 name: Site (build check)
 
-# Cloudflare Pages is connected to this repo as a Git integration and
-# handles the actual build + deploy on every push/PR. This workflow only
-# runs a fast dry build + type check in CI so broken Astro code gets a
-# red check on the PR before CF even tries to deploy — catching type
-# errors `astro check` would otherwise miss.
+# Cloudflare Workers Builds is connected to this repo as a Git integration
+# (see wrangler.jsonc at the workspace root) and handles the actual build +
+# deploy on every push/PR. This workflow only runs a fast dry build + type
+# check in CI so broken Astro code gets a red check on the PR before CF even
+# tries to deploy — catching type errors `astro check` would otherwise miss.
 
 on:
   push:

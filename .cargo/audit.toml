@@ -1,0 +1,43 @@
+# cargo-audit configuration.
+#
+# Ignored advisories are unmaintained-crate / unsound warnings on
+# transitive dependencies that we can't fix from this repository — they
+# will close out as upstream moves to maintained replacements (Tauri 3 /
+# GTK4, dash-mpd switching off backoff, SWC dropping unic-*).
+#
+# Ignore real vulnerabilities only with explicit justification. New
+# entries should reference an upstream issue or a follow-up task.
+
+[advisories]
+ignore = [
+    # Tauri 2 still uses GTK3 bindings on Linux. Closes when Tauri moves
+    # to GTK4 (planned for Tauri 3); these are all unmaintained-only,
+    # not actual vulnerabilities.
+    "RUSTSEC-2024-0411", # gdkwayland-sys
+    "RUSTSEC-2024-0412", # gdk
+    "RUSTSEC-2024-0413", # atk
+    "RUSTSEC-2024-0414", # gdkx11-sys
+    "RUSTSEC-2024-0415", # gtk
+    "RUSTSEC-2024-0416", # atk-sys
+    "RUSTSEC-2024-0417", # gdkx11
+    "RUSTSEC-2024-0418", # gdk-sys
+    "RUSTSEC-2024-0419", # gtk3-macros
+    "RUSTSEC-2024-0420", # gtk-sys
+    "RUSTSEC-2024-0429", # glib unsoundness in VariantStrIter — Tauri only
+    # Other unmaintained transitive deps with no easy bump:
+    "RUSTSEC-2024-0370", # proc-macro-error — deep transitive
+    "RUSTSEC-2024-0384", # instant — deep transitive (many crates still use it)
+    "RUSTSEC-2025-0012", # backoff — pulled by dash-mpd
+    "RUSTSEC-2025-0057", # fxhash — deep transitive
+    "RUSTSEC-2025-0119", # number_prefix — pulled by indicatif
+    # SWC's TypeScript transformer chain still pulls the unic-* family:
+    "RUSTSEC-2025-0075", # unic-char-range
+    "RUSTSEC-2025-0080", # unic-common
+    "RUSTSEC-2025-0081", # unic-char-property
+    "RUSTSEC-2025-0098", # unic-ucd-version
+    "RUSTSEC-2025-0100", # unic-ucd-ident
+    # rand 0.7.3 unsoundness — only triggered when a custom logger calls
+    # rand::rng() recursively. Reachable copy is a deep transitive in
+    # the SWC chain; we don't install a custom logger that uses rand.
+    "RUSTSEC-2026-0097",
+]

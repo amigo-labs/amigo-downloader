@@ -52,10 +52,6 @@ jobs:
   cargo-audit:
     name: Cargo audit (known vulnerabilities)
     runs-on: ubuntu-latest
-    # Don't gate the merge on audit alerts — advisories land mid-week and
-    # we don't want to block unrelated PRs. Continue-on-error keeps the
-    # signal visible without making the job a hard requirement.
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -67,7 +63,6 @@ jobs:
   pnpm-audit:
     name: pnpm audit (npm advisories)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -147,3 +142,9 @@ jobs:
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Synthetic non-zero pubkey to satisfy plugin-runtime/build.rs;
+          # this image is only loaded locally for the build smoke test
+          # and never pushed. Real release / nightly images must inject
+          # the genuine registry pubkey via secret.
+          build-args: |
+            AMIGO_REGISTRY_PUBKEY_HEX=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef

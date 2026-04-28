@@ -13,6 +13,9 @@ site/.astro/
 # pnpm
 .pnpm-store/
 
+# Cloudflare Workers
+.wrangler/
+
 # Tauri
 tauri/target/
 
