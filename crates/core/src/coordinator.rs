@@ -218,11 +218,24 @@ impl Coordinator {
             None => (url.to_string(), filename.clone(), detect_protocol(url)),
         };
 
-        // Determine download directory (category-based subdirectory if set)
+        // Determine download directory (category-based subdirectory if set).
+        //
+        // The category arrives untrusted from the REST API; sanitize_category
+        // rejects traversal, absolute paths, and platform-invalid characters
+        // so a caller can't escape the configured download root.
         let base_dir = self.storage.download_dir.to_string_lossy().to_string();
-        let download_dir = match &category {
-            Some(cat) if !cat.is_empty() => format!("{base_dir}/{cat}"),
-            _ => base_dir,
+        let sanitized_category = category.as_deref().and_then(crate::sanitize_category);
+        if let Some(raw) = category.as_deref()
+            && !raw.is_empty()
+            && sanitized_category.is_none()
+        {
+            return Err(crate::Error::Other(format!(
+                "invalid category {raw:?}: must not contain path traversal, absolute paths, or NUL bytes"
+            )));
+        }
+        let download_dir = match sanitized_category.as_deref() {
+            Some(cat) => format!("{base_dir}/{cat}"),
+            None => base_dir,
         };
 
         let row = DownloadRow {
@@ -233,7 +246,7 @@ impl Coordinator {
             filesize: resolved.as_ref().and_then(|r| r.filesize),
             status: QueueStatus::Queued.as_str().to_string(),
             priority,
-            package_id: category.clone(),
+            package_id: sanitized_category.clone(),
             plugin_id: None,
             download_dir: Some(download_dir),
             bytes_downloaded: 0,

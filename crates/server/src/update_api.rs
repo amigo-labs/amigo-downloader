@@ -220,26 +220,77 @@ async fn list_available_plugins(
     Ok(Json(entries))
 }
 
-async fn update_all_plugins() -> (StatusCode, Json<serde_json::Value>) {
-    // TODO: Rune's types aren't Send — needs spawn_blocking wrapper for PluginLoader operations
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(serde_json::json!({"error": "Plugin bulk update not yet implemented"})),
-    )
+/// Map a plugin-runtime error to an HTTP status. NotFound and registry
+/// failures are user-actionable; checksum/version issues are integrity
+/// problems; everything else is treated as an internal failure.
+fn plugin_error_status(err: &amigo_plugin_runtime::Error) -> StatusCode {
+    match err {
+        amigo_plugin_runtime::Error::NotFound(_) => StatusCode::NOT_FOUND,
+        amigo_plugin_runtime::Error::RegistryUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
+        amigo_plugin_runtime::Error::ChecksumMismatch(_) => StatusCode::BAD_GATEWAY,
+        amigo_plugin_runtime::Error::IncompatibleVersion { .. } => StatusCode::CONFLICT,
+        _ => StatusCode::INTERNAL_SERVER_ERROR,
+    }
 }
 
-async fn update_plugin(Path(id): Path<String>) -> (StatusCode, Json<serde_json::Value>) {
-    // TODO: Rune's types aren't Send — needs spawn_blocking wrapper
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(serde_json::json!({"error": format!("Plugin update not yet implemented for {id}")})),
-    )
+async fn update_all_plugins(
+    State(state): State<AppState>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    match state.plugin_updater.update_all_plugins().await {
+        Ok(updated) => {
+            let entries: Vec<serde_json::Value> = updated
+                .into_iter()
+                .map(|m| serde_json::json!({"id": m.id, "version": m.version}))
+                .collect();
+            (
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "updated": entries.len(),
+                    "plugins": entries,
+                })),
+            )
+        }
+        Err(e) => (
+            plugin_error_status(&e),
+            Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
 }
 
-async fn install_plugin(Path(id): Path<String>) -> (StatusCode, Json<serde_json::Value>) {
-    // TODO: Rune's types aren't Send — needs spawn_blocking wrapper
-    (
-        StatusCode::NOT_IMPLEMENTED,
-        Json(serde_json::json!({"error": format!("Plugin install not yet implemented for {id}")})),
-    )
+async fn update_plugin(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    match state.plugin_updater.update_plugin(&id).await {
+        Ok(meta) => (
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "id": meta.id,
+                "version": meta.version,
+            })),
+        ),
+        Err(e) => (
+            plugin_error_status(&e),
+            Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
+}
+
+async fn install_plugin(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> (StatusCode, Json<serde_json::Value>) {
+    match state.plugin_updater.install_plugin(&id).await {
+        Ok(meta) => (
+            StatusCode::CREATED,
+            Json(serde_json::json!({
+                "id": meta.id,
+                "version": meta.version,
+            })),
+        ),
+        Err(e) => (
+            plugin_error_status(&e),
+            Json(serde_json::json!({"error": e.to_string()})),
+        ),
+    }
 }

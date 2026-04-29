@@ -295,12 +295,32 @@ impl HttpDownloader {
             .send()
             .await?;
 
-        if resp.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+        // The server must explicitly acknowledge the Range request with
+        // 206 Partial Content. A 200 OK means the server ignored the header
+        // and is sending the *full* file from offset 0; appending that to
+        // the existing partial bytes would corrupt the output. Treat both
+        // 200 and 416 as "resume not possible" and restart cleanly.
+        let status = resp.status();
+        if status == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
             warn!("Server doesn't support range requests, restarting download");
             return self.download_single(url, dest, progress_tx).await;
         }
+        if status == reqwest::StatusCode::OK {
+            warn!(
+                "Server ignored Range header (returned 200 OK instead of 206); \
+                 restarting download to avoid appending duplicate bytes"
+            );
+            return self.download_single(url, dest, progress_tx).await;
+        }
 
+        // Anything other than 206 Partial Content is unexpected here —
+        // bubble up via error_for_status so 4xx/5xx surface as Http errors.
         let resp = resp.error_for_status()?;
+        if resp.status() != reqwest::StatusCode::PARTIAL_CONTENT {
+            return Err(crate::Error::Other(format!(
+                "unexpected resume response status {status}"
+            )));
+        }
         let total = resp
             .content_length()
             .map(|remaining| remaining + existing_size);

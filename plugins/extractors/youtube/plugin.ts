@@ -9,6 +9,17 @@ function extractVideoId(url: string): string | null {
     return m;
 }
 
+// YouTube's player API occasionally returns HTML (e.g. consent pages or
+// region-blocked stub responses) on the JSON endpoint. Surface that as a
+// plugin-level error rather than a raw SyntaxError from JSON.parse.
+function parseApiJson(body: string, label: string): any {
+    try {
+        return JSON.parse(body);
+    } catch (e) {
+        throw new Error("YouTube " + label + " returned invalid JSON: " + (e as Error).message);
+    }
+}
+
 module.exports = {
     id: "youtube",
     name: "YouTube",
@@ -50,7 +61,7 @@ module.exports = {
             throw new Error("YouTube API returned status " + resp.status);
         }
 
-        const data = JSON.parse(resp.body);
+        const data = parseApiJson(resp.body, "youtubei/v1/player");
         const title = amigo.traverse(data, "videoDetails.title") as string | null;
         if (!title) throw new Error("Could not get video title");
 

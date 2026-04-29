@@ -29,6 +29,14 @@ function getApiKey(): string {
     return key;
 }
 
+function parseApiJson(body: string, label: string): any {
+    try {
+        return JSON.parse(body);
+    } catch (e) {
+        throw new Error("AllDebrid " + label + " returned invalid JSON: " + (e as Error).message);
+    }
+}
+
 module.exports = {
     id: "alldebrid",
     name: "AllDebrid",
@@ -49,7 +57,7 @@ module.exports = {
             throw new Error("AllDebrid API error (" + resp.status + "): " + resp.body);
         }
 
-        const data = JSON.parse(resp.body);
+        const data = parseApiJson(resp.body, "/link/unlock");
 
         if (data.status !== "success" || !data.data || !data.data.link) {
             const errMsg = data.error ? data.error.message : "unknown error";
@@ -86,7 +94,7 @@ module.exports = {
             API_BASE + "/user?agent=amigo-downloader&apikey=" + encodeURIComponent(password)
         );
         if (resp.status === 200) {
-            const data = JSON.parse(resp.body);
+            const data = parseApiJson(resp.body, "/user");
             if (data.status === "success") {
                 amigo.logInfo("Authenticated as: " + data.data.user.username + " (Premium: " + data.data.user.isPremium + ")");
                 return true;
@@ -105,7 +113,7 @@ module.exports = {
         );
 
         if (resp.status === 200) {
-            const data = JSON.parse(resp.body);
+            const data = parseApiJson(resp.body, "/link/infos");
             if (data.status === "success" && data.data && data.data.infos) {
                 const info = data.data.infos[0];
                 if (info && !info.error) return "online";
