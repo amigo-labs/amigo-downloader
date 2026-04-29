@@ -32,6 +32,16 @@ function getApiKey(): string {
     return key;
 }
 
+// Wrap JSON.parse so a malformed API response surfaces as a clear, sourced
+// error instead of a raw SyntaxError that obscures which call failed.
+function parseApiJson(body: string, label: string): any {
+    try {
+        return JSON.parse(body);
+    } catch (e) {
+        throw new Error("Real-Debrid " + label + " returned invalid JSON: " + (e as Error).message);
+    }
+}
+
 module.exports = {
     id: "real-debrid",
     name: "Real-Debrid",
@@ -56,7 +66,7 @@ module.exports = {
             throw new Error("Real-Debrid API error (" + resp.status + "): " + resp.body);
         }
 
-        const data = JSON.parse(resp.body);
+        const data = parseApiJson(resp.body, "/unrestrict/link");
 
         if (!data.download) {
             throw new Error("Real-Debrid could not generate download link for: " + url);
@@ -93,7 +103,7 @@ module.exports = {
             headers: { "Authorization": "Bearer " + password },
         });
         if (resp.status === 200) {
-            const user = JSON.parse(resp.body);
+            const user = parseApiJson(resp.body, "/user");
             amigo.logInfo("Authenticated as: " + user.username + " (Premium: " + user.type + ")");
             return true;
         }
@@ -112,7 +122,7 @@ module.exports = {
         );
 
         if (resp.status === 200) {
-            const data = JSON.parse(resp.body);
+            const data = parseApiJson(resp.body, "/unrestrict/check");
             if (data.supported === 1) return "online";
             return "offline";
         }

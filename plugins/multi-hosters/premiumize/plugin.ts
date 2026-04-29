@@ -28,6 +28,14 @@ function getApiKey(): string {
     return key;
 }
 
+function parseApiJson(body: string, label: string): any {
+    try {
+        return JSON.parse(body);
+    } catch (e) {
+        throw new Error("Premiumize " + label + " returned invalid JSON: " + (e as Error).message);
+    }
+}
+
 module.exports = {
     id: "premiumize",
     name: "Premiumize",
@@ -50,7 +58,7 @@ module.exports = {
             throw new Error("Premiumize API error (" + resp.status + "): " + resp.body);
         }
 
-        const data = JSON.parse(resp.body);
+        const data = parseApiJson(resp.body, "/transfer/directdl");
 
         if (data.status !== "success" || !data.content || data.content.length === 0) {
             throw new Error("Premiumize could not resolve: " + url + " — " + (data.message || "unknown error"));
@@ -86,7 +94,7 @@ module.exports = {
             headers: { "Authorization": "Bearer " + password },
         });
         if (resp.status === 200) {
-            const user = JSON.parse(resp.body);
+            const user = parseApiJson(resp.body, "/account/info");
             if (user.status === "success") {
                 amigo.logInfo("Authenticated as: " + user.customer_id + " (Premium until: " + user.premium_until + ")");
                 return true;
@@ -107,7 +115,7 @@ module.exports = {
         );
 
         if (resp.status === 200) {
-            const data = JSON.parse(resp.body);
+            const data = parseApiJson(resp.body, "/transfer/directdl");
             return data.status === "success" ? "online" : "offline";
         }
         return "unknown";
