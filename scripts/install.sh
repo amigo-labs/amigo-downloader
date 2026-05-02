@@ -1,24 +1,23 @@
 #!/bin/bash
 set -euo pipefail
 
-# amigo-dl installer — downloads the latest nightly CLI binary.
+# amigo-dl installer — downloads the latest stable CLI binary.
 # Usage: curl -fsSL https://raw.githubusercontent.com/amigo-labs/amigo-downloader/main/scripts/install.sh | bash
 
 REPO="amigo-labs/amigo-downloader"
 INSTALL_DIR="${AMIGO_INSTALL_DIR:-/usr/local/bin}"
-TAG="${AMIGO_TAG:-latest}"  # override with AMIGO_TAG=v0.2.0 or AMIGO_TAG=nightly
+TAG="${AMIGO_TAG:-latest}"  # override with AMIGO_TAG=v0.2.0
 
 # Resolve "latest" to the actual release tag via GitHub API
 if [ "$TAG" = "latest" ]; then
     RESOLVED=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
         | grep '"tag_name"' | head -1 | sed 's/.*"\(.*\)".*/\1/' || true)
-    if [ -n "$RESOLVED" ]; then
-        TAG="$RESOLVED"
-        echo "Latest stable release: ${TAG}"
-    else
-        echo "No stable release found, falling back to nightly"
-        TAG="nightly"
+    if [ -z "$RESOLVED" ]; then
+        echo "No stable release found yet. Set AMIGO_TAG=<tag> to install a specific version."
+        exit 1
     fi
+    TAG="$RESOLVED"
+    echo "Latest stable release: ${TAG}"
 fi
 
 # Detect OS and architecture
