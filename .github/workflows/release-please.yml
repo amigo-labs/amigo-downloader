@@ -39,8 +39,8 @@ jobs:
       - name: Enable auto-merge on release PR
         env:
           GH_TOKEN: ${{ secrets.RELEASE_PLEASE_TOKEN }}
+          PR_NUMBER: ${{ fromJSON(needs.release-please.outputs.pr).number }}
         run: |
-          PR_NUMBER=$(echo '${{ needs.release-please.outputs.pr }}' | jq -r '.number')
           gh pr merge "$PR_NUMBER" \
             --repo "${{ github.repository }}" \
             --squash \
