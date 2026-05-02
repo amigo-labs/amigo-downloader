@@ -1,24 +1,42 @@
 #!/bin/bash
 set -euo pipefail
 
-# amigo-dl installer — downloads the latest nightly CLI binary.
+# amigo-dl installer — downloads the latest stable CLI binary.
 # Usage: curl -fsSL https://raw.githubusercontent.com/amigo-labs/amigo-downloader/main/scripts/install.sh | bash
 
 REPO="amigo-labs/amigo-downloader"
 INSTALL_DIR="${AMIGO_INSTALL_DIR:-/usr/local/bin}"
-TAG="${AMIGO_TAG:-latest}"  # override with AMIGO_TAG=v0.2.0 or AMIGO_TAG=nightly
+TAG="${AMIGO_TAG:-latest}"  # override with AMIGO_TAG=v0.2.0
 
 # Resolve "latest" to the actual release tag via GitHub API
 if [ "$TAG" = "latest" ]; then
-    RESOLVED=$(curl -fsSL "https://api.github.com/repos/${REPO}/releases/latest" \
-        | grep '"tag_name"' | head -1 | sed 's/.*"\(.*\)".*/\1/' || true)
-    if [ -n "$RESOLVED" ]; then
-        TAG="$RESOLVED"
-        echo "Latest stable release: ${TAG}"
-    else
-        echo "No stable release found, falling back to nightly"
-        TAG="nightly"
+    API_URL="https://api.github.com/repos/${REPO}/releases/latest"
+    RESPONSE_FILE="$(mktemp)"
+    trap 'rm -f "$RESPONSE_FILE"' EXIT
+    HTTP_STATUS=$(curl -sSL -o "$RESPONSE_FILE" -w '%{http_code}' "$API_URL" || echo "000")
+    case "$HTTP_STATUS" in
+        200) ;;
+        404)
+            echo "No stable release exists yet for ${REPO}. Set AMIGO_TAG=<tag> to install a specific version." >&2
+            exit 1
+            ;;
+        000)
+            echo "Failed to reach GitHub API at ${API_URL}. Check your network connection." >&2
+            exit 1
+            ;;
+        *)
+            echo "GitHub API returned HTTP ${HTTP_STATUS} for ${API_URL}." >&2
+            exit 1
+            ;;
+    esac
+    TAG=$(grep '"tag_name"' "$RESPONSE_FILE" | head -1 | sed 's/.*"\(.*\)".*/\1/')
+    rm -f "$RESPONSE_FILE"
+    trap - EXIT
+    if [ -z "$TAG" ]; then
+        echo "Could not parse tag_name from GitHub API response." >&2
+        exit 1
     fi
+    echo "Latest stable release: ${TAG}"
 fi
 
 # Detect OS and architecture
