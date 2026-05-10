@@ -5,6 +5,7 @@
       "release-type": "rust",
       "component": "amigo-downloader",
       "changelog-path": "CHANGELOG.md",
+      "release-as": "0.1.0",
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": true,
       "extra-files": [
