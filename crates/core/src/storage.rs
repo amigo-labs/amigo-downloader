@@ -164,6 +164,22 @@ CREATE INDEX IF NOT EXISTS idx_history_completed ON history(completed_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_expires ON sessions(expires_at);
 CREATE INDEX IF NOT EXISTS idx_pairing_expires ON pairing_requests(expires_at);
 CREATE INDEX IF NOT EXISTS idx_pairing_status ON pairing_requests(status);
+
+-- Drop pre-existing duplicate active rows so the partial-unique index below
+-- can be built on databases that already raced. Keeps the oldest row per URL.
+DELETE FROM downloads
+WHERE status IN ('queued', 'downloading', 'paused')
+  AND rowid NOT IN (
+      SELECT MIN(rowid) FROM downloads
+      WHERE status IN ('queued', 'downloading', 'paused')
+      GROUP BY url
+  );
+
+-- Atomically prevent two active downloads for the same URL. Completed/failed
+-- rows are excluded so a finished URL can be re-added.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_downloads_active_url
+    ON downloads (url)
+    WHERE status IN ('queued', 'downloading', 'paused');
 "#;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -295,7 +311,7 @@ impl Storage {
 
     pub async fn insert_download(&self, row: &DownloadRow) -> Result<(), crate::Error> {
         let db = self.db.lock().await;
-        db.execute(
+        let result = db.execute(
             "INSERT INTO downloads (id, url, protocol, filename, filesize, status, priority, package_id, plugin_id, download_dir, bytes_downloaded, created_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, datetime('now'))",
             rusqlite::params![
@@ -303,8 +319,25 @@ impl Storage {
                 row.status, row.priority, row.package_id, row.plugin_id,
                 row.download_dir, row.bytes_downloaded,
             ],
-        )?;
-        Ok(())
+        );
+        match result {
+            Ok(_) => Ok(()),
+            Err(rusqlite::Error::SqliteFailure(err, _))
+                if err.code == rusqlite::ErrorCode::ConstraintViolation =>
+            {
+                // Partial-unique index on active URLs fired. Look up the row
+                // that's already there so the caller can return its id.
+                let existing_id: String = db.query_row(
+                    "SELECT id FROM downloads
+                     WHERE url = ?1 AND status IN ('queued', 'downloading', 'paused')
+                     LIMIT 1",
+                    rusqlite::params![row.url],
+                    |r| r.get(0),
+                )?;
+                Err(crate::Error::DuplicateUrl(existing_id))
+            }
+            Err(e) => Err(e.into()),
+        }
     }
 
     pub async fn get_download(&self, id: &str) -> Result<Option<DownloadRow>, crate::Error> {

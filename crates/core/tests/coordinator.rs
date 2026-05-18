@@ -49,6 +49,23 @@ async fn test_add_download_deduplication() {
 }
 
 #[tokio::test]
+async fn test_add_download_dedup_race() {
+    // Concurrent add_download calls for the same URL must collapse to a single
+    // row — the partial-unique index closes the TOCTOU window between the
+    // pre-check and the insert (issue #53).
+    let coord = test_coordinator();
+    let url = "https://example.com/race.zip";
+    let (a, b) = tokio::join!(coord.add_download(url, None), coord.add_download(url, None));
+    let a = a.unwrap();
+    let b = b.unwrap();
+    assert_eq!(a, b, "concurrent add_download should return the same id");
+
+    let rows = coord.storage().list_downloads().await.unwrap();
+    let count = rows.iter().filter(|d| d.url == url).count();
+    assert_eq!(count, 1, "exactly one row should exist for {url}");
+}
+
+#[tokio::test]
 async fn test_add_download_with_filename() {
     let coord = test_coordinator();
     let id = coord
