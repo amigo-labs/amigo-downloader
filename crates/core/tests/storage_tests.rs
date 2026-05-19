@@ -48,6 +48,46 @@ async fn test_insert_and_get_download() {
     assert_eq!(fetched.status, "queued");
 }
 
+/// Inserting a second active row for a URL that's already active must fail
+/// with `DuplicateUrl(existing_id)`. This pins the storage-layer guarantee
+/// that `Coordinator::add_download_with_options` relies on for race-safety
+/// (issue #53), independent of any task-scheduling assumptions.
+#[tokio::test]
+async fn test_insert_download_rejects_active_duplicate() {
+    let storage = Storage::open_memory().unwrap();
+    let first = make_download("dl-1", "https://example.com/dupe.zip");
+    storage.insert_download(&first).await.unwrap();
+
+    let second = make_download("dl-2", "https://example.com/dupe.zip");
+    let err = storage.insert_download(&second).await.unwrap_err();
+    match err {
+        amigo_core::Error::DuplicateUrl(existing_id) => {
+            assert_eq!(existing_id, "dl-1");
+        }
+        other => panic!("expected DuplicateUrl, got {other:?}"),
+    }
+    // The losing row must not have been inserted.
+    assert!(storage.get_download("dl-2").await.unwrap().is_none());
+}
+
+/// A finished (completed/failed) row must not block re-adding the same URL —
+/// the partial-unique index excludes those statuses.
+#[tokio::test]
+async fn test_insert_download_allows_reuse_after_completion() {
+    let storage = Storage::open_memory().unwrap();
+    let url = "https://example.com/reusable.zip";
+    let first = make_download("dl-1", url);
+    storage.insert_download(&first).await.unwrap();
+    storage
+        .update_download_status("dl-1", QueueStatus::Completed)
+        .await
+        .unwrap();
+
+    let second = make_download("dl-2", url);
+    storage.insert_download(&second).await.unwrap();
+    assert!(storage.get_download("dl-2").await.unwrap().is_some());
+}
+
 #[tokio::test]
 async fn test_get_nonexistent_download_returns_none() {
     let storage = Storage::open_memory().unwrap();

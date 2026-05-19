@@ -258,7 +258,20 @@ impl Coordinator {
             completed_at: None,
         };
 
-        self.storage.insert_download(&row).await?;
+        // The pre-check above is a fast path; the partial-unique index in the
+        // schema is the authoritative race-safe guard. If a concurrent insert
+        // beat us to it, storage returns DuplicateUrl with the existing id.
+        match self.storage.insert_download(&row).await {
+            Ok(()) => {}
+            Err(crate::Error::DuplicateUrl(existing_id)) => {
+                info!(
+                    "Duplicate download race resolved: {} -> existing {}",
+                    url, existing_id
+                );
+                return Ok(existing_id);
+            }
+            Err(e) => return Err(e),
+        }
         let _ = self.event_tx.send(DownloadEvent::Added {
             id: id.clone(),
             url: url.to_string(),
