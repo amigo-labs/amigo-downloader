@@ -118,7 +118,7 @@ pub enum Error {
 
     /// Insert refused because an active download already exists for this URL.
     /// The inner string is the id of the existing row.
-    #[error("URL already in queue: {0}")]
+    #[error("URL already in queue (existing download id: {0})")]
     DuplicateUrl(String),
 
     #[error("{0}")]
