@@ -1,13 +1,48 @@
 # Integration Tests Spec
 
 **Date**: 2026-04-02
-**Status**: Draft
+**Status**: Implemented (2026-05-24)
 **Priority**: High (architecture review rated Testing at 2/10)
 **Effort**: Medium (3-5 days)
 
 ---
 
-## Problem Statement
+## Implementation Status
+
+The harness is live and wired into CI (`cargo test --workspace --locked`).
+Tests live **per-crate** instead of in workspace-level `tests/`:
+the per-crate layout was already established and matches what
+`cargo test` runs by default. The original `tests/integration/` and
+`tests/plugins/` placeholders are gone; see `tests/README.md` for a
+map.
+
+Snapshot of what was added end-to-end:
+
+| Phase | File | Tests |
+|---|---|---|
+| 1.3 — WebSocket | `crates/server/tests/ws_tests.rs` | 5 |
+| 2.1 — Plugin loader / transpiler | `crates/plugin-runtime/tests/runtime_tests.rs` | 12 |
+| 2.2 — Sandbox enforcement | `crates/plugin-runtime/tests/sandbox_tests.rs` | 6 |
+| 2.3 — Host API via wiremock | `crates/plugin-runtime/tests/host_api_tests.rs` | 6 |
+| 2.4 — `plugin.spec.ts` runner | `crates/plugin-runtime/tests/spec_runner.rs` | 2 |
+| 4   — Download lifecycle | `crates/core/tests/download_lifecycle_tests.rs` | 3 (+1 ignored, see below) |
+| **Total new** |  | **34** |
+
+Phase 1.1 and 1.2 (server API endpoint coverage) and Phase 3 (storage
+edge cases) were already implemented before this round in
+`crates/server/tests/api_tests.rs`, `auth_flow_tests.rs`, and
+`crates/core/tests/storage_tests.rs`. They are unchanged.
+
+One known-broken case is committed as `#[ignore]`:
+`test_download_retries_on_transient_5xx` in
+`crates/core/tests/download_lifecycle_tests.rs`. It surfaces audit #13
+(per-attempt cancel oneshot is recreated with a dropped sender, so the
+second retry self-cancels). Run with `cargo test -- --ignored` after the
+audit fix lands.
+
+---
+
+## Problem Statement (Original)
 
 The project has 14 coordinator-level tests (`crates/core/tests/coordinator.rs`) and scattered unit tests, but zero integration tests. The `tests/integration/` and `tests/plugins/` directories contain only `.gitkeep` files. The architecture review (2026-03-29) flagged this as item H3. Specific gaps:
 
