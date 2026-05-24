@@ -36,3 +36,4 @@ rand = "0.8"
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }
 tempfile = { workspace = true }
+wiremock = "0.6"
