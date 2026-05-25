@@ -83,18 +83,26 @@ async fn test_youtube_plugin_spec_passes() {
     }
 
     // Network-dependent tests are only enforced when AMIGO_NETWORK_TESTS=1.
-    // Otherwise YouTube reachability / API drift may flake the suite; the
-    // spec is still executed so flakes surface in CI logs.
+    // Otherwise YouTube reachability / API drift may flake the suite; we
+    // still emit the failing test names on stderr so regressions show up in
+    // CI logs instead of passing silently.
+    let network_failures: Vec<_> = results
+        .results
+        .iter()
+        .filter(|r| !r.passed && !r.skipped)
+        .filter(|r| !YOUTUBE_OFFLINE_TESTS.contains(&r.name.as_str()))
+        .collect();
+
     if strict {
-        assert_eq!(
-            results.failed,
-            0,
-            "AMIGO_NETWORK_TESTS=1 set but failures: {:#?}",
-            results
-                .results
-                .iter()
-                .filter(|r| !r.passed && !r.skipped)
-                .collect::<Vec<_>>()
+        assert!(
+            network_failures.is_empty(),
+            "AMIGO_NETWORK_TESTS=1 set but network-dependent failures: {network_failures:#?}",
+        );
+    } else if !network_failures.is_empty() {
+        eprintln!(
+            "[spec_runner] {} network-dependent YouTube test(s) failed (non-strict mode, not failing CI). \
+             Set AMIGO_NETWORK_TESTS=1 to enforce. Failures: {network_failures:#?}",
+            network_failures.len(),
         );
     }
 }

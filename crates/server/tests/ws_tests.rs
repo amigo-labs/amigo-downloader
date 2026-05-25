@@ -53,9 +53,9 @@ async fn connect_ws(
         101,
         "WebSocket upgrade must return 101 Switching Protocols"
     );
-    // Brief wait so the server-side handler runs `coordinator.subscribe()`
-    // before we send a request that would otherwise fire its event first.
-    tokio::time::sleep(Duration::from_millis(50)).await;
+    // No sleep required: `ws_handler` subscribes to the coordinator's event
+    // broadcast before calling `on_upgrade`, so the receiver is live by the
+    // time this 101 response reaches the client.
     stream
 }
 

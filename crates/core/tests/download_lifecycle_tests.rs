@@ -250,14 +250,26 @@ async fn test_permanent_failure_marks_download_failed() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_cancel_removes_download_row() {
-    // No need for the server to actually respond — we cancel immediately.
+    // HEAD must succeed so the backend actually starts a transfer; the GET
+    // is deliberately stalled so we can cancel mid-flight before any bytes
+    // arrive.
+    let body = b"never-seen";
     let mock = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/slow.bin"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-length", body.len().to_string())
+                .insert_header("accept-ranges", "none"),
+        )
+        .mount(&mock)
+        .await;
     Mock::given(method("GET"))
         .and(path("/slow.bin"))
         .respond_with(
             ResponseTemplate::new(200)
                 .set_delay(Duration::from_secs(10))
-                .set_body_bytes(b"never-seen"[..].to_vec()),
+                .set_body_bytes(body.to_vec()),
         )
         .mount(&mock)
         .await;
