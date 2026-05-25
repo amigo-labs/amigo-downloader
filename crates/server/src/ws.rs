@@ -6,9 +6,11 @@ use axum::{
     response::Response,
     routing::get,
 };
+use tokio::sync::broadcast::Receiver;
 use tracing::{debug, warn};
 
 use crate::api::AppState;
+use amigo_core::coordinator::DownloadEvent;
 
 pub fn ws_router(state: AppState) -> Router {
     Router::new()
@@ -17,12 +19,16 @@ pub fn ws_router(state: AppState) -> Router {
 }
 
 async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> Response {
-    ws.on_upgrade(move |socket| handle_socket(socket, state))
+    // Subscribe *before* the upgrade so the receiver is live by the time the
+    // client sees the 101 response. If we subscribed inside `on_upgrade`,
+    // the on_upgrade future could still be scheduling when the first event
+    // is broadcast, causing the client to silently miss it.
+    let rx = state.coordinator.subscribe();
+    ws.on_upgrade(move |socket| handle_socket(socket, rx))
 }
 
-async fn handle_socket(mut socket: axum::extract::ws::WebSocket, state: AppState) {
+async fn handle_socket(mut socket: axum::extract::ws::WebSocket, mut rx: Receiver<DownloadEvent>) {
     debug!("WebSocket client connected");
-    let mut rx = state.coordinator.subscribe();
 
     loop {
         match rx.recv().await {

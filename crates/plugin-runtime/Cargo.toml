@@ -46,3 +46,5 @@ swc_ecma_visit = "21"
 # `SigningKey` only with the `rand_core` feature enabled.
 ed25519-dalek = { workspace = true, features = ["rand_core"] }
 rand = { workspace = true }
+tokio = { workspace = true, features = ["full"] }
+wiremock = "0.6"
