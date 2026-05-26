@@ -7,7 +7,11 @@ Code-Aufgaben (Marketplace-UI, Hoster-Plugins, Rate-Limit, OpenAPI-Codegen,
 Web-UI-Tests, CHANGELOG-Backfill, Rustdoc) gehören **nicht** hierher und
 laufen über eigene PRs.
 
-Stand: v0.1.0 ist getaggt (`236c2a0`), Auto-Release-on-merge ist aktiv, und
+Stand: v0.1.0 ist **noch nicht** getaggt — es existieren keine Git-Tags und
+`.release-please-manifest.json` steht auf `0.0.0`. release-please ist mit
+`release-as: 0.1.0` konfiguriert; der nächste Merge nach `main` öffnet die
+v0.1.0-Release-PR, deren Merge den Tag setzt und den (bewusst leeren)
+`CHANGELOG.md` automatisch füllt. Auto-Release-on-merge ist aktiv, und
 4/4 CRITICAL + 11/17 HIGH aus `docs/specs/audit-2026-04-25.md` sind gemergt.
 
 ## Signing & Secrets

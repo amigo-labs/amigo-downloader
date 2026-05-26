@@ -21,6 +21,9 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/amigo-labs/amigo-downloader"
+homepage = "https://github.com/amigo-labs/amigo-downloader"
+authors = ["amigo-labs"]
+description = "Fast, modular download manager in Rust — HTTP, Usenet, HLS/DASH, with a TypeScript plugin system and a responsive Web UI."
 
 [workspace.dependencies]
 # Async runtime
