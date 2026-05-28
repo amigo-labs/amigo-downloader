@@ -119,7 +119,7 @@ impl HttpDownloader {
             let now = tokio::time::Instant::now();
             let elapsed = now.duration_since(last_update);
             if elapsed.as_millis() >= 500 {
-                let speed = (speed_bytes as f64 / elapsed.as_secs_f64()) as u64;
+                let speed = bytes_per_sec(speed_bytes, elapsed);
                 let _ = progress_tx.send(DownloadProgress {
                     bytes_downloaded: downloaded,
                     total_bytes: total,
@@ -204,7 +204,7 @@ impl HttpDownloader {
                     let now = tokio::time::Instant::now();
                     let elapsed = now.duration_since(last_time);
                     let delta = total_downloaded.saturating_sub(last_total);
-                    let speed = (delta as f64 / elapsed.as_secs_f64()) as u64;
+                    let speed = bytes_per_sec(delta, elapsed);
 
                     let _ = tx.send(DownloadProgress {
                         bytes_downloaded: total_downloaded,
@@ -345,7 +345,7 @@ impl HttpDownloader {
             let now = tokio::time::Instant::now();
             let elapsed = now.duration_since(last_update);
             if elapsed.as_millis() >= 500 {
-                let speed = (speed_bytes as f64 / elapsed.as_secs_f64()) as u64;
+                let speed = bytes_per_sec(speed_bytes, elapsed);
                 let _ = progress_tx.send(DownloadProgress {
                     bytes_downloaded: downloaded,
                     total_bytes: total,
@@ -426,6 +426,18 @@ async fn download_chunk(
     Ok(())
 }
 
+/// Compute a transfer rate in bytes/sec, guarding against a zero (or
+/// otherwise degenerate) elapsed interval which would yield `inf`/`NaN` and
+/// cast to a nonsensical `u64`.
+fn bytes_per_sec(bytes: u64, elapsed: std::time::Duration) -> u64 {
+    let secs = elapsed.as_secs_f64();
+    if secs > 0.0 {
+        (bytes as f64 / secs) as u64
+    } else {
+        0
+    }
+}
+
 /// Parse filename from Content-Disposition header.
 fn parse_content_disposition_filename(header: &str) -> Option<String> {
     // Try filename*= (RFC 5987)
@@ -470,7 +482,7 @@ impl super::ProtocolBackend for HttpDownloader {
         &self,
         job: &super::DownloadJob,
         progress_tx: watch::Sender<DownloadProgress>,
-        cancel_rx: tokio::sync::oneshot::Receiver<()>,
+        mut cancel_rx: watch::Receiver<bool>,
     ) -> Result<(u64, std::path::PathBuf), crate::Error> {
         let head = self.head(&job.url).await?;
 
@@ -504,12 +516,12 @@ impl super::ProtocolBackend for HttpDownloader {
 
             tokio::select! {
                 result = self.download_chunked(&job.url, &dest, &chunk_dir, total, chunks, progress_tx) => result.map(|bytes| (bytes, dest)),
-                _ = cancel_rx => Err(crate::Error::Other("Download cancelled".into())),
+                _ = super::wait_for_cancel(&mut cancel_rx) => Err(crate::Error::Cancelled),
             }
         } else {
             tokio::select! {
                 result = self.download_single(&job.url, &dest, progress_tx) => result.map(|bytes| (bytes, dest)),
-                _ = cancel_rx => Err(crate::Error::Other("Download cancelled".into())),
+                _ = super::wait_for_cancel(&mut cancel_rx) => Err(crate::Error::Cancelled),
             }
         }
     }
@@ -518,6 +530,17 @@ impl super::ProtocolBackend for HttpDownloader {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bytes_per_sec_guards_against_zero_elapsed() {
+        // A zero interval must not yield inf/NaN cast to a bogus u64.
+        assert_eq!(bytes_per_sec(1000, std::time::Duration::ZERO), 0);
+        // Normal case: 1000 bytes over 0.5s = 2000 B/s.
+        assert_eq!(
+            bytes_per_sec(1000, std::time::Duration::from_millis(500)),
+            2000
+        );
+    }
 
     #[tokio::test]
     async fn fsync_file_persists_buffered_writes() {

@@ -347,7 +347,7 @@ impl super::ProtocolBackend for DashDownloader {
         &self,
         job: &super::DownloadJob,
         progress_tx: watch::Sender<DownloadProgress>,
-        cancel_rx: tokio::sync::oneshot::Receiver<()>,
+        mut cancel_rx: watch::Receiver<bool>,
     ) -> Result<(u64, std::path::PathBuf), crate::Error> {
         let fname = job.filename.clone().unwrap_or_else(|| {
             job.url
@@ -362,7 +362,7 @@ impl super::ProtocolBackend for DashDownloader {
 
         tokio::select! {
             result = self.download(&job.url, &dest, progress_tx) => result.map(|bytes| (bytes, dest)),
-            _ = cancel_rx => Err(crate::Error::Other("Download cancelled".into())),
+            _ = super::wait_for_cancel(&mut cancel_rx) => Err(crate::Error::Cancelled),
         }
     }
 }

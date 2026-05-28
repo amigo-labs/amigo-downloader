@@ -531,7 +531,7 @@ async fn direct_download(
         speed_bytes_per_sec: 0,
     });
 
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
+    let (cancel_tx, cancel_rx) = tokio::sync::watch::channel(false);
     let _ = cancel_tx; // Keep alive — drop only on ctrl-c
 
     // Use ProtocolBackend trait dispatch — same as server
