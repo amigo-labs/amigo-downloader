@@ -68,16 +68,46 @@ fn enforce_input_limit(field: &str, len: usize, max: usize) -> Result<(), String
     }
 }
 
+/// Upper bound on cached compiled regexes. Plugins typically use a small,
+/// fixed set of patterns; when this is exceeded the cache is cleared wholesale
+/// (cheap and avoids unbounded growth from pathological pattern churn).
+const REGEX_CACHE_MAX_ENTRIES: usize = 256;
+
+/// Process-wide cache of compiled regexes keyed by pattern source. Compilation
+/// is deterministic from the pattern, and `regex::Regex` is internally
+/// reference-counted so clones are cheap — this turns repeated `regexMatch`
+/// calls in plugin hot loops from "recompile every call" into a hashmap lookup.
+static REGEX_CACHE: std::sync::LazyLock<std::sync::Mutex<HashMap<String, regex::Regex>>> =
+    std::sync::LazyLock::new(|| std::sync::Mutex::new(HashMap::new()));
+
 /// Compile a regex with the global plugin-side size limits applied. Returns
 /// the compiled `Regex` or a string error suitable for surfacing to the JS
-/// caller.
+/// caller. Results are cached by pattern (see [`REGEX_CACHE`]).
 fn compile_plugin_regex(pattern: &str) -> Result<regex::Regex, String> {
     enforce_input_limit("regex pattern", pattern.len(), MAX_REGEX_PATTERN_BYTES)?;
-    regex::RegexBuilder::new(pattern)
+
+    {
+        let cache = REGEX_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(re) = cache.get(pattern) {
+            return Ok(re.clone());
+        }
+    }
+
+    let re = regex::RegexBuilder::new(pattern)
         .size_limit(REGEX_COMPILE_SIZE_LIMIT)
         .dfa_size_limit(REGEX_DFA_SIZE_LIMIT)
         .build()
-        .map_err(|e| format!("invalid regex: {e}"))
+        .map_err(|e| format!("invalid regex: {e}"))?;
+
+    {
+        let mut cache = REGEX_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        if cache.len() >= REGEX_CACHE_MAX_ENTRIES {
+            cache.clear();
+        }
+        cache.insert(pattern.to_string(), re.clone());
+    }
+
+    Ok(re)
 }
 
 /// Shared state for the Host API, passed into every plugin call.
@@ -1826,15 +1856,25 @@ pub fn register_host_api(
 fn base64_decode_bytes(input: &str) -> Result<Vec<u8>, String> {
     enforce_input_limit("base64 input", input.len(), MAX_BASE64_INPUT_BYTES)?;
     let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut table = [0u8; 256];
+    // 0xFF marks "not a base64 symbol" so we can reject invalid input instead
+    // of silently mapping it to 'A' (index 0) and producing garbage bytes.
+    const INVALID: u8 = 0xFF;
+    let mut table = [INVALID; 256];
     for (i, &c) in alphabet.iter().enumerate() {
         table[c as usize] = i as u8;
     }
 
+    // Strip padding and the usual line-wrapping whitespace; everything else
+    // must be a real alphabet symbol.
     let filtered: Vec<u8> = input
         .bytes()
-        .filter(|&c| c != b'=' && c != b'\n' && c != b'\r' && c != b' ')
+        .filter(|&c| c != b'=' && c != b'\n' && c != b'\r' && c != b' ' && c != b'\t')
         .collect();
+    for &c in &filtered {
+        if table[c as usize] == INVALID {
+            return Err("invalid base64 character".to_string());
+        }
+    }
     let mut buf = Vec::with_capacity(filtered.len() * 3 / 4);
 
     for chunk in filtered.chunks(4) {
@@ -2017,6 +2057,40 @@ mod tests {
         let encoded = api.base64_encode("Hello, World!");
         let decoded = api.base64_decode(&encoded).unwrap();
         assert_eq!(decoded, "Hello, World!");
+    }
+
+    #[test]
+    fn base64_decode_rejects_invalid_characters() {
+        let api = HostApi::new(20);
+        // '*' and '#' are not in the base64 alphabet — must error instead of
+        // silently mapping to 'A' and producing garbage bytes.
+        let err = api
+            .base64_decode("SGVsbG8*#")
+            .expect_err("invalid base64 must be rejected");
+        assert!(err.contains("invalid base64 character"), "msg: {err}");
+    }
+
+    #[test]
+    fn base64_decode_tolerates_whitespace_and_padding() {
+        let api = HostApi::new(20);
+        // Standard encoders wrap lines and pad; these must still decode.
+        let encoded = api.base64_encode("The quick brown fox");
+        let wrapped = format!("{}\n {}", &encoded[..8], &encoded[8..]);
+        assert_eq!(api.base64_decode(&wrapped).unwrap(), "The quick brown fox");
+    }
+
+    #[test]
+    fn regex_cache_returns_consistent_results() {
+        let api = HostApi::new(20);
+        // Same pattern used repeatedly must keep matching correctly whether or
+        // not it was served from the compile cache.
+        for _ in 0..3 {
+            assert_eq!(
+                api.regex_match(r"\d+", "abc123def"),
+                Some("123".to_string())
+            );
+        }
+        assert!(api.regex_test(r"^foo", "foobar"));
     }
 
     #[tokio::test]
