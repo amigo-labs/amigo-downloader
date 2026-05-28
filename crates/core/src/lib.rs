@@ -121,6 +121,11 @@ pub enum Error {
     #[error("URL already in queue (existing download id: {0})")]
     DuplicateUrl(String),
 
+    /// The download was cancelled by the user. Recognised explicitly so the
+    /// retry loop aborts instead of treating it as a transient failure.
+    #[error("Download cancelled")]
+    Cancelled,
+
     #[error("{0}")]
     Other(String),
 }

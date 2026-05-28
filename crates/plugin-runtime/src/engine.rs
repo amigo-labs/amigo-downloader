@@ -193,7 +193,11 @@ impl PluginContext {
     /// Call the async `resolve(url)` function and return the result as JSON string.
     /// The JS function returns a Promise which we resolve synchronously via the event loop.
     pub fn call_resolve(&self, url: &str, timeout: Duration) -> Result<String, crate::Error> {
-        let url = url.to_string();
+        // Serialise the URL as a JSON string literal — also a valid JS string
+        // literal — so quotes/backslashes/control chars are escaped correctly
+        // instead of relying on hand-rolled string escaping.
+        let url_lit = serde_json::to_string(url)
+            .map_err(|e| crate::Error::Execution(format!("failed to encode url: {e}")))?;
 
         // We wrap the resolve call in a script that catches the Promise result
         let script = format!(
@@ -203,7 +207,7 @@ impl PluginContext {
                 var __resolve_error = null;
                 var __resolve_done = false;
 
-                var p = __plugin_exports.resolve("{url}");
+                var p = __plugin_exports.resolve({url_lit});
                 if (p && typeof p.then === 'function') {{
                     p.then(function(r) {{
                         __resolve_result = JSON.stringify(r);
@@ -221,7 +225,6 @@ impl PluginContext {
                 return __resolve_done ? (__resolve_error ? "ERROR:" + __resolve_error : __resolve_result) : "PENDING";
             }})()
             "#,
-            url = url.replace('\\', "\\\\").replace('"', "\\\""),
         );
 
         self.with_deadline(timeout, |ctx, deadline_ms| {
@@ -288,14 +291,18 @@ impl PluginContext {
         context_json: &str,
         timeout: Duration,
     ) -> Result<String, crate::Error> {
-        let escaped = context_json.replace('\\', "\\\\").replace('\'', "\\'");
+        // Encode the JSON document as a JS string literal (valid JS, correctly
+        // escaped) and parse it back inside the VM, instead of hand-rolling
+        // quote escaping into a single-quoted literal.
+        let ctx_lit = serde_json::to_string(context_json)
+            .map_err(|e| crate::Error::Execution(format!("failed to encode context: {e}")))?;
         let script = format!(
             r#"
             (function() {{
                 if (typeof __plugin_exports.postProcess !== 'function') {{
                     return JSON.stringify({{ success: true, message: "no postProcess hook" }});
                 }}
-                var ctx = JSON.parse('{escaped}');
+                var ctx = JSON.parse({ctx_lit});
                 var result = __plugin_exports.postProcess(ctx);
                 return JSON.stringify(result);
             }})()
