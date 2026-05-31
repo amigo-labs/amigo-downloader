@@ -198,14 +198,11 @@ impl Coordinator {
         category: Option<String>,
         priority: i32,
     ) -> Result<String, crate::Error> {
-        // Duplicate detection: check if same URL is already queued/downloading
-        let existing = self.storage.list_downloads().await?;
-        if let Some(dup) = existing.iter().find(|d| {
-            d.url == url
-                && (d.status == "queued" || d.status == "downloading" || d.status == "paused")
-        }) {
-            info!("Duplicate download skipped: {} (existing: {})", url, dup.id);
-            return Ok(dup.id.clone());
+        // Duplicate detection: check if same URL is already queued/downloading.
+        // Indexed point lookup rather than scanning every download.
+        if let Some(dup_id) = self.storage.find_active_download_by_url(url).await? {
+            info!("Duplicate download skipped: {} (existing: {})", url, dup_id);
+            return Ok(dup_id);
         }
 
         let id = Uuid::new_v4().to_string();
