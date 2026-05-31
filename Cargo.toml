@@ -18,12 +18,16 @@ default-members = [
 
 # Release profile tuned for runtime speed and small binaries.
 # `[profile.*]` is only honored in the workspace root and applies to all members.
-# `panic = "abort"` is added in a later, independently revertible commit.
+# `panic = "abort"` is safe here: the codebase has no catch_unwind / std::panic
+# recovery and rquickjs surfaces JS errors as Err, not via unwinding. It only
+# affects the release profile, so `cargo test` (test profile) is unaffected —
+# but do not run `cargo test --release`.
 [profile.release]
 opt-level = 3
 lto = "fat"
 codegen-units = 1
 strip = "symbols"
+panic = "abort"
 
 [workspace.package]
 version = "0.1.0"
