@@ -465,9 +465,24 @@ async fn download_segment(
         progress[idx].store(downloaded, std::sync::atomic::Ordering::Relaxed);
     }
 
+    // Only flush to the kernel — no per-segment fsync. These temp files are
+    // scratch: never resumed after a crash and deleted right after
+    // reassembly, so flushing is enough for the reassembly read to see the
+    // bytes. Durability is provided by the single fsync of the final output.
     writer.flush().await?;
-    fsync_file(writer.get_mut()).await?;
     Ok(downloaded)
+}
+
+/// Aborts a spawned task when dropped. Used to tie the progress-reporter task
+/// to the lifetime of the download future, so a `tokio::select!` cancellation
+/// (which drops the future before the normal cleanup runs) doesn't leak the
+/// reporter for the rest of the process.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
 }
 
 /// Download a list of media segments (HLS/DASH) concurrently to indexed temp
@@ -503,8 +518,10 @@ pub(crate) async fn download_segments_streamed(
     );
 
     // Emit aggregate progress on a timer rather than once per segment, so a
-    // stream with thousands of segments doesn't flood the watch channel.
-    let progress_reporter = {
+    // stream with thousands of segments doesn't flood the watch channel. The
+    // AbortOnDrop guard stops the reporter even if this future is dropped on
+    // cancellation before the normal cleanup runs.
+    let progress_reporter = AbortOnDrop({
         let progress = seg_progress.clone();
         let tx = progress_tx.clone();
         tokio::spawn(async move {
@@ -529,7 +546,7 @@ pub(crate) async fn download_segments_streamed(
                 last_time = now;
             }
         })
-    };
+    });
 
     let work: Result<u64, crate::Error> = async {
         // Download in bounded-concurrency batches, preserving global indices.
@@ -546,12 +563,23 @@ pub(crate) async fn download_segments_streamed(
                     download_segment(&client, &url, &seg_path, idx, &progress).await
                 }));
             }
+            // Await the entire batch before propagating any error, so a single
+            // failure doesn't detach the remaining tasks (a dropped JoinHandle
+            // keeps running and would race the error-path cleanup of seg_dir).
+            let mut first_err: Option<crate::Error> = None;
             for handle in handles {
                 match handle.await {
                     Ok(Ok(_)) => {}
-                    Ok(Err(e)) => return Err(e),
-                    Err(e) => return Err(crate::Error::Other(e.to_string())),
+                    Ok(Err(e)) => {
+                        first_err.get_or_insert(e);
+                    }
+                    Err(e) => {
+                        first_err.get_or_insert(crate::Error::Other(e.to_string()));
+                    }
                 }
+            }
+            if let Some(e) = first_err {
+                return Err(e);
             }
             base += batch.len();
             debug!("segments: downloaded {base}/{total_segments}");
@@ -578,7 +606,9 @@ pub(crate) async fn download_segments_streamed(
     }
     .await;
 
-    progress_reporter.abort();
+    // Stop the reporter before emitting the final progress so a stale tick
+    // can't overwrite it. (On cancellation the guard's Drop handles this.)
+    drop(progress_reporter);
 
     match work {
         Ok(total_bytes) => {

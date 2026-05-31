@@ -27,6 +27,13 @@ use swc_ecma_transforms_typescript::typescript;
 static TRANSPILE_CACHE: LazyLock<Mutex<HashMap<String, String>>> =
     LazyLock::new(|| Mutex::new(HashMap::new()));
 
+/// Cap on cached transpile outputs. Each plugin edit / hot-reload produces a
+/// new content hash, so without a bound a long-running server would retain
+/// every historical version's source+output forever. A handful of plugins are
+/// ever live; this is generous. On overflow we clear wholesale (a miss just
+/// re-transpiles), matching the eviction style used elsewhere in the crate.
+const TRANSPILE_CACHE_MAX_ENTRIES: usize = 128;
+
 /// Transpile TypeScript source code to JavaScript (ES2023).
 ///
 /// Only strips type annotations — no downlevel transformation.
@@ -52,10 +59,13 @@ pub fn transpile(source: &str, filename: &str) -> Result<String, crate::Error> {
     // two threads transpile identical input once, which is harmless.
     let js = transpile_uncached(source, filename)?;
 
-    TRANSPILE_CACHE
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .insert(key, js.clone());
+    {
+        let mut cache = TRANSPILE_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        if cache.len() >= TRANSPILE_CACHE_MAX_ENTRIES {
+            cache.clear();
+        }
+        cache.insert(key, js.clone());
+    }
 
     Ok(js)
 }
