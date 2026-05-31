@@ -280,6 +280,9 @@ export function attachRouterPopstateListener(): () => void {
 export const downloads = writable<Download[]>([]);
 export const selectedDownloadId = writable<string | null>(null);
 
+/** Flips true after the first successful downloads fetch — drives skeletons. */
+export const downloadsLoaded = writable<boolean>(false);
+
 export const selectedDownload = derived(
   [downloads, selectedDownloadId],
   ([$downloads, $id]) => $id ? $downloads.find((d) => d.id === $id) ?? null : null

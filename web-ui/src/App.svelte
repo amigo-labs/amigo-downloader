@@ -9,6 +9,8 @@
   import SidePanel from "./components/SidePanel.svelte";
   import Sparkline from "@amigo/ui/components/Sparkline.svelte";
   import Toasts from "./components/Toasts.svelte";
+  import CommandPalette from "./components/CommandPalette.svelte";
+  import MobileNav from "./components/MobileNav.svelte";
   import {
     addDownload,
     connectWebSocket,
@@ -26,8 +28,8 @@
     crashReport,
     currentPage,
     downloads,
+    downloadsLoaded,
     features,
-    getNeonLabel,
     neonIntensity,
     openAddPanel,
     palette,
@@ -45,7 +47,6 @@
     wsConnected,
     attachRouterPopstateListener,
     type CaptchaChallenge,
-    type ColorPalette,
     type Page,
     type ProtocolFilter,
   } from "./lib/stores";
@@ -92,8 +93,7 @@
 
   let showFeedback = $derived($showFeedbackDialog);
   let showShortcuts = $state(false);
-  let showPalette = $state(false);
-  let mobileMenuOpen = $state(false);
+  let showCommandPalette = $state(false);
   let pageKey = $state(0);
 
   // Bandwidth limit
@@ -118,15 +118,6 @@
 
   const mgmtNavItems: { id: Page; label: string; icon: string }[] = [
     { id: "settings", label: "Settings", icon: "gear" },
-  ];
-
-  const paletteOptions: { id: ColorPalette; label: string; color: string }[] = [
-    { id: "blue", label: "Blue", color: "#3b82f6" },
-    { id: "teal", label: "Teal", color: "#14b8a6" },
-    { id: "indigo", label: "Indigo", color: "#6366f1" },
-    { id: "amber", label: "Amber", color: "#f59e0b" },
-    { id: "violet", label: "Violet", color: "#8b5cf6" },
-    { id: "rose", label: "Rose", color: "#f43f5e" },
   ];
 
   const protocolOptions: { value: ProtocolFilter; label: string }[] = [
@@ -253,6 +244,7 @@
         getConfig(),
       ]);
       downloads.set(dl);
+      downloadsLoaded.set(true);
       stats.set(st);
       pushSpeedSample(st.speed_bytes_per_sec ?? 0);
       if (cfg) {
@@ -296,17 +288,26 @@
 
   function navigate(page: Page) {
     currentPage.set(page);
-    mobileMenuOpen = false;
     pageKey++;
   }
 
   // Single global keyboard handler
   function handleKeydown(e: KeyboardEvent) {
+    // Command palette — the power-user entry point.
+    if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
+      e.preventDefault();
+      showCommandPalette = !showCommandPalette;
+      return;
+    }
     if ((e.ctrlKey || e.metaKey) && e.key === "n") {
       e.preventDefault();
       openAddPanel();
     }
     if (e.key === "Escape") {
+      if (showCommandPalette) {
+        showCommandPalette = false;
+        return;
+      }
       if ($sidePanelMode) {
         closeSidePanel();
         return;
@@ -319,11 +320,6 @@
         showFeedbackDialog.set(false);
         return;
       }
-      if (showPalette) {
-        showPalette = false;
-        return;
-      }
-      mobileMenuOpen = false;
     }
     if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
       showShortcuts = !showShortcuts;
@@ -334,6 +330,7 @@
       !$sidePanelMode &&
       !showFeedback &&
       !showShortcuts &&
+      !showCommandPalette &&
       !e.ctrlKey &&
       !e.metaKey &&
       !e.altKey
@@ -345,10 +342,7 @@
     }
   }
 
-  let pageTitle = $derived(
-    $currentPage.charAt(0).toUpperCase() + $currentPage.slice(1),
-  );
-  let neonLabel = $derived(getNeonLabel($neonIntensity));
+  let pageTitle = $derived(tr($locale, `nav.${$currentPage}`));
 </script>
 
 <svelte:window onkeydown={handleKeydown} />
@@ -412,11 +406,12 @@
           onclick={() => navigate(item.id)}
           class="nav-link w-full"
           class:active={$currentPage === item.id}
-          title={$sidebarCollapsed ? item.label : undefined}
+          aria-current={$currentPage === item.id ? "page" : undefined}
+          title={$sidebarCollapsed ? tr($locale, `nav.${item.id}`) : undefined}
         >
           <Icon name={item.icon} size={18} />
           {#if !$sidebarCollapsed}
-            <span class="flex-1 text-left">{item.label}</span>
+            <span class="flex-1 text-left">{tr($locale, `nav.${item.id}`)}</span>
             <span class="text-[10px] opacity-30">{i + 1}</span>
           {/if}
         </button>
@@ -431,11 +426,12 @@
           onclick={() => navigate(item.id)}
           class="nav-link w-full"
           class:active={$currentPage === item.id}
-          title={$sidebarCollapsed ? item.label : undefined}
+          aria-current={$currentPage === item.id ? "page" : undefined}
+          title={$sidebarCollapsed ? tr($locale, `nav.${item.id}`) : undefined}
         >
           <Icon name={item.icon} size={18} />
           {#if !$sidebarCollapsed}
-            <span class="flex-1 text-left">{item.label}</span>
+            <span class="flex-1 text-left">{tr($locale, `nav.${item.id}`)}</span>
             <span class="text-[10px] opacity-30">{mainNavItems.length + i + 1}</span>
           {/if}
         </button>
@@ -514,32 +510,6 @@
     <!-- Sidebar footer -->
     <div class="px-2 py-3 border-t" style="border-color: var(--border-color)">
       {#if !$sidebarCollapsed}
-        <!-- Palette picker -->
-        {#if showPalette}
-          <div class="flex items-center gap-2 mb-3 px-2">
-            {#each paletteOptions as opt}
-              <button
-                class="color-swatch"
-                class:active={$palette === opt.id}
-                style="--swatch-color: {opt.color}; background: {opt.color}"
-                aria-label={opt.label}
-                onclick={() => { palette.set(opt.id); showPalette = false; }}
-              ></button>
-            {/each}
-          </div>
-        {/if}
-
-        <!-- Neon intensity slider -->
-        <div class="neon-slider mb-2 px-2">
-          <Icon name="bolt" size={14} />
-          <input
-            type="range" min="0" max="1" step="0.25" value={$neonIntensity}
-            oninput={(e) => neonIntensity.set(parseFloat((e.target as HTMLInputElement).value))}
-            aria-label="Neon intensity"
-          />
-          <span class="neon-slider-label">{neonLabel}</span>
-        </div>
-
         <!-- Controls row -->
         <div class="flex items-center justify-between px-2">
           <!-- Connection status -->
@@ -547,12 +517,21 @@
             <span
               class="w-2 h-2 rounded-full shrink-0"
               style="background: {$wsConnected ? 'var(--status-online)' : 'var(--status-error)'}; box-shadow: 0 0 4px {$wsConnected ? 'var(--status-online)' : 'var(--status-error)'}"
+              aria-hidden="true"
             ></span>
-            <span class="text-[10px]" style="color: var(--text-secondary); font-family: var(--font-mono)">v0.1</span>
+            <span class="text-[10px]" style="color: var(--text-secondary); font-family: var(--font-mono)">
+              {tr($locale, $wsConnected ? "connection.online" : "connection.offline")}
+            </span>
           </div>
           <div class="flex items-center gap-1">
-            <button class="icon-btn p-1.5 rounded-lg" style="color: var(--text-secondary)" aria-label="Color theme" onclick={() => (showPalette = !showPalette)}>
-              <div class="w-4 h-4 rounded-full" style="background: var(--neon-primary); box-shadow: var(--neon-glow-sm)"></div>
+            <button
+              onclick={() => (showCommandPalette = true)}
+              class="icon-btn flex items-center gap-1 px-1.5 py-1 rounded-lg"
+              style="color: var(--text-secondary)"
+              aria-label={tr($locale, "cmd.hint_open")}
+            >
+              <Icon name="search" size={14} />
+              <kbd class="text-[10px]" style="font-family: var(--font-mono)">⌘K</kbd>
             </button>
             <button onclick={() => theme.toggle()} class="icon-btn p-1.5 rounded-lg" style="color: var(--text-secondary)" aria-label={$theme === "dark" ? "Switch to Light mode" : "Switch to Dark mode"}>
               <Icon name={$theme === "light" ? "moon" : "sun"} size={16} />
@@ -573,71 +552,6 @@
     </div>
   </aside>
 
-  <!-- Mobile sidebar overlay -->
-  {#if mobileMenuOpen}
-    <div class="fixed inset-0 z-50 md:hidden">
-      <button
-        class="absolute inset-0 bg-black/60"
-        onclick={() => (mobileMenuOpen = false)}
-        aria-label="Close navigation"
-      ></button>
-      <aside
-        class="relative w-64 h-full flex flex-col neon-top-line"
-        style="background: var(--bg-surface)"
-        aria-label="Navigation"
-      >
-        <div
-          class="sidebar-logo flex items-center gap-3 px-4 py-4 border-b"
-          style="border-color: var(--border-color)"
-        >
-          <img
-            src="/amigo-logo.png"
-            alt="amigo-downloader"
-            width="40"
-            height="40"
-          />
-          <h1 class="font-bold text-base" style="color: var(--neon-primary)">
-            AMIGO
-          </h1>
-        </div>
-        <button
-          class="search-trigger"
-          onclick={() => {
-            openAddPanel();
-            mobileMenuOpen = false;
-          }}
-        >
-          <Icon name="plus" size={16} />
-          <span>Add Download...</span>
-        </button>
-        <nav class="flex-1 px-2 py-1">
-          {#each mainNavItems as item, i}
-            <button
-              onclick={() => navigate(item.id)}
-              class="nav-link w-full"
-              class:active={$currentPage === item.id}
-            >
-              <Icon name={item.icon} size={18} />
-              <span class="flex-1 text-left">{item.label}</span>
-              <span class="text-[10px] opacity-30">{i + 1}</span>
-            </button>
-          {/each}
-          <div class="nav-section-label">Management</div>
-          {#each mgmtNavItems as item, i}
-            <button
-              onclick={() => navigate(item.id)}
-              class="nav-link w-full"
-              class:active={$currentPage === item.id}
-            >
-              <Icon name={item.icon} size={18} />
-              <span class="flex-1 text-left">{item.label}</span>
-            </button>
-          {/each}
-        </nav>
-      </aside>
-    </div>
-  {/if}
-
   <!-- Main content -->
   <main
     id="main-content"
@@ -647,19 +561,14 @@
   >
     <!-- Header -->
     <header
-      class="flex items-center justify-between px-8 py-3 border-b"
+      class="flex items-center justify-between gap-3 px-4 md:px-8 py-3 border-b"
       style="border-color: var(--border-color)"
     >
-      <div class="flex items-center gap-3">
-        <button
-          class="md:hidden p-1"
-          onclick={() => (mobileMenuOpen = !mobileMenuOpen)}
-          aria-label="Toggle navigation"
-        >
-          <Icon name="menu" size={20} class="text-[var(--text-secondary)]" />
-        </button>
+      <div class="flex items-center gap-3 min-w-0">
+        <!-- Mobile brand (no sidebar on small screens) -->
+        <img src="/amigo-logo.png" alt="" width="28" height="28" class="md:hidden shrink-0 rounded-full" />
         <h2
-          class="text-xl font-semibold neon-flicker-text"
+          class="text-lg md:text-xl font-semibold neon-flicker-text truncate"
           style="color: var(--text-primary)"
         >
           {pageTitle}
@@ -670,7 +579,7 @@
           <div
             role="radiogroup"
             aria-label="Protocol filter"
-            class="flex rounded-lg ml-3 overflow-hidden"
+            class="hidden sm:flex rounded-lg ml-1 overflow-hidden shrink-0"
             style="background: var(--bg-surface-2); border: 1px solid var(--border-color)"
           >
             {#each protocolOptions as opt}
@@ -690,19 +599,61 @@
           </div>
         {/if}
       </div>
-      <button
-        onclick={() => openAddPanel()}
-        class="icon-btn p-2 rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center"
-        style="color: var(--text-secondary)"
-        aria-label="Add download"
-      >
-        <Icon name="plus" size={20} />
-      </button>
+
+      <!-- Global status bar — status at a glance from any page -->
+      <div class="flex items-center gap-3 md:gap-5 shrink-0">
+        <div class="hidden md:flex items-center gap-5" aria-label="Download status">
+          <div class="flex items-center gap-2">
+            <span class="stat-label">{tr($locale, "sidebar.speed")}</span>
+            <span class="text-xs tabular-nums" style="color: var(--neon-primary); font-family: var(--font-mono)">
+              {formatSpeed($stats.speed_bytes_per_sec)}
+            </span>
+            {#if $speedHistory.length > 1}
+              <span class="hidden xl:block"><Sparkline values={$speedHistory} width={72} height={20} /></span>
+            {/if}
+          </div>
+          <div class="flex items-center gap-1.5" title={tr($locale, "sidebar.active")}>
+            {#if $stats.active_downloads > 0}
+              <ProgressRing progress={overallProgress()} size={18} stroke={2} active={true} />
+            {/if}
+            <span class="text-xs tabular-nums" style="color: var(--text-primary); font-family: var(--font-mono)">{$stats.active_downloads}</span>
+            <span class="stat-label">{tr($locale, "sidebar.active")}</span>
+          </div>
+          <div class="hidden lg:flex items-center gap-1.5" title={tr($locale, "sidebar.queued")}>
+            <span class="text-xs tabular-nums" style="color: var(--text-primary); font-family: var(--font-mono)">{$stats.queued}</span>
+            <span class="stat-label">{tr($locale, "sidebar.queued")}</span>
+          </div>
+          <div class="hidden lg:flex items-center gap-1.5" title={tr($locale, "sidebar.done")}>
+            <span class="text-xs tabular-nums" style="color: var(--status-online); font-family: var(--font-mono)">{$stats.completed}</span>
+            <span class="stat-label">{tr($locale, "sidebar.done")}</span>
+          </div>
+        </div>
+
+        <!-- Command palette trigger -->
+        <button
+          onclick={() => (showCommandPalette = true)}
+          class="hidden sm:flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs"
+          style="background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-secondary)"
+          aria-label={tr($locale, "cmd.hint_open")}
+        >
+          <Icon name="search" size={14} />
+          <kbd style="font-family: var(--font-mono)">⌘K</kbd>
+        </button>
+
+        <button
+          onclick={() => openAddPanel()}
+          class="hidden md:flex icon-btn p-2 rounded-lg min-w-[44px] min-h-[44px] items-center justify-center"
+          style="color: var(--text-secondary)"
+          aria-label={tr($locale, "cmd.add_download")}
+        >
+          <Icon name="plus" size={20} />
+        </button>
+      </div>
     </header>
 
     <!-- Page content -->
     <div class="flex flex-1 min-h-0">
-      <div class="flex-1 overflow-y-auto p-8 md:p-8 max-md:p-4">
+      <div class="flex-1 overflow-y-auto p-8 md:p-8 max-md:p-4 max-md:pb-28">
         {#key pageKey}
           <div class="page-enter">
             <svelte:boundary onerror={(e) => console.error("Page error:", e)}>
@@ -724,9 +675,19 @@
       <SidePanel />
     </div>
   </main>
+
+  <!-- Mobile bottom navigation + Add FAB -->
+  <MobileNav current={$currentPage} onnavigate={navigate} onadd={() => openAddPanel()} />
 </div>
 
 <!-- Dialogs -->
+{#if showCommandPalette}
+  <CommandPalette
+    onclose={() => (showCommandPalette = false)}
+    onshortcuts={() => (showShortcuts = true)}
+  />
+{/if}
+
 {#if showShortcuts}
   <ShortcutsDialog onclose={() => (showShortcuts = false)} />
 {/if}

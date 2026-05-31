@@ -3,6 +3,7 @@
   import { pauseDownload, resumeDownload, retryDownload, deleteDownload, formatBytes, formatSpeed } from "../lib/api";
   import { openDetailPanel, selectedDownloadId, selectedIds, toggleSelection, crashReport } from "../lib/stores";
   import { addToast } from "../lib/toast";
+  import { locale, tr } from "../lib/i18n";
   import ChunkViz from "@amigo/ui/components/ChunkViz.svelte";
   import ContextMenu from "./ContextMenu.svelte";
   import Icon from "@amigo/ui/components/Icon.svelte";
@@ -32,6 +33,11 @@
     download.status === "failed" ? "var(--neon-accent)" :
     download.status === "paused" ? "var(--neon-warning)" :
     "var(--text-secondary)"
+  );
+
+  const KNOWN_STATUS = ["downloading", "completed", "failed", "paused", "queued"];
+  let statusLabel = $derived(
+    KNOWN_STATUS.includes(download.status) ? tr($locale, `status.${download.status}`) : download.status
   );
 
   let isActive = $derived(download.status === "downloading");
@@ -93,18 +99,19 @@
   }
 
   function getContextMenuItems() {
+    const lang = $locale;
     const items: { label: string; icon: string; action: () => void; color?: string }[] = [
-      { label: "Copy URL", icon: "copy", action: () => navigator.clipboard.writeText(download.url) },
-      { label: "Open in Browser", icon: "globe", action: () => window.open(download.url, "_blank") },
+      { label: tr(lang, "action.copy"), icon: "copy", action: () => navigator.clipboard.writeText(download.url) },
+      { label: tr(lang, "action.open_browser"), icon: "globe", action: () => window.open(download.url, "_blank") },
     ];
     if (download.status === "downloading") {
-      items.push({ label: "Pause", icon: "pause", action: () => pauseDownload(download.id) });
+      items.push({ label: tr(lang, "action.pause"), icon: "pause", action: () => pauseDownload(download.id) });
     } else if (download.status === "paused" || download.status === "queued") {
-      items.push({ label: "Resume", icon: "play", action: () => resumeDownload(download.id) });
+      items.push({ label: tr(lang, "action.resume"), icon: "play", action: () => resumeDownload(download.id) });
     } else if (download.status === "failed") {
-      items.push({ label: "Retry", icon: "refresh", action: () => retryDownload(download.id) });
+      items.push({ label: tr(lang, "action.retry"), icon: "refresh", action: () => retryDownload(download.id) });
     }
-    items.push({ label: "Delete", icon: "trash", action: () => deleteDownload(download.id), color: "var(--neon-accent)" });
+    items.push({ label: tr(lang, "action.delete"), icon: "trash", action: () => deleteDownload(download.id), color: "var(--neon-accent)" });
     return items;
   }
 
@@ -112,9 +119,9 @@
     e.stopPropagation();
     try {
       await navigator.clipboard.writeText(download.url);
-      addToast("info", "URL copied");
+      addToast("info", tr($locale, "action.copy_url"));
     } catch {
-      addToast("error", "Failed to copy");
+      addToast("error", tr($locale, "action.copy_failed"));
     }
   }
 </script>
@@ -179,7 +186,7 @@
         class="px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase shrink-0"
         style="color: {statusColor}; background: color-mix(in srgb, {statusColor} 10%, transparent)"
       >
-        {download.status}
+        {statusLabel}
       </span>
     </div>
 
@@ -196,13 +203,13 @@
       <div class="progress-bar mb-2">
         <div
           class="progress-bar-fill"
-          style="width: {progress}%"
+          style="width: {progress}%; transition: width var(--dur-base, 0.25s) var(--ease-out, ease)"
         ></div>
       </div>
     {/if}
 
     <div class="flex items-center justify-between text-xs" style="color: var(--text-secondary)">
-      <div class="flex gap-3" style="font-family: var(--font-mono);font-size: 11px">
+      <div class="flex gap-3 tabular-nums" style="font-family: var(--font-mono);font-size: 11px">
         <span>{formatBytes(download.bytes_downloaded)}{download.filesize ? ` / ${formatBytes(download.filesize)}` : ""}</span>
         {#if isActive && download.speed > 0}
           <span style="color: var(--neon-primary)">{formatSpeed(download.speed)}</span>
@@ -217,11 +224,11 @@
 
       <!-- Actions — 44px min touch targets (audit H1) -->
       <div class="flex gap-1 items-center" onclick={(e) => e.stopPropagation()}>
-        <button onclick={copyUrl} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--text-secondary)" aria-label="Copy URL">
+        <button onclick={copyUrl} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--text-secondary)" aria-label={tr($locale, "action.copy")}>
           <Icon name="copy" size={14} />
         </button>
         {#if download.status === "failed"}
-          <button onclick={(e: MouseEvent) => { e.stopPropagation(); retryDownload(download.id); }} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--neon-primary)" aria-label="Retry {download.filename || 'download'}">
+          <button onclick={(e: MouseEvent) => { e.stopPropagation(); retryDownload(download.id); }} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--neon-primary)" aria-label="{tr($locale, 'action.retry')} {download.filename || 'download'}">
             <Icon name="refresh" size={14} />
           </button>
           {#if download.error}
@@ -229,24 +236,24 @@
               onclick={() => crashReport.set({ download_id: download.id, error_message: download.error })}
               class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-[10px] font-medium"
               style="color: var(--neon-warning)"
-              aria-label="Report error for {download.filename || 'download'}"
+              aria-label="{tr($locale, 'action.report')} {download.filename || 'download'}"
             >
               <Icon name="flag" size={14} />
             </button>
           {/if}
         {/if}
         {#if download.status === "downloading"}
-          <button onclick={handlePause} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--text-secondary)" aria-label="Pause {download.filename || 'download'}">
+          <button onclick={handlePause} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--text-secondary)" aria-label="{tr($locale, 'action.pause')} {download.filename || 'download'}">
             <Icon name="pause" size={16} />
           </button>
         {:else if download.status === "paused" || download.status === "queued"}
-          <button onclick={handleResume} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--text-secondary)" aria-label="Resume {download.filename || 'download'}">
+          <button onclick={handleResume} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--text-secondary)" aria-label="{tr($locale, 'action.resume')} {download.filename || 'download'}">
             <Icon name="play" size={16} />
           </button>
         {/if}
-        <button onclick={handleDelete} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--neon-accent)" aria-label="Delete {download.filename || 'download'}">
+        <button onclick={handleDelete} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--neon-accent)" aria-label="{tr($locale, 'action.delete')} {download.filename || 'download'}">
           {#if confirmingDelete}
-            <span class="text-[10px] font-bold">Sure?</span>
+            <span class="text-[10px] font-bold">{tr($locale, "action.sure")}</span>
           {:else}
             <Icon name="trash" size={16} />
           {/if}
