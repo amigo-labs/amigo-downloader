@@ -16,6 +16,15 @@ default-members = [
     "crates/cli",
 ]
 
+# Release profile tuned for runtime speed and small binaries.
+# `[profile.*]` is only honored in the workspace root and applies to all members.
+# `panic = "abort"` is added in a later, independently revertible commit.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
