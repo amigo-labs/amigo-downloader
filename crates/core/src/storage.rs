@@ -313,7 +313,18 @@ impl Storage {
         std::fs::create_dir_all(&download_dir)?;
         std::fs::create_dir_all(&temp_dir)?;
         let conn = Connection::open(&db_path)?;
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+        // WAL + synchronous=NORMAL is the recommended high-throughput pairing:
+        // durable across application crashes, only risking the last transaction
+        // on power loss. busy_timeout avoids spurious SQLITE_BUSY under the
+        // concurrent access the server generates; temp_store=MEMORY keeps
+        // sorting/temp B-trees off disk.
+        conn.execute_batch(
+            "PRAGMA journal_mode=WAL;
+             PRAGMA foreign_keys=ON;
+             PRAGMA synchronous=NORMAL;
+             PRAGMA busy_timeout=5000;
+             PRAGMA temp_store=MEMORY;",
+        )?;
         conn.execute_batch(SCHEMA)?;
         ensure_active_url_index(&conn)?;
         Ok(Self {
@@ -371,7 +382,7 @@ impl Storage {
 
     pub async fn get_download(&self, id: &str) -> Result<Option<DownloadRow>, crate::Error> {
         let db = self.db.lock().await;
-        let mut stmt = db.prepare(
+        let mut stmt = db.prepare_cached(
             "SELECT id, url, protocol, filename, filesize, status, priority, package_id, plugin_id,
                     download_dir, bytes_downloaded, speed_current, error_message, retry_count,
                     created_at, started_at, completed_at
@@ -381,9 +392,26 @@ impl Storage {
         Ok(rows.next().transpose()?)
     }
 
+    /// Find the id of an active (queued/downloading/paused) download for `url`,
+    /// if any. Indexed point lookup — avoids scanning the whole table for the
+    /// duplicate-detection check on the add path.
+    pub async fn find_active_download_by_url(
+        &self,
+        url: &str,
+    ) -> Result<Option<String>, crate::Error> {
+        let db = self.db.lock().await;
+        let mut stmt = db.prepare_cached(
+            "SELECT id FROM downloads
+             WHERE url = ?1 AND status IN ('queued', 'downloading', 'paused')
+             LIMIT 1",
+        )?;
+        let mut rows = stmt.query_map(rusqlite::params![url], |r| r.get::<_, String>(0))?;
+        Ok(rows.next().transpose()?)
+    }
+
     pub async fn list_downloads(&self) -> Result<Vec<DownloadRow>, crate::Error> {
         let db = self.db.lock().await;
-        let mut stmt = db.prepare(
+        let mut stmt = db.prepare_cached(
             "SELECT id, url, protocol, filename, filesize, status, priority, package_id, plugin_id,
                     download_dir, bytes_downloaded, speed_current, error_message, retry_count,
                     created_at, started_at, completed_at
@@ -399,7 +427,7 @@ impl Storage {
     ) -> Result<Vec<DownloadRow>, crate::Error> {
         let db = self.db.lock().await;
         let status_str = status.as_str();
-        let mut stmt = db.prepare(
+        let mut stmt = db.prepare_cached(
             "SELECT id, url, protocol, filename, filesize, status, priority, package_id, plugin_id,
                     download_dir, bytes_downloaded, speed_current, error_message, retry_count,
                     created_at, started_at, completed_at
@@ -554,17 +582,22 @@ impl Storage {
         chunks: &[crate::chunk::Chunk],
         temp_dir: &std::path::Path,
     ) -> Result<(), crate::Error> {
-        let db = self.db.lock().await;
-        db.execute(
+        let mut db = self.db.lock().await;
+        // One transaction for the delete + all inserts: a single commit/fsync
+        // instead of one per chunk, and the INSERT is prepared once.
+        let tx = db.transaction()?;
+        tx.execute(
             "DELETE FROM chunks WHERE download_id = ?1",
             rusqlite::params![download_id],
         )?;
-        for chunk in chunks {
-            let temp_path = temp_dir.join(format!("chunk_{}", chunk.index));
-            db.execute(
+        {
+            let mut stmt = tx.prepare_cached(
                 "INSERT INTO chunks (id, download_id, chunk_index, start_byte, end_byte, bytes_downloaded, status, temp_path)
                  VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
-                rusqlite::params![
+            )?;
+            for chunk in chunks {
+                let temp_path = temp_dir.join(format!("chunk_{}", chunk.index));
+                stmt.execute(rusqlite::params![
                     format!("{download_id}_chunk_{}", chunk.index),
                     download_id,
                     chunk.index,
@@ -573,9 +606,10 @@ impl Storage {
                     chunk.bytes_downloaded,
                     format!("{:?}", chunk.status).to_lowercase(),
                     temp_path.to_string_lossy(),
-                ],
-            )?;
+                ])?;
+            }
         }
+        tx.commit()?;
         Ok(())
     }
 

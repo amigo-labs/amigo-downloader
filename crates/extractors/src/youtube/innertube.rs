@@ -4,10 +4,19 @@
 //! without PO-tokens or signature decryption. Falls back to `web_embedded` and
 //! watch-page HTML extraction.
 
+use std::sync::LazyLock;
+
 use serde_json::Value;
 use tracing::{debug, info, warn};
 
 use crate::ExtractorError;
+
+// Player-JS URL patterns are static; compile once instead of per video extraction.
+static PLAYER_JS_PATH_RE: LazyLock<regex::Regex> = LazyLock::new(|| {
+    regex::Regex::new(r#"/s/player/[a-f0-9]+/player_ias\.vflset/[^/]+/base\.js"#).unwrap()
+});
+static PLAYER_JS_URL_RE: LazyLock<regex::Regex> =
+    LazyLock::new(|| regex::Regex::new(r#""jsUrl"\s*:\s*"([^"]+)""#).unwrap());
 
 /// Innertube client configuration.
 struct InnertubeClient {
@@ -219,18 +228,12 @@ pub async fn fetch_player_js_url(
     let html = resp.text().await?;
 
     // Look for player JS URL pattern: /s/player/<hash>/player_ias.vflset/en_US/base.js
-    let re = regex::Regex::new(r#"/s/player/[a-f0-9]+/player_ias\.vflset/[^/]+/base\.js"#)
-        .map_err(|e| ExtractorError::Other(e.to_string()))?;
-
-    if let Some(m) = re.find(&html) {
+    if let Some(m) = PLAYER_JS_PATH_RE.find(&html) {
         return Ok(format!("https://www.youtube.com{}", m.as_str()));
     }
 
     // Fallback pattern
-    let re2 = regex::Regex::new(r#""jsUrl"\s*:\s*"([^"]+)""#)
-        .map_err(|e| ExtractorError::Other(e.to_string()))?;
-
-    if let Some(caps) = re2.captures(&html)
+    if let Some(caps) = PLAYER_JS_URL_RE.captures(&html)
         && let Some(js_match) = caps.get(1)
     {
         let js_path = js_match.as_str();

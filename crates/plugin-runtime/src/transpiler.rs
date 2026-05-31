@@ -3,8 +3,11 @@
 //! Strips type annotations, interfaces, enums, and other TS-only syntax
 //! to produce clean ES2023 JavaScript that QuickJS-NG can execute.
 
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{LazyLock, Mutex};
 
+use sha2::{Digest, Sha256};
 use swc_common::input::SourceFileInput;
 use swc_common::sync::Lrc;
 use swc_common::{FileName, GLOBALS, Globals, Mark, SourceMap};
@@ -15,11 +18,60 @@ use swc_ecma_parser::lexer::Lexer;
 use swc_ecma_parser::{Parser, Syntax, TsSyntax};
 use swc_ecma_transforms_typescript::typescript;
 
+/// Process-wide cache of transpiled output, keyed by a SHA-256 of the source +
+/// filename. SWC parsing/codegen is expensive and runs on every plugin load,
+/// hot-reload, and registry install; identical source short-circuits here.
+/// Keyed on content (not path/mtime) so an edited-then-reloaded plugin misses
+/// correctly. Touched from multiple worker threads, hence the sync Mutex —
+/// never held across an await (transpile is fully synchronous).
+static TRANSPILE_CACHE: LazyLock<Mutex<HashMap<String, String>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Cap on cached transpile outputs. Each plugin edit / hot-reload produces a
+/// new content hash, so without a bound a long-running server would retain
+/// every historical version's source+output forever. A handful of plugins are
+/// ever live; this is generous. On overflow we clear wholesale (a miss just
+/// re-transpiles), matching the eviction style used elsewhere in the crate.
+const TRANSPILE_CACHE_MAX_ENTRIES: usize = 128;
+
 /// Transpile TypeScript source code to JavaScript (ES2023).
 ///
 /// Only strips type annotations — no downlevel transformation.
 /// The output is valid ES2023 that QuickJS-NG can execute directly.
 pub fn transpile(source: &str, filename: &str) -> Result<String, crate::Error> {
+    let key = {
+        let mut hasher = Sha256::new();
+        hasher.update(filename.as_bytes());
+        hasher.update([0u8]);
+        hasher.update(source.as_bytes());
+        hex::encode(hasher.finalize())
+    };
+
+    if let Some(cached) = TRANSPILE_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(&key)
+    {
+        return Ok(cached.clone());
+    }
+
+    // Run the (expensive) transpile outside the lock; a lost race just means
+    // two threads transpile identical input once, which is harmless.
+    let js = transpile_uncached(source, filename)?;
+
+    {
+        let mut cache = TRANSPILE_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+        if cache.len() >= TRANSPILE_CACHE_MAX_ENTRIES {
+            cache.clear();
+        }
+        cache.insert(key, js.clone());
+    }
+
+    Ok(js)
+}
+
+/// Run the SWC parse → strip → codegen pipeline without consulting the cache.
+fn transpile_uncached(source: &str, filename: &str) -> Result<String, crate::Error> {
     GLOBALS.set(&Globals::new(), || {
         let cm: Lrc<SourceMap> = Lrc::new(SourceMap::default());
         let fm = cm.new_source_file(
@@ -93,6 +145,17 @@ mod tests {
         let js = transpile(ts, "test.ts").unwrap();
         assert!(js.contains("function hello"));
         assert!(!js.contains(": string"));
+    }
+
+    #[test]
+    fn test_transpile_cache_returns_identical_output() {
+        // Use a unique source so this test is independent of cache state.
+        let ts = r#"const cacheProbe: number = 7; function probe(): number { return cacheProbe; }"#;
+        let first = transpile(ts, "cache_probe.ts").unwrap();
+        let second = transpile(ts, "cache_probe.ts").unwrap();
+        assert_eq!(first, second);
+        // Output must match an uncached run too (cache is transparent).
+        assert_eq!(first, transpile_uncached(ts, "cache_probe.ts").unwrap());
     }
 
     #[test]
