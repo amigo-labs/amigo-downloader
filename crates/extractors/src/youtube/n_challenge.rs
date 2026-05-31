@@ -5,7 +5,7 @@
 //! player JS. This module extracts that function and runs it via QuickJS.
 
 use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
 use regex::Regex;
@@ -64,7 +64,9 @@ const N_TRANSFORM_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
 struct PlayerJsEntry {
-    js: String,
+    /// Player JS is ~1 MiB; store it behind an `Arc` so cache hits hand out a
+    /// cheap reference-count bump instead of copying the whole string.
+    js: Arc<str>,
     fetched_at: Instant,
 }
 
@@ -78,7 +80,7 @@ static PLAYER_JS_CACHE: std::sync::LazyLock<Mutex<HashMap<String, PlayerJsEntry>
 async fn get_player_js(
     client: &reqwest::Client,
     player_js_url: &str,
-) -> Result<String, ExtractorError> {
+) -> Result<Arc<str>, ExtractorError> {
     // Check cache, honouring TTL.
     {
         let mut cache = PLAYER_JS_CACHE.lock().unwrap_or_else(|e| e.into_inner());
@@ -100,7 +102,7 @@ async fn get_player_js(
         .send()
         .await?;
 
-    let js = resp.text().await?;
+    let js: Arc<str> = Arc::from(resp.text().await?);
 
     // Cache it, evicting the oldest entry first if we're at capacity.
     {
