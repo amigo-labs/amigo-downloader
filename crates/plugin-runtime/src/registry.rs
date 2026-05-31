@@ -3,14 +3,33 @@
 //! Fetches the plugin index from a remote repository (GitHub),
 //! compares versions, and downloads plugin files with SHA256 verification.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{LazyLock, Mutex};
 
 use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tracing::{debug, info, warn};
 
 use crate::types::PluginMeta;
+
+/// Cache of compiled URL-pattern regexes, keyed by the pattern string. The
+/// suggest endpoint recompiled every plugin's pattern on every request; the
+/// patterns are stable, so compile each at most once across requests.
+static URL_PATTERN_CACHE: LazyLock<Mutex<HashMap<String, Option<Regex>>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
+/// Get-or-compile the regex for a plugin URL pattern. Invalid patterns cache a
+/// `None` sentinel so they're skipped (as before) without retrying compilation.
+fn url_pattern_regex(pattern: &str) -> Option<Regex> {
+    let mut cache = URL_PATTERN_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    cache
+        .entry(pattern.to_string())
+        .or_insert_with(|| Regex::new(pattern).ok())
+        .clone()
+}
 
 /// Ed25519 public key of the amigo-labs plugin registry signer.
 ///
@@ -346,7 +365,7 @@ pub fn suggest_plugin_for_url<'a>(
     url: &str,
 ) -> Option<&'a RegistryPlugin> {
     for plugin in &index.plugins {
-        if let Ok(re) = regex::Regex::new(&plugin.url_pattern)
+        if let Some(re) = url_pattern_regex(&plugin.url_pattern)
             && re.is_match(url)
         {
             return Some(plugin);
@@ -421,6 +440,46 @@ pub async fn download_plugin(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn plugin_with_pattern(id: &str, pattern: &str) -> RegistryPlugin {
+        RegistryPlugin {
+            id: id.into(),
+            name: id.into(),
+            version: "1.0.0".into(),
+            description: String::new(),
+            author: String::new(),
+            url_pattern: pattern.into(),
+            min_app_version: None,
+            sha256: String::new(),
+            download_url: "https://example.com/p.ts".into(),
+            tags: vec![],
+        }
+    }
+
+    #[test]
+    fn test_suggest_plugin_for_url_matches_and_is_stable() {
+        let index = RegistryIndex {
+            schema_version: 1,
+            plugins: vec![
+                plugin_with_pattern("mega", r"https?://mega\.nz/.+"),
+                plugin_with_pattern("example", r"https?://example\.com/.+"),
+            ],
+        };
+
+        // Same query twice exercises the compiled-pattern cache path.
+        let url = "https://example.com/file/123";
+        assert_eq!(suggest_plugin_for_url(&index, url).unwrap().id, "example");
+        assert_eq!(suggest_plugin_for_url(&index, url).unwrap().id, "example");
+        assert!(suggest_plugin_for_url(&index, "https://nomatch.test/x").is_none());
+    }
+
+    #[test]
+    fn test_url_pattern_regex_caches_invalid_as_none() {
+        // An invalid pattern must yield None (skipped) without panicking,
+        // and a repeated lookup must stay None.
+        assert!(url_pattern_regex("(((unbalanced").is_none());
+        assert!(url_pattern_regex("(((unbalanced").is_none());
+    }
 
     #[test]
     fn test_check_plugin_updates_detects_update() {
