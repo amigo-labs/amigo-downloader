@@ -1,6 +1,6 @@
 <script lang="ts">
   import { flip } from "svelte/animate";
-  import { pauseDownload, resumeDownload, deleteDownload } from "../lib/api";
+  import { pauseDownload, resumeDownload, deleteDownload, addBatch } from "../lib/api";
   import {
     downloads, usenetDownloads, protocolFilter, openAddPanel,
     selectedIds, toggleSelection, clearSelection, selectAll,
@@ -112,6 +112,9 @@
     }
     confirmingBatchDelete = false;
     const total = $selectedIds.size;
+    // Capture URLs up front so deletion can be undone (re-queues them).
+    const byId = new Map(allDownloads().map((d) => [d.id, d.url]));
+    const urls = [...$selectedIds].map((id) => byId.get(id)).filter((u): u is string => !!u);
     let failed = 0;
     for (const id of $selectedIds) {
       try { await deleteDownload(id); } catch { failed++; }
@@ -119,7 +122,11 @@
     addToast(failed ? "error" : "info",
       failed
         ? tr($locale, "batch.deleted_partial", { done: total - failed, total, failed })
-        : tr($locale, "batch.deleted", { count: total }));
+        : tr($locale, "batch.deleted", { count: total }),
+      undefined,
+      urls.length > 0
+        ? { action: { label: tr($locale, "action.undo"), onAction: () => addBatch(urls) } }
+        : undefined);
     clearSelection();
   }
 

@@ -167,6 +167,7 @@
     role="dialog"
     aria-modal="true"
     aria-label={tr($locale, "cmd.hint_open")}
+    tabindex="-1"
     class="relative z-10 w-full max-w-xl rounded-2xl overflow-hidden neon-card"
     style="background: var(--bg-surface)"
     transition:scaleFade={{ duration: dur(180), y: 8 }}

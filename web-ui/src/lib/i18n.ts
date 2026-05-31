@@ -133,7 +133,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "captcha.skip": "Skip",
     "captcha.time_left": "{seconds}s left",
     "captcha.solved": "Captcha submitted",
-    "captcha.expired": "Captcha expired",
+    "captcha.failed": "Failed to submit captcha",
+    "captcha.expired": "Captcha timed out",
 
     // Settings — appearance
     "settings.appearance": "Appearance",
@@ -303,7 +304,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "captcha.skip": "Überspringen",
     "captcha.time_left": "{seconds}s übrig",
     "captcha.solved": "Captcha übermittelt",
-    "captcha.expired": "Captcha abgelaufen",
+    "captcha.failed": "Captcha konnte nicht übermittelt werden",
+    "captcha.expired": "Captcha-Zeit abgelaufen",
 
     "settings.appearance": "Erscheinungsbild",
     "settings.theme": "Design",
