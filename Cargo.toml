@@ -35,8 +35,21 @@ authors = ["amigo-labs"]
 description = "Fast, modular download manager in Rust — HTTP, Usenet, HLS/DASH, with a TypeScript plugin system and a responsive Web UI."
 
 [workspace.dependencies]
-# Async runtime
-tokio = { version = "1", features = ["full"] }
+# Async runtime. Feature set is the union of what the member crates actually
+# use (rt-multi-thread is mandatory: plugin-runtime relies on block_in_place,
+# which panics on a current-thread runtime). This drops `process` and `io-std`
+# from the old `full`. Test builds restore `full` via dev-dependencies.
+tokio = { version = "1", features = [
+    "rt",
+    "rt-multi-thread",
+    "macros",
+    "sync",
+    "fs",
+    "io-util",
+    "time",
+    "net",
+    "signal",
+] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
