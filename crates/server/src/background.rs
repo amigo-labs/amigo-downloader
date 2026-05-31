@@ -2,12 +2,22 @@
 //! periodic plugin auto-updates.
 
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, LazyLock};
 
 use amigo_core::coordinator::Coordinator;
 use amigo_plugin_runtime::updater::PluginUpdater;
+use regex::Regex;
 use tokio::time::{Duration, interval};
 use tracing::{debug, info, warn};
+
+// RSS/Atom NZB-link patterns are static; compile once instead of on every
+// feed poll cycle (runs every 10-60s per configured feed).
+static NZB_ENCLOSURE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"<enclosure[^>]+url=["']([^"']+\.nzb[^"']*)["']"#).unwrap());
+static NZB_LINK_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"<link[^>]*>([^<]+\.nzb[^<]*)</link>"#).unwrap());
+static NZB_HREF_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"href=["']([^"']+\.nzb[^"']*)["']"#).unwrap());
 
 /// Start all background tasks.
 pub fn spawn_background_tasks(
@@ -302,17 +312,14 @@ fn extract_nzb_links(xml: &str) -> Vec<String> {
     let mut links = Vec::new();
 
     // Find enclosure URLs with .nzb
-    let enclosure_pattern =
-        regex::Regex::new(r#"<enclosure[^>]+url=["']([^"']+\.nzb[^"']*)["']"#).unwrap();
-    for cap in enclosure_pattern.captures_iter(xml) {
+    for cap in NZB_ENCLOSURE_RE.captures_iter(xml) {
         if let Some(url) = cap.get(1) {
             links.push(url.as_str().to_string());
         }
     }
 
     // Find <link> elements pointing to .nzb files
-    let link_pattern = regex::Regex::new(r#"<link[^>]*>([^<]+\.nzb[^<]*)</link>"#).unwrap();
-    for cap in link_pattern.captures_iter(xml) {
+    for cap in NZB_LINK_RE.captures_iter(xml) {
         if let Some(url) = cap.get(1) {
             let url = url.as_str().trim();
             if url.starts_with("http") {
@@ -322,8 +329,7 @@ fn extract_nzb_links(xml: &str) -> Vec<String> {
     }
 
     // Find href attributes pointing to .nzb
-    let href_pattern = regex::Regex::new(r#"href=["']([^"']+\.nzb[^"']*)["']"#).unwrap();
-    for cap in href_pattern.captures_iter(xml) {
+    for cap in NZB_HREF_RE.captures_iter(xml) {
         if let Some(url) = cap.get(1) {
             links.push(url.as_str().to_string());
         }

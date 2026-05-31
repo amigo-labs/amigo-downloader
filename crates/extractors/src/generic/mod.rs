@@ -12,12 +12,27 @@
 pub mod metadata;
 pub mod players;
 
+use std::sync::LazyLock;
+
 use regex::Regex;
 use scraper::{Html, Selector};
 use tracing::{debug, info};
 use url::Url;
 
 use crate::error::ExtractorError;
+
+// Media-URL mining patterns are static; compile once instead of per page.
+static SCRIPT_M3U8_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"["\']?(https?://[^"'\s]+\.m3u8(?:\?[^"'\s]*)?)["\']?"#).unwrap()
+});
+static SCRIPT_MPD_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"["\']?(https?://[^"'\s]+\.mpd(?:\?[^"'\s]*)?)["\']?"#).unwrap());
+static SCRIPT_MP4_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"["\']?(https?://[^"'\s]+\.(?:mp4|webm)(?:\?[^"'\s]*)?)["\']?"#).unwrap()
+});
+static FEED_ENCLOSURE_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"<enclosure[^>]+url=["']([^"']+)["'][^>]*(?:type=["']([^"']+)["'])?"#).unwrap()
+});
 use crate::traits::{ExtractedMedia, Extractor, MediaStream, StreamProtocol};
 
 /// Media file extensions that indicate a direct download.
@@ -175,9 +190,7 @@ impl GenericExtractor {
         let mut streams = Vec::new();
 
         // Find m3u8 URLs
-        let m3u8_re =
-            Regex::new(r#"["\']?(https?://[^"'\s]+\.m3u8(?:\?[^"'\s]*)?)["\']?"#).unwrap();
-        for cap in m3u8_re.captures_iter(html) {
+        for cap in SCRIPT_M3U8_RE.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 debug!("Found m3u8 in script: {}", url.as_str());
                 streams.push(Self::stream_from_url(url.as_str(), StreamProtocol::Hls));
@@ -185,8 +198,7 @@ impl GenericExtractor {
         }
 
         // Find mpd URLs
-        let mpd_re = Regex::new(r#"["\']?(https?://[^"'\s]+\.mpd(?:\?[^"'\s]*)?)["\']?"#).unwrap();
-        for cap in mpd_re.captures_iter(html) {
+        for cap in SCRIPT_MPD_RE.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 debug!("Found mpd in script: {}", url.as_str());
                 streams.push(Self::stream_from_url(url.as_str(), StreamProtocol::Dash));
@@ -194,9 +206,7 @@ impl GenericExtractor {
         }
 
         // Find direct mp4/webm URLs in JavaScript (but not in HTML href/src which we handle elsewhere)
-        let mp4_re =
-            Regex::new(r#"["\']?(https?://[^"'\s]+\.(?:mp4|webm)(?:\?[^"'\s]*)?)["\']?"#).unwrap();
-        for cap in mp4_re.captures_iter(html) {
+        for cap in SCRIPT_MP4_RE.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 let url_str = url.as_str();
                 // Skip obvious non-video mp4 URLs (thumbnails, etc.)
@@ -257,10 +267,7 @@ impl GenericExtractor {
         let mut streams = Vec::new();
 
         // RSS <enclosure url="..." type="..."/>
-        let enclosure_re =
-            Regex::new(r#"<enclosure[^>]+url=["']([^"']+)["'][^>]*(?:type=["']([^"']+)["'])?"#)
-                .unwrap();
-        for cap in enclosure_re.captures_iter(html) {
+        for cap in FEED_ENCLOSURE_RE.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 let url_str = url.as_str();
                 let ct = cap.get(2).map(|m| m.as_str()).unwrap_or("");

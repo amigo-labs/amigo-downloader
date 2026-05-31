@@ -5,12 +5,45 @@
 //! player JS. This module extracts that function and runs it via QuickJS.
 
 use std::collections::HashMap;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use std::time::{Duration, Instant};
 
+use regex::Regex;
 use tracing::{debug, warn};
 
 use crate::ExtractorError;
+
+/// The n-function reference pattern; static, so compile it once.
+static N_FUNC_REF_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"\.get\("n"\)\)&&\(b=([a-zA-Z0-9$]+)(?:\[(\d+)\])?\(b\)"#).unwrap()
+});
+
+/// Broader fallback pattern matching the whole n-transform function body.
+static N_FUNC_FALLBACK_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"(?s)function\s*\w+\(a\)\s*\{var b=a\.split\(""\).*?return b\.join\(""\)\}"#)
+        .unwrap()
+});
+
+/// Bounded cache for regexes built from runtime-derived function names. These
+/// patterns vary by player version but recur across retries / multiple videos
+/// on the same player, so caching avoids recompiling them each extraction.
+static DYNAMIC_RE_CACHE: LazyLock<Mutex<HashMap<String, Regex>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+const DYNAMIC_RE_CACHE_MAX_ENTRIES: usize = 32;
+
+/// Get-or-compile a regex for a dynamically built pattern, caching successes.
+fn cached_dynamic_regex(pattern: &str) -> Option<Regex> {
+    let mut cache = DYNAMIC_RE_CACHE.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(re) = cache.get(pattern) {
+        return Some(re.clone());
+    }
+    let re = Regex::new(pattern).ok()?;
+    if cache.len() >= DYNAMIC_RE_CACHE_MAX_ENTRIES {
+        cache.clear();
+    }
+    cache.insert(pattern.to_string(), re.clone());
+    Some(re)
+}
 
 /// Maximum age of a cached player.js entry. YouTube rotates the player JS
 /// roughly daily; refreshing every 12 h keeps us aligned without spamming
@@ -102,19 +135,9 @@ async fn get_player_js(
 /// We look for the function name assigned to handle the `n` parameter and
 /// extract the complete function body.
 fn extract_n_function(player_js: &str) -> Result<String, ExtractorError> {
-    // Pattern 1: Modern yt-dlp style — function name from n-parameter assignment
+    // Pattern 1: Modern yt-dlp style — function name from n-parameter assignment.
     // Looking for: var b=a.split("") ... .join("")
-    // The n-transform function pattern used by yt-dlp:
-    let patterns = [
-        // Enhanced swap function pattern
-        r#"\.get\("n"\)\)&&\(b=([a-zA-Z0-9$]+)(?:\[(\d+)\])?\(b\)"#,
-        // Alternative pattern
-        r#"var b=a\.split\(""\).*?return b\.join\(""\)"#,
-    ];
-
-    let re = regex::Regex::new(patterns[0]).map_err(|e| ExtractorError::Other(e.to_string()))?;
-
-    if let Some(caps) = re.captures(player_js) {
+    if let Some(caps) = N_FUNC_REF_RE.captures(player_js) {
         let func_name = caps
             .get(1)
             .ok_or_else(|| {
@@ -144,12 +167,7 @@ fn extract_n_function(player_js: &str) -> Result<String, ExtractorError> {
     }
 
     // Fallback: look for the complete n-transform function using a broader pattern
-    let fallback_re = regex::Regex::new(
-        r#"(?s)function\s*\w+\(a\)\s*\{var b=a\.split\(""\).*?return b\.join\(""\)\}"#,
-    )
-    .map_err(|e| ExtractorError::Other(e.to_string()))?;
-
-    if let Some(m) = fallback_re.find(player_js) {
+    if let Some(m) = N_FUNC_FALLBACK_RE.find(player_js) {
         return Ok(m.as_str().to_string());
     }
 
@@ -165,7 +183,7 @@ fn extract_named_function(js: &str, name: &str) -> Option<String> {
 
     // Try: var name=function(a){...};
     let pat = format!(r"(?s)var\s+{escaped}\s*=\s*function\([^)]*\)\s*\{{");
-    if let Ok(re) = regex::Regex::new(&pat)
+    if let Some(re) = cached_dynamic_regex(&pat)
         && let Some(m) = re.find(js)
         && let Some(end) = find_closing_brace(js, m.end() - 1)
     {
@@ -175,7 +193,7 @@ fn extract_named_function(js: &str, name: &str) -> Option<String> {
 
     // Try: function name(a){...}
     let pat2 = format!(r"(?s)function\s+{escaped}\s*\([^)]*\)\s*\{{");
-    if let Ok(re) = regex::Regex::new(&pat2)
+    if let Some(re) = cached_dynamic_regex(&pat2)
         && let Some(m) = re.find(js)
         && let Some(end) = find_closing_brace(js, m.end() - 1)
     {
@@ -189,7 +207,7 @@ fn extract_named_function(js: &str, name: &str) -> Option<String> {
 fn extract_function_from_array(js: &str, array_name: &str, _idx: usize) -> Option<String> {
     let escaped = regex::escape(array_name);
     let pat = format!(r"(?s)var\s+{escaped}\s*=\s*\[");
-    let re = regex::Regex::new(&pat).ok()?;
+    let re = cached_dynamic_regex(&pat)?;
     let m = re.find(js)?;
 
     // Find the closing bracket
