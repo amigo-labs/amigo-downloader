@@ -12,6 +12,10 @@ use tracing::{debug, info, warn};
 
 use crate::bandwidth::BandwidthLimiter;
 
+/// Write buffer size for download/reassembly file I/O. `bytes_stream()` yields
+/// many small chunks; without buffering each one becomes its own write syscall.
+const WRITE_BUFFER_SIZE: usize = 256 * 1024;
+
 /// Flush kernel buffers and persist `file` to disk.
 ///
 /// `flush().await` only drains the user-space buffer into the kernel; if the
@@ -103,7 +107,8 @@ impl HttpDownloader {
         let resp = self.client.get(url).send().await?.error_for_status()?;
         let total = resp.content_length();
 
-        let mut file = tokio::fs::File::create(dest).await?;
+        let file = tokio::fs::File::create(dest).await?;
+        let mut writer = tokio::io::BufWriter::with_capacity(WRITE_BUFFER_SIZE, file);
         let mut stream = resp.bytes_stream();
         let mut downloaded: u64 = 0;
         let mut last_update = tokio::time::Instant::now();
@@ -112,7 +117,7 @@ impl HttpDownloader {
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(crate::Error::Http)?;
             self.bandwidth.acquire(chunk.len() as u64).await;
-            file.write_all(&chunk).await?;
+            writer.write_all(&chunk).await?;
             downloaded += chunk.len() as u64;
             speed_bytes += chunk.len() as u64;
 
@@ -130,7 +135,8 @@ impl HttpDownloader {
             }
         }
 
-        fsync_file(&mut file).await?;
+        writer.flush().await?;
+        fsync_file(writer.get_mut()).await?;
 
         let _ = progress_tx.send(DownloadProgress {
             bytes_downloaded: downloaded,
@@ -234,14 +240,20 @@ impl HttpDownloader {
         let dest_tmp = dest.with_extension("part");
         debug!("Reassembling {} chunks into {:?}", num_chunks, dest_tmp);
         let reassemble_result: Result<(), crate::Error> = async {
-            let mut dest_file = tokio::fs::File::create(&dest_tmp).await?;
+            let dest_file = tokio::fs::File::create(&dest_tmp).await?;
+            let mut dest_writer = tokio::io::BufWriter::with_capacity(WRITE_BUFFER_SIZE, dest_file);
             for i in 0..num_chunks {
                 let chunk_path = temp_dir.join(format!("chunk_{i}"));
-                let chunk_data = tokio::fs::read(&chunk_path).await?;
-                dest_file.write_all(&chunk_data).await?;
+                // Stream each chunk through the buffered writer instead of
+                // loading the whole chunk into a Vec — keeps peak RAM bounded
+                // by the buffer size regardless of chunk size.
+                let mut chunk_file = tokio::fs::File::open(&chunk_path).await?;
+                tokio::io::copy(&mut chunk_file, &mut dest_writer).await?;
+                drop(chunk_file);
                 tokio::fs::remove_file(&chunk_path).await?;
             }
-            fsync_file(&mut dest_file).await?;
+            dest_writer.flush().await?;
+            fsync_file(dest_writer.get_mut()).await?;
             Ok(())
         }
         .await;
@@ -325,10 +337,11 @@ impl HttpDownloader {
             .content_length()
             .map(|remaining| remaining + existing_size);
 
-        let mut file = tokio::fs::OpenOptions::new()
+        let file = tokio::fs::OpenOptions::new()
             .append(true)
             .open(dest)
             .await?;
+        let mut writer = tokio::io::BufWriter::with_capacity(WRITE_BUFFER_SIZE, file);
 
         let mut stream = resp.bytes_stream();
         let mut downloaded = existing_size;
@@ -338,7 +351,7 @@ impl HttpDownloader {
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(crate::Error::Http)?;
             self.bandwidth.acquire(chunk.len() as u64).await;
-            file.write_all(&chunk).await?;
+            writer.write_all(&chunk).await?;
             downloaded += chunk.len() as u64;
             speed_bytes += chunk.len() as u64;
 
@@ -356,7 +369,8 @@ impl HttpDownloader {
             }
         }
 
-        fsync_file(&mut file).await?;
+        writer.flush().await?;
+        fsync_file(writer.get_mut()).await?;
         info!("Resume download complete: {} bytes total", downloaded);
         Ok(downloaded)
     }
@@ -398,7 +412,7 @@ async fn download_chunk(
         .await?
         .error_for_status()?;
 
-    let mut file = if existing_bytes > 0 {
+    let file = if existing_bytes > 0 {
         tokio::fs::OpenOptions::new()
             .append(true)
             .open(chunk_path)
@@ -406,6 +420,7 @@ async fn download_chunk(
     } else {
         tokio::fs::File::create(chunk_path).await?
     };
+    let mut writer = tokio::io::BufWriter::with_capacity(WRITE_BUFFER_SIZE, file);
 
     let mut stream = resp.bytes_stream();
     let mut chunk_downloaded = existing_bytes;
@@ -413,7 +428,7 @@ async fn download_chunk(
     while let Some(data) = stream.next().await {
         let data = data.map_err(crate::Error::Http)?;
         bandwidth.acquire(data.len() as u64).await;
-        file.write_all(&data).await?;
+        writer.write_all(&data).await?;
         chunk_downloaded += data.len() as u64;
         progress[chunk_index as usize]
             .store(chunk_downloaded, std::sync::atomic::Ordering::Relaxed);
@@ -421,7 +436,8 @@ async fn download_chunk(
 
     // Each chunk gets fsync'd so its bytes survive a crash before the
     // reassembly stage reads it back.
-    fsync_file(&mut file).await?;
+    writer.flush().await?;
+    fsync_file(writer.get_mut()).await?;
     debug!("Chunk {chunk_index} complete: {chunk_downloaded} bytes");
     Ok(())
 }
