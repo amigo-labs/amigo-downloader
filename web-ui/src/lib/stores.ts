@@ -280,6 +280,13 @@ export function attachRouterPopstateListener(): () => void {
 export const downloads = writable<Download[]>([]);
 export const selectedDownloadId = writable<string | null>(null);
 
+/**
+ * Flips true after the first downloads fetch *attempt* completes (success or
+ * failure). Drives skeleton gating: once an attempt has finished, the Downloads
+ * page shows real data or its empty/offline state rather than skeletons forever.
+ */
+export const downloadsLoaded = writable<boolean>(false);
+
 export const selectedDownload = derived(
   [downloads, selectedDownloadId],
   ([$downloads, $id]) => $id ? $downloads.find((d) => d.id === $id) ?? null : null

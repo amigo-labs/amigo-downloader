@@ -3,7 +3,7 @@
   import { features } from "../lib/stores";
   import { getConfig, putConfig, getWebhooks, type AppConfig } from "../lib/api";
   import { addToast } from "../lib/toast";
-  import { locale, type Locale } from "../lib/i18n";
+  import { locale, tr, type Locale } from "../lib/i18n";
   import Icon from "@amigo/ui/components/Icon.svelte";
 
   import SettingsFeatures from "../components/settings/SettingsFeatures.svelte";
@@ -32,9 +32,9 @@
     try {
       config = await putConfig(config);
       features.set(config.features);
-      addToast("success", "Settings saved");
+      addToast("success", tr($locale, "settings.saved"));
     } catch {
-      addToast("error", "Failed to save settings");
+      addToast("error", tr($locale, "settings.save_failed"));
     }
   }
 </script>
@@ -55,7 +55,7 @@
 
   <!-- Language -->
   <section>
-    <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">Language</h3>
+    <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">{tr($locale, "settings.language")}</h3>
     <div class="rounded-xl p-5" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
       <div class="flex items-center gap-3">
         <Icon name="globe" size={18} />
@@ -64,7 +64,7 @@
           onchange={(e) => locale.set((e.target as HTMLSelectElement).value as Locale)}
           class="flex-1 rounded-lg px-3 py-2 text-sm"
           style="background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)"
-          aria-label="Language"
+          aria-label={tr($locale, "settings.language")}
         >
           <option value="en" style="background: var(--bg-surface-2)">English</option>
           <option value="de" style="background: var(--bg-surface-2)">Deutsch</option>
@@ -75,7 +75,7 @@
 
   <!-- About -->
   <section>
-    <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">About</h3>
+    <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">{tr($locale, "settings.about")}</h3>
     <div class="rounded-xl p-5" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
       <div class="flex items-center gap-4">
         <img src="/amigo-logo.png" alt="amigo-downloader" width="40" height="40" class="rounded-lg" />
