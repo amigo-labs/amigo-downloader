@@ -6,7 +6,7 @@
 use std::path::Path;
 
 use tokio::sync::watch;
-use tracing::{debug, info, warn};
+use tracing::info;
 
 use super::http::DownloadProgress;
 
@@ -33,6 +33,7 @@ impl HlsDownloader {
         &self,
         manifest_url: &str,
         dest: &Path,
+        seg_dir: &Path,
         progress_tx: watch::Sender<DownloadProgress>,
     ) -> Result<u64, crate::Error> {
         info!("Downloading HLS stream: {manifest_url}");
@@ -69,7 +70,7 @@ impl HlsDownloader {
 
                 match media_parsed {
                     m3u8_rs::Playlist::MediaPlaylist(pl) => {
-                        self.download_segments(&variant_url, &pl, dest, progress_tx)
+                        self.download_segments(&variant_url, &pl, dest, seg_dir, progress_tx)
                             .await
                     }
                     _ => Err(crate::Error::Other(
@@ -78,7 +79,7 @@ impl HlsDownloader {
                 }
             }
             m3u8_rs::Playlist::MediaPlaylist(media) => {
-                self.download_segments(manifest_url, &media, dest, progress_tx)
+                self.download_segments(manifest_url, &media, dest, seg_dir, progress_tx)
                     .await
             }
         }
@@ -90,6 +91,7 @@ impl HlsDownloader {
         playlist_url: &str,
         playlist: &m3u8_rs::MediaPlaylist,
         dest: &Path,
+        seg_dir: &Path,
         progress_tx: watch::Sender<DownloadProgress>,
     ) -> Result<u64, crate::Error> {
         let segment_urls: Vec<String> = playlist
@@ -98,81 +100,23 @@ impl HlsDownloader {
             .map(|seg| resolve_url(playlist_url, &seg.uri))
             .collect();
 
-        let total_segments = segment_urls.len();
         info!(
-            "HLS: downloading {total_segments} segments ({} concurrent)",
+            "HLS: downloading {} segments ({} concurrent)",
+            segment_urls.len(),
             self.concurrent_segments
         );
 
-        // Download segments in parallel batches
-        let mut all_data: Vec<(usize, Vec<u8>)> = Vec::with_capacity(total_segments);
-        let mut total_bytes: u64 = 0;
-
-        for chunk in segment_urls.chunks(self.concurrent_segments) {
-            let mut handles = Vec::new();
-
-            for (offset, url) in chunk.iter().enumerate() {
-                let client = self.client.clone();
-                let url = url.clone();
-                let idx = all_data.len() + offset;
-
-                handles.push(tokio::spawn(async move {
-                    let resp = client.get(&url).send().await?;
-                    let bytes = resp.bytes().await?;
-                    Ok::<(usize, Vec<u8>), reqwest::Error>((idx, bytes.to_vec()))
-                }));
-            }
-
-            for handle in handles {
-                match handle.await {
-                    Ok(Ok((idx, data))) => {
-                        total_bytes += data.len() as u64;
-                        all_data.push((idx, data));
-
-                        let _ = progress_tx.send(DownloadProgress {
-                            bytes_downloaded: total_bytes,
-                            total_bytes: None,
-                            speed_bytes_per_sec: 0,
-                        });
-                    }
-                    Ok(Err(e)) => {
-                        warn!("HLS segment download failed: {e}");
-                        return Err(crate::Error::Http(e));
-                    }
-                    Err(e) => {
-                        warn!("HLS segment task failed: {e}");
-                        return Err(crate::Error::Other(e.to_string()));
-                    }
-                }
-            }
-
-            debug!(
-                "HLS: downloaded {}/{} segments",
-                all_data.len(),
-                total_segments
-            );
-        }
-
-        // Sort by index and concatenate
-        all_data.sort_by_key(|(idx, _)| *idx);
-
-        if let Some(parent) = dest.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-
-        let mut output = tokio::fs::File::create(dest).await?;
-        for (_, data) in &all_data {
-            tokio::io::AsyncWriteExt::write_all(&mut output, data).await?;
-        }
+        let total_bytes = super::http::download_segments_streamed(
+            &self.client,
+            &segment_urls,
+            dest,
+            seg_dir,
+            self.concurrent_segments,
+            progress_tx,
+        )
+        .await?;
 
         info!("HLS: wrote {} bytes to {}", total_bytes, dest.display());
-
-        let _ = progress_tx.send(DownloadProgress {
-            bytes_downloaded: total_bytes,
-            total_bytes: Some(total_bytes),
-            speed_bytes_per_sec: 0,
-        });
-
         Ok(total_bytes)
     }
 }
@@ -226,10 +170,72 @@ impl super::ProtocolBackend for HlsDownloader {
         });
         let dest = job.download_dir.join(&fname);
         tokio::fs::create_dir_all(&job.download_dir).await?;
+        // Per-download scratch space for the segment temp files.
+        let seg_dir = job.temp_dir.join(format!("hls-{}", job.download_id));
 
         tokio::select! {
-            result = self.download(&job.url, &dest, progress_tx) => result.map(|bytes| (bytes, dest)),
+            result = self.download(&job.url, &dest, &seg_dir, progress_tx) => result.map(|bytes| (bytes, dest)),
             _ = super::wait_for_cancel(&mut cancel_rx) => Err(crate::Error::Cancelled),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    #[tokio::test]
+    async fn reassembles_segments_in_playlist_order() {
+        let server = MockServer::start().await;
+
+        // A media playlist referencing three relative segments, intentionally
+        // served so that concurrent download could finish out of order.
+        let playlist = "#EXTM3U\n\
+             #EXT-X-VERSION:3\n\
+             #EXT-X-TARGETDURATION:4\n\
+             #EXTINF:4.0,\nseg0.ts\n\
+             #EXTINF:4.0,\nseg1.ts\n\
+             #EXTINF:4.0,\nseg2.ts\n\
+             #EXT-X-ENDLIST\n";
+        Mock::given(method("GET"))
+            .and(path("/playlist.m3u8"))
+            .respond_with(ResponseTemplate::new(200).set_body_string(playlist))
+            .mount(&server)
+            .await;
+
+        // Distinct, different-length bodies so a wrong order is unambiguous.
+        let bodies: [&[u8]; 3] = [b"AAAA", b"BB", b"CCCCCC"];
+        for (i, body) in bodies.iter().enumerate() {
+            Mock::given(method("GET"))
+                .and(path(format!("/seg{i}.ts")))
+                .respond_with(ResponseTemplate::new(200).set_body_bytes(body.to_vec()))
+                .mount(&server)
+                .await;
+        }
+
+        let tmp = tempfile::tempdir().unwrap();
+        let dest = tmp.path().join("out.ts");
+        let seg_dir = tmp.path().join("segments");
+        let (tx, _rx) = watch::channel(DownloadProgress {
+            bytes_downloaded: 0,
+            total_bytes: None,
+            speed_bytes_per_sec: 0,
+        });
+
+        let downloader = HlsDownloader::new("test-agent", 3);
+        let manifest_url = format!("{}/playlist.m3u8", server.uri());
+        let written = downloader
+            .download(&manifest_url, &dest, &seg_dir, tx)
+            .await
+            .expect("HLS download should succeed");
+
+        let expected: Vec<u8> = bodies.concat();
+        assert_eq!(written, expected.len() as u64);
+        let on_disk = tokio::fs::read(&dest).await.unwrap();
+        assert_eq!(on_disk, expected, "segments must be concatenated in order");
+        // Scratch dir must be cleaned up on success.
+        assert!(!seg_dir.exists(), "segment temp dir should be removed");
     }
 }

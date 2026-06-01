@@ -3,6 +3,7 @@
 //! Supports multi-chunk parallel downloads, resume, and progress reporting.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use futures::StreamExt;
 use reqwest::header::{ACCEPT_RANGES, CONTENT_DISPOSITION, CONTENT_LENGTH, RANGE};
@@ -11,6 +12,10 @@ use tokio::sync::watch;
 use tracing::{debug, info, warn};
 
 use crate::bandwidth::BandwidthLimiter;
+
+/// Write buffer size for download/reassembly file I/O. `bytes_stream()` yields
+/// many small chunks; without buffering each one becomes its own write syscall.
+const WRITE_BUFFER_SIZE: usize = 256 * 1024;
 
 /// Flush kernel buffers and persist `file` to disk.
 ///
@@ -103,7 +108,8 @@ impl HttpDownloader {
         let resp = self.client.get(url).send().await?.error_for_status()?;
         let total = resp.content_length();
 
-        let mut file = tokio::fs::File::create(dest).await?;
+        let file = tokio::fs::File::create(dest).await?;
+        let mut writer = tokio::io::BufWriter::with_capacity(WRITE_BUFFER_SIZE, file);
         let mut stream = resp.bytes_stream();
         let mut downloaded: u64 = 0;
         let mut last_update = tokio::time::Instant::now();
@@ -112,7 +118,7 @@ impl HttpDownloader {
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(crate::Error::Http)?;
             self.bandwidth.acquire(chunk.len() as u64).await;
-            file.write_all(&chunk).await?;
+            writer.write_all(&chunk).await?;
             downloaded += chunk.len() as u64;
             speed_bytes += chunk.len() as u64;
 
@@ -130,7 +136,8 @@ impl HttpDownloader {
             }
         }
 
-        fsync_file(&mut file).await?;
+        writer.flush().await?;
+        fsync_file(writer.get_mut()).await?;
 
         let _ = progress_tx.send(DownloadProgress {
             bytes_downloaded: downloaded,
@@ -234,14 +241,20 @@ impl HttpDownloader {
         let dest_tmp = dest.with_extension("part");
         debug!("Reassembling {} chunks into {:?}", num_chunks, dest_tmp);
         let reassemble_result: Result<(), crate::Error> = async {
-            let mut dest_file = tokio::fs::File::create(&dest_tmp).await?;
+            let dest_file = tokio::fs::File::create(&dest_tmp).await?;
+            let mut dest_writer = tokio::io::BufWriter::with_capacity(WRITE_BUFFER_SIZE, dest_file);
             for i in 0..num_chunks {
                 let chunk_path = temp_dir.join(format!("chunk_{i}"));
-                let chunk_data = tokio::fs::read(&chunk_path).await?;
-                dest_file.write_all(&chunk_data).await?;
+                // Stream each chunk through the buffered writer instead of
+                // loading the whole chunk into a Vec — keeps peak RAM bounded
+                // by the buffer size regardless of chunk size.
+                let mut chunk_file = tokio::fs::File::open(&chunk_path).await?;
+                tokio::io::copy(&mut chunk_file, &mut dest_writer).await?;
+                drop(chunk_file);
                 tokio::fs::remove_file(&chunk_path).await?;
             }
-            fsync_file(&mut dest_file).await?;
+            dest_writer.flush().await?;
+            fsync_file(dest_writer.get_mut()).await?;
             Ok(())
         }
         .await;
@@ -325,10 +338,11 @@ impl HttpDownloader {
             .content_length()
             .map(|remaining| remaining + existing_size);
 
-        let mut file = tokio::fs::OpenOptions::new()
+        let file = tokio::fs::OpenOptions::new()
             .append(true)
             .open(dest)
             .await?;
+        let mut writer = tokio::io::BufWriter::with_capacity(WRITE_BUFFER_SIZE, file);
 
         let mut stream = resp.bytes_stream();
         let mut downloaded = existing_size;
@@ -338,7 +352,7 @@ impl HttpDownloader {
         while let Some(chunk) = stream.next().await {
             let chunk = chunk.map_err(crate::Error::Http)?;
             self.bandwidth.acquire(chunk.len() as u64).await;
-            file.write_all(&chunk).await?;
+            writer.write_all(&chunk).await?;
             downloaded += chunk.len() as u64;
             speed_bytes += chunk.len() as u64;
 
@@ -356,7 +370,8 @@ impl HttpDownloader {
             }
         }
 
-        fsync_file(&mut file).await?;
+        writer.flush().await?;
+        fsync_file(writer.get_mut()).await?;
         info!("Resume download complete: {} bytes total", downloaded);
         Ok(downloaded)
     }
@@ -398,7 +413,7 @@ async fn download_chunk(
         .await?
         .error_for_status()?;
 
-    let mut file = if existing_bytes > 0 {
+    let file = if existing_bytes > 0 {
         tokio::fs::OpenOptions::new()
             .append(true)
             .open(chunk_path)
@@ -406,6 +421,7 @@ async fn download_chunk(
     } else {
         tokio::fs::File::create(chunk_path).await?
     };
+    let mut writer = tokio::io::BufWriter::with_capacity(WRITE_BUFFER_SIZE, file);
 
     let mut stream = resp.bytes_stream();
     let mut chunk_downloaded = existing_bytes;
@@ -413,7 +429,7 @@ async fn download_chunk(
     while let Some(data) = stream.next().await {
         let data = data.map_err(crate::Error::Http)?;
         bandwidth.acquire(data.len() as u64).await;
-        file.write_all(&data).await?;
+        writer.write_all(&data).await?;
         chunk_downloaded += data.len() as u64;
         progress[chunk_index as usize]
             .store(chunk_downloaded, std::sync::atomic::Ordering::Relaxed);
@@ -421,9 +437,195 @@ async fn download_chunk(
 
     // Each chunk gets fsync'd so its bytes survive a crash before the
     // reassembly stage reads it back.
-    fsync_file(&mut file).await?;
+    writer.flush().await?;
+    fsync_file(writer.get_mut()).await?;
     debug!("Chunk {chunk_index} complete: {chunk_downloaded} bytes");
     Ok(())
+}
+
+/// Stream a single media segment (full GET, no range) to `seg_path`, updating
+/// `progress[idx]` as bytes arrive. Returns the segment's byte count.
+async fn download_segment(
+    client: &reqwest::Client,
+    url: &str,
+    seg_path: &Path,
+    idx: usize,
+    progress: &[std::sync::atomic::AtomicU64],
+) -> Result<u64, crate::Error> {
+    let resp = client.get(url).send().await?.error_for_status()?;
+    let file = tokio::fs::File::create(seg_path).await?;
+    let mut writer = tokio::io::BufWriter::with_capacity(WRITE_BUFFER_SIZE, file);
+    let mut stream = resp.bytes_stream();
+    let mut downloaded: u64 = 0;
+
+    while let Some(data) = stream.next().await {
+        let data = data.map_err(crate::Error::Http)?;
+        writer.write_all(&data).await?;
+        downloaded += data.len() as u64;
+        progress[idx].store(downloaded, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    // Only flush to the kernel — no per-segment fsync. These temp files are
+    // scratch: never resumed after a crash and deleted right after
+    // reassembly, so flushing is enough for the reassembly read to see the
+    // bytes. Durability is provided by the single fsync of the final output.
+    writer.flush().await?;
+    Ok(downloaded)
+}
+
+/// Aborts a spawned task when dropped. Used to tie the progress-reporter task
+/// to the lifetime of the download future, so a `tokio::select!` cancellation
+/// (which drops the future before the normal cleanup runs) doesn't leak the
+/// reporter for the rest of the process.
+struct AbortOnDrop(tokio::task::JoinHandle<()>);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+/// Download a list of media segments (HLS/DASH) concurrently to indexed temp
+/// files and reassemble them in playlist order into `dest`.
+///
+/// Shared by the HLS and DASH backends. Unlike the previous approach this never
+/// holds the whole stream in RAM: each segment streams straight to
+/// `seg_dir/seg_{idx:08}` and reassembly copies them through one buffered
+/// writer, so peak memory is bounded by the concurrency, not the stream size.
+/// Output is written to a sibling `.part` file and atomically renamed on
+/// success (matching the durability guarantees of the chunked HTTP path).
+/// Progress is emitted on a 500 ms timer instead of once per segment.
+pub(crate) async fn download_segments_streamed(
+    client: &reqwest::Client,
+    segment_urls: &[String],
+    dest: &Path,
+    seg_dir: &Path,
+    concurrent_segments: usize,
+    progress_tx: watch::Sender<DownloadProgress>,
+) -> Result<u64, crate::Error> {
+    let total_segments = segment_urls.len();
+    let concurrency = concurrent_segments.max(1);
+
+    tokio::fs::create_dir_all(seg_dir).await?;
+    if let Some(parent) = dest.parent() {
+        tokio::fs::create_dir_all(parent).await?;
+    }
+
+    let seg_progress = Arc::new(
+        (0..total_segments)
+            .map(|_| std::sync::atomic::AtomicU64::new(0))
+            .collect::<Vec<_>>(),
+    );
+
+    // Emit aggregate progress on a timer rather than once per segment, so a
+    // stream with thousands of segments doesn't flood the watch channel. The
+    // AbortOnDrop guard stops the reporter even if this future is dropped on
+    // cancellation before the normal cleanup runs.
+    let progress_reporter = AbortOnDrop({
+        let progress = seg_progress.clone();
+        let tx = progress_tx.clone();
+        tokio::spawn(async move {
+            let mut last_total: u64 = 0;
+            let mut last_time = tokio::time::Instant::now();
+            loop {
+                tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
+                let total: u64 = progress
+                    .iter()
+                    .map(|a| a.load(std::sync::atomic::Ordering::Relaxed))
+                    .sum();
+                let now = tokio::time::Instant::now();
+                let elapsed = now.duration_since(last_time);
+                let speed = bytes_per_sec(total.saturating_sub(last_total), elapsed);
+                // total_bytes stays None: segment sizes are unknown up front.
+                let _ = tx.send(DownloadProgress {
+                    bytes_downloaded: total,
+                    total_bytes: None,
+                    speed_bytes_per_sec: speed,
+                });
+                last_total = total;
+                last_time = now;
+            }
+        })
+    });
+
+    let work: Result<u64, crate::Error> = async {
+        // Download in bounded-concurrency batches, preserving global indices.
+        let mut base = 0usize;
+        for batch in segment_urls.chunks(concurrency) {
+            let mut handles = Vec::with_capacity(batch.len());
+            for (offset, url) in batch.iter().enumerate() {
+                let idx = base + offset;
+                let client = client.clone();
+                let url = url.clone();
+                let seg_path = seg_dir.join(format!("seg_{idx:08}"));
+                let progress = seg_progress.clone();
+                handles.push(tokio::spawn(async move {
+                    download_segment(&client, &url, &seg_path, idx, &progress).await
+                }));
+            }
+            // Await the entire batch before propagating any error, so a single
+            // failure doesn't detach the remaining tasks (a dropped JoinHandle
+            // keeps running and would race the error-path cleanup of seg_dir).
+            let mut first_err: Option<crate::Error> = None;
+            for handle in handles {
+                match handle.await {
+                    Ok(Ok(_)) => {}
+                    Ok(Err(e)) => {
+                        first_err.get_or_insert(e);
+                    }
+                    Err(e) => {
+                        first_err.get_or_insert(crate::Error::Other(e.to_string()));
+                    }
+                }
+            }
+            if let Some(e) = first_err {
+                return Err(e);
+            }
+            base += batch.len();
+            debug!("segments: downloaded {base}/{total_segments}");
+        }
+
+        // Reassemble in index order through a single buffered writer.
+        let dest_tmp = dest.with_extension("part");
+        let dest_file = tokio::fs::File::create(&dest_tmp).await?;
+        let mut writer = tokio::io::BufWriter::with_capacity(WRITE_BUFFER_SIZE, dest_file);
+        let mut total_bytes: u64 = 0;
+        for i in 0..total_segments {
+            let seg_path = seg_dir.join(format!("seg_{i:08}"));
+            let mut seg_file = tokio::fs::File::open(&seg_path).await?;
+            total_bytes += tokio::io::copy(&mut seg_file, &mut writer).await?;
+            drop(seg_file);
+            tokio::fs::remove_file(&seg_path).await?;
+        }
+        writer.flush().await?;
+        fsync_file(writer.get_mut()).await?;
+        drop(writer);
+        tokio::fs::rename(&dest_tmp, dest).await?;
+        fsync_parent(dest).await;
+        Ok(total_bytes)
+    }
+    .await;
+
+    // Stop the reporter before emitting the final progress so a stale tick
+    // can't overwrite it. (On cancellation the guard's Drop handles this.)
+    drop(progress_reporter);
+
+    match work {
+        Ok(total_bytes) => {
+            let _ = tokio::fs::remove_dir_all(seg_dir).await;
+            let _ = progress_tx.send(DownloadProgress {
+                bytes_downloaded: total_bytes,
+                total_bytes: Some(total_bytes),
+                speed_bytes_per_sec: 0,
+            });
+            Ok(total_bytes)
+        }
+        Err(e) => {
+            let _ = tokio::fs::remove_file(dest.with_extension("part")).await;
+            let _ = tokio::fs::remove_dir_all(seg_dir).await;
+            Err(e)
+        }
+    }
 }
 
 /// Compute a transfer rate in bytes/sec, guarding against a zero (or

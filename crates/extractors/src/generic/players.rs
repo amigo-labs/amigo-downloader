@@ -7,12 +7,45 @@
 //! - Flowplayer
 //! - Wistia
 
+use std::sync::LazyLock;
+
 use regex::Regex;
 use tracing::debug;
 
 use crate::traits::{MediaStream, StreamProtocol};
 
 use super::{GenericExtractor, resolve_url};
+
+// Player-detection patterns are static; compile them once instead of on every
+// page extraction (these functions run for every candidate video page).
+static JW_SETUP_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"jwplayer\s*\([^)]*\)\s*\.\s*setup\s*\(\s*\{[^}]*?["']?file["']?\s*:\s*["']([^"']+)["']"#,
+    )
+    .unwrap()
+});
+static JW_FILE_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"["']?file["']?\s*:\s*["'](https?://[^"']+)["']"#).unwrap());
+static JW_SOURCES_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"["']?sources["']?\s*:\s*\[([^\]]+)\]"#).unwrap());
+static VIDEOJS_DATA_SETUP_RE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r#"data-setup\s*=\s*'([^']+)'"#).unwrap());
+static VIDEOJS_SRC_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"\.src\s*\(\s*\{[^}]*["']?src["']?\s*:\s*["'](https?://[^"']+)["']"#).unwrap()
+});
+static BRIGHTCOVE_SRC_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"["']?src["']?\s*:\s*["'](https?://[^"']+\.(?:m3u8|mpd|mp4)[^"']*)["']"#).unwrap()
+});
+static FLOWPLAYER_SRC_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r#"["']?src["']?\s*:\s*["'](https?://[^"']+\.(?:m3u8|mpd|mp4|webm)[^"']*)["']"#)
+        .unwrap()
+});
+static WISTIA_ASSET_RE: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(
+        r#"["']?url["']?\s*:\s*["'](https?://[^"']*wistia[^"']*\.(?:m3u8|mp4|bin)[^"']*)["']"#,
+    )
+    .unwrap()
+});
 
 /// Detect JW Player embeds and extract stream URLs.
 ///
@@ -25,11 +58,7 @@ pub fn detect_jwplayer(html: &str, base_url: &str) -> Vec<MediaStream> {
     let mut streams = Vec::new();
 
     // Pattern 1: jwplayer().setup() with file
-    let setup_re = Regex::new(
-        r#"jwplayer\s*\([^)]*\)\s*\.\s*setup\s*\(\s*\{[^}]*?["']?file["']?\s*:\s*["']([^"']+)["']"#,
-    )
-    .unwrap();
-    for cap in setup_re.captures_iter(html) {
+    for cap in JW_SETUP_RE.captures_iter(html) {
         if let Some(url) = cap.get(1) {
             add_media_stream(&mut streams, url.as_str(), base_url, "JW Player setup.file");
         }
@@ -37,8 +66,7 @@ pub fn detect_jwplayer(html: &str, base_url: &str) -> Vec<MediaStream> {
 
     // Pattern 2: Generic file property near jwplayer references
     if html.contains("jwplayer") || html.contains("jwDefaults") || html.contains("jw-video") {
-        let file_re = Regex::new(r#"["']?file["']?\s*:\s*["'](https?://[^"']+)["']"#).unwrap();
-        for cap in file_re.captures_iter(html) {
+        for cap in JW_FILE_RE.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 let url_str = url.as_str();
                 if GenericExtractor::is_media_url(url_str)
@@ -50,12 +78,10 @@ pub fn detect_jwplayer(html: &str, base_url: &str) -> Vec<MediaStream> {
             }
         }
 
-        // Pattern 3: sources array
-        let sources_re = Regex::new(r#"["']?sources["']?\s*:\s*\[([^\]]+)\]"#).unwrap();
-        let src_file_re = Regex::new(r#"["']?file["']?\s*:\s*["'](https?://[^"']+)["']"#).unwrap();
-        for cap in sources_re.captures_iter(html) {
+        // Pattern 3: sources array (reuses the file pattern for inner entries)
+        for cap in JW_SOURCES_RE.captures_iter(html) {
             if let Some(inner) = cap.get(1) {
-                for src_cap in src_file_re.captures_iter(inner.as_str()) {
+                for src_cap in JW_FILE_RE.captures_iter(inner.as_str()) {
                     if let Some(url) = src_cap.get(1) {
                         add_media_stream(&mut streams, url.as_str(), base_url, "JW Player sources");
                     }
@@ -76,8 +102,7 @@ pub fn detect_videojs(html: &str, base_url: &str) -> Vec<MediaStream> {
     let mut streams = Vec::new();
 
     // data-setup attribute with sources
-    let data_setup_re = Regex::new(r#"data-setup\s*=\s*'([^']+)'"#).unwrap();
-    for cap in data_setup_re.captures_iter(html) {
+    for cap in VIDEOJS_DATA_SETUP_RE.captures_iter(html) {
         if let Some(json) = cap
             .get(1)
             .and_then(|json_str| serde_json::from_str::<serde_json::Value>(json_str.as_str()).ok())
@@ -93,10 +118,7 @@ pub fn detect_videojs(html: &str, base_url: &str) -> Vec<MediaStream> {
 
     // videojs().src() calls
     if html.contains("videojs") || html.contains("video-js") {
-        let src_re =
-            Regex::new(r#"\.src\s*\(\s*\{[^}]*["']?src["']?\s*:\s*["'](https?://[^"']+)["']"#)
-                .unwrap();
-        for cap in src_re.captures_iter(html) {
+        for cap in VIDEOJS_SRC_RE.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 add_media_stream(&mut streams, url.as_str(), base_url, "Video.js src()");
             }
@@ -117,10 +139,7 @@ pub fn detect_brightcove(html: &str, base_url: &str) -> Vec<MediaStream> {
     // Brightcove often includes source URLs in data attributes or script configs
     if html.contains("brightcove") || html.contains("bc-player") || html.contains("data-video-id") {
         // Look for video sources in Brightcove config
-        let source_re =
-            Regex::new(r#"["']?src["']?\s*:\s*["'](https?://[^"']+\.(?:m3u8|mpd|mp4)[^"']*)["']"#)
-                .unwrap();
-        for cap in source_re.captures_iter(html) {
+        for cap in BRIGHTCOVE_SRC_RE.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 add_media_stream(&mut streams, url.as_str(), base_url, "Brightcove");
             }
@@ -139,11 +158,7 @@ pub fn detect_flowplayer(html: &str, base_url: &str) -> Vec<MediaStream> {
 
     if html.contains("flowplayer") {
         // Extract clip sources
-        let clip_re = Regex::new(
-            r#"["']?src["']?\s*:\s*["'](https?://[^"']+\.(?:m3u8|mpd|mp4|webm)[^"']*)["']"#,
-        )
-        .unwrap();
-        for cap in clip_re.captures_iter(html) {
+        for cap in FLOWPLAYER_SRC_RE.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 add_media_stream(&mut streams, url.as_str(), base_url, "Flowplayer");
             }
@@ -163,11 +178,7 @@ pub fn detect_wistia(html: &str, base_url: &str) -> Vec<MediaStream> {
 
     if html.contains("wistia") {
         // Wistia often embeds asset URLs in JSON config
-        let asset_re = Regex::new(
-            r#"["']?url["']?\s*:\s*["'](https?://[^"']*wistia[^"']*\.(?:m3u8|mp4|bin)[^"']*)["']"#,
-        )
-        .unwrap();
-        for cap in asset_re.captures_iter(html) {
+        for cap in WISTIA_ASSET_RE.captures_iter(html) {
             if let Some(url) = cap.get(1) {
                 add_media_stream(&mut streams, url.as_str(), base_url, "Wistia");
             }

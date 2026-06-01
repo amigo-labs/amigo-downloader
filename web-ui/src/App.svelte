@@ -52,13 +52,20 @@
   } from "./lib/stores";
   import { locale, tr } from "./lib/i18n";
   import { addToast } from "./lib/toast";
-  import Downloads from "./pages/Downloads.svelte";
-  import History from "./pages/History.svelte";
-  import Login from "./pages/Login.svelte";
-  import Plugins from "./pages/Plugins.svelte";
-  import Settings from "./pages/Settings.svelte";
-  import Setup from "./pages/Setup.svelte";
   import PairingModal from "./components/PairingModal.svelte";
+
+  // Pages are code-split: each is fetched on first navigation rather than
+  // bundled into the initial payload, so the app shell loads faster. The
+  // browser caches the chunk after the first load.
+  type PageModule = { default: import("svelte").Component };
+  const pageLoaders: Record<string, () => Promise<PageModule>> = {
+    downloads: () => import("./pages/Downloads.svelte"),
+    plugins: () => import("./pages/Plugins.svelte"),
+    history: () => import("./pages/History.svelte"),
+    settings: () => import("./pages/Settings.svelte"),
+  };
+  const loadSetup = () => import("./pages/Setup.svelte");
+  const loadLogin = () => import("./pages/Login.svelte");
   import { authRequired, setupRequired } from "./lib/stores";
   import { getSetupStatus, me } from "./lib/api";
 
@@ -352,9 +359,15 @@
     <p style="color: var(--text-secondary)">Loading…</p>
   </div>
 {:else if bootState === "setup"}
-  <Setup />
+  {#await loadSetup() then mod}
+    {@const Setup = mod.default}
+    <Setup />
+  {/await}
 {:else if bootState === "login"}
-  <Login />
+  {#await loadLogin() then mod}
+    {@const Login = mod.default}
+    <Login />
+  {/await}
 {:else}
 <!-- Skip to content (audit L6) -->
 <a class="skip-link" href="#main-content">Skip to content</a>
@@ -657,14 +670,11 @@
         {#key pageKey}
           <div class="page-enter">
             <svelte:boundary onerror={(e) => console.error("Page error:", e)}>
-              {#if $currentPage === "downloads"}
-                <Downloads />
-              {:else if $currentPage === "plugins"}
-                <Plugins />
-              {:else if $currentPage === "history"}
-                <History />
-              {:else if $currentPage === "settings"}
-                <Settings />
+              {#if pageLoaders[$currentPage]}
+                {#await pageLoaders[$currentPage]() then mod}
+                  {@const Page = mod.default}
+                  <Page />
+                {/await}
               {/if}
             </svelte:boundary>
           </div>
