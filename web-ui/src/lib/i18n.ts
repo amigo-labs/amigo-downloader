@@ -117,6 +117,42 @@ const translations: Record<Locale, Record<string, string>> = {
     "toast.download_complete": "Download complete",
     "toast.download_failed": "Download failed",
     "toast.deleted_one": "Download deleted",
+    "toast.delete_failed": "Failed to delete download",
+
+    // Side panel
+    "panel.details": "Download Details",
+
+    // Neon intensity labels (also used in the command palette)
+    "intensity.off": "Off",
+    "intensity.low": "Low",
+    "intensity.mid": "Mid",
+    "intensity.high": "High",
+    "intensity.full": "Full",
+
+    // Webhook form labels + toasts
+    "webhook.name": "Name",
+    "webhook.url": "URL",
+    "webhook.secret": "Secret",
+    "webhook.optional": "optional",
+    "webhook.events": "Events",
+    "webhook.events_hint": "comma-separated, * = all",
+    "webhook.added": "Webhook added",
+    "webhook.add_failed": "Failed to add webhook",
+    "webhook.removed": "Webhook removed",
+    "webhook.delete_failed": "Failed to delete webhook",
+    "webhook.test_sent": "Test sent",
+    "webhook.test_failed": "Test failed",
+    "webhook.signed": "signed",
+
+    // Feedback dialog
+    "feedback.title": "Feedback",
+    "feedback.crash_reported": "Crash auto-reported",
+    "feedback.view_issue": "View issue",
+    "feedback.report_bug": "Report a Bug",
+    "feedback.request_feature": "Request a Feature",
+    "feedback.opens_github": "Opens GitHub with pre-filled template",
+    "feedback.auto_on": "Crashes are automatically reported.",
+    "feedback.auto_off": "Set AMIGO_GITHUB_TOKEN for automatic crash reporting.",
 
     // History
     "history.empty": "No download history yet",
@@ -291,6 +327,38 @@ const translations: Record<Locale, Record<string, string>> = {
     "toast.download_complete": "Download abgeschlossen",
     "toast.download_failed": "Download fehlgeschlagen",
     "toast.deleted_one": "Download gelöscht",
+    "toast.delete_failed": "Download konnte nicht gelöscht werden",
+
+    "panel.details": "Download-Details",
+
+    "intensity.off": "Aus",
+    "intensity.low": "Niedrig",
+    "intensity.mid": "Mittel",
+    "intensity.high": "Hoch",
+    "intensity.full": "Voll",
+
+    "webhook.name": "Name",
+    "webhook.url": "URL",
+    "webhook.secret": "Geheimnis",
+    "webhook.optional": "optional",
+    "webhook.events": "Ereignisse",
+    "webhook.events_hint": "kommagetrennt, * = alle",
+    "webhook.added": "Webhook hinzugefügt",
+    "webhook.add_failed": "Webhook konnte nicht hinzugefügt werden",
+    "webhook.removed": "Webhook entfernt",
+    "webhook.delete_failed": "Webhook konnte nicht gelöscht werden",
+    "webhook.test_sent": "Test gesendet",
+    "webhook.test_failed": "Test fehlgeschlagen",
+    "webhook.signed": "signiert",
+
+    "feedback.title": "Feedback",
+    "feedback.crash_reported": "Absturz automatisch gemeldet",
+    "feedback.view_issue": "Issue ansehen",
+    "feedback.report_bug": "Fehler melden",
+    "feedback.request_feature": "Funktion vorschlagen",
+    "feedback.opens_github": "Öffnet GitHub mit vorausgefülltem Template",
+    "feedback.auto_on": "Abstürze werden automatisch gemeldet.",
+    "feedback.auto_off": "AMIGO_GITHUB_TOKEN setzen für automatische Absturzberichte.",
 
     "history.empty": "Noch kein Download-Verlauf",
     "history.empty_hint": "Abgeschlossene Downloads erscheinen hier",

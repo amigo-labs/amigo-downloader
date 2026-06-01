@@ -23,9 +23,9 @@
       showAdd = false;
       name = url = secret = "";
       events = "*";
-      addToast("success", "Webhook added");
+      addToast("success", tr($locale, "webhook.added"));
     } catch {
-      addToast("error", "Failed to add webhook");
+      addToast("error", tr($locale, "webhook.add_failed"));
     }
   }
 
@@ -33,18 +33,18 @@
     try {
       await deleteWebhook(id);
       webhooks = webhooks.filter(w => w.id !== id);
-      addToast("info", "Webhook removed");
+      addToast("info", tr($locale, "webhook.removed"));
     } catch {
-      addToast("error", "Failed to delete webhook");
+      addToast("error", tr($locale, "webhook.delete_failed"));
     }
   }
 
   async function handleTest(id: string) {
     try {
       const result = await testWebhook(id);
-      addToast("success", "Test sent", `Status: ${result.status || "OK"}`);
+      addToast("success", tr($locale, "webhook.test_sent"), `Status: ${result.status || "OK"}`);
     } catch {
-      addToast("error", "Test failed");
+      addToast("error", tr($locale, "webhook.test_failed"));
     }
   }
 </script>
@@ -62,22 +62,22 @@
   {#if showAdd}
     <div class="rounded-xl p-5 mb-4 space-y-3" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
       <label class="block">
-        <span class="text-xs font-semibold mb-1 block" style="color: var(--text-secondary)">Name</span>
+        <span class="text-xs font-semibold mb-1 block" style="color: var(--text-secondary)">{tr($locale, "webhook.name")}</span>
         <input bind:value={name} type="text" placeholder="Discord Notifications"
           class="w-full rounded-lg px-3 py-2 text-sm" style={inputStyle} />
       </label>
       <label class="block">
-        <span class="text-xs font-semibold mb-1 block" style="color: var(--text-secondary)">URL</span>
+        <span class="text-xs font-semibold mb-1 block" style="color: var(--text-secondary)">{tr($locale, "webhook.url")}</span>
         <input bind:value={url} type="url" placeholder="https://discord.com/api/webhooks/..."
           class="w-full rounded-lg px-3 py-2 text-sm" style={monoInputStyle} />
       </label>
       <label class="block">
-        <span class="text-xs font-semibold mb-1 block" style="color: var(--text-secondary)">Secret <span class="opacity-50">(optional)</span></span>
+        <span class="text-xs font-semibold mb-1 block" style="color: var(--text-secondary)">{tr($locale, "webhook.secret")} <span class="opacity-50">({tr($locale, "webhook.optional")})</span></span>
         <input bind:value={secret} type="text" placeholder="my-secret-key"
           class="w-full rounded-lg px-3 py-2 text-sm" style={monoInputStyle} />
       </label>
       <label class="block">
-        <span class="text-xs font-semibold mb-1 block" style="color: var(--text-secondary)">Events <span class="opacity-50">(comma-separated, * = all)</span></span>
+        <span class="text-xs font-semibold mb-1 block" style="color: var(--text-secondary)">{tr($locale, "webhook.events")} <span class="opacity-50">({tr($locale, "webhook.events_hint")})</span></span>
         <input bind:value={events} type="text" placeholder="download.completed, download.failed"
           class="w-full rounded-lg px-3 py-2 text-sm" style={monoInputStyle} />
       </label>
@@ -107,8 +107,8 @@
             <p class="font-semibold text-sm truncate" style="color: var(--text-primary)">{wh.name}</p>
             <p class="text-xs truncate" style="font-family: var(--font-mono);color: var(--text-secondary)">{wh.url}</p>
             <p class="text-[10px] mt-0.5" style="color: var(--text-secondary)">
-              Events: {wh.events?.join(", ") || "*"}
-              {#if wh.secret}&middot; signed{/if}
+              {tr($locale, "webhook.events")}: {wh.events?.join(", ") || "*"}
+              {#if wh.secret}&middot; {tr($locale, "webhook.signed")}{/if}
             </p>
           </div>
           <div class="flex gap-1.5 shrink-0">

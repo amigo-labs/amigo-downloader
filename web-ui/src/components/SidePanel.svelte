@@ -11,7 +11,7 @@
   let title = $derived(
     $sidePanelMode === "add"
       ? tr($locale, "add.title")
-      : $selectedDownload?.filename || $selectedDownload?.url || tr($locale, "add.title")
+      : $selectedDownload?.filename || $selectedDownload?.url || tr($locale, "panel.details")
   );
 </script>
 
@@ -19,7 +19,7 @@
   <!-- Desktop panel (lg+) -->
   <div
     role="complementary"
-    aria-label={$sidePanelMode === "add" ? "Add download" : "Download details"}
+    aria-label={$sidePanelMode === "add" ? tr($locale, "add.title") : tr($locale, "panel.details")}
     class="hidden lg:flex flex-col w-80 shrink-0 border-l overflow-y-auto"
     style="background: var(--bg-surface); border-color: var(--border-color)"
     transition:fly={{ x: 320, duration: 200 }}
@@ -56,7 +56,7 @@
       use:focusTrap
       role="dialog"
       aria-modal="true"
-      aria-label={$sidePanelMode === "add" ? "Add download" : "Download details"}
+      aria-label={$sidePanelMode === "add" ? tr($locale, "add.title") : tr($locale, "panel.details")}
       class="absolute right-0 top-0 bottom-0 w-full max-w-sm flex flex-col overflow-y-auto"
       style="background: var(--bg-surface)"
       transition:fly={{ x: 384, duration: 250 }}

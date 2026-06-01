@@ -73,6 +73,9 @@
   {:else if name === "info"}
     <circle cx="12" cy="12" r="10" />
     <path d="M12 16v-4M12 8h.01" />
+  {:else if name === "alert"}
+    <path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h16.9a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" />
+    <path d="M12 9v4M12 17h.01" />
   {:else if name === "copy"}
     <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
     <path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" />

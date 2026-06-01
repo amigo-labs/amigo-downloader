@@ -251,7 +251,6 @@
         getConfig(),
       ]);
       downloads.set(dl);
-      downloadsLoaded.set(true);
       stats.set(st);
       pushSpeedSample(st.speed_bytes_per_sec ?? 0);
       if (cfg) {
@@ -265,7 +264,12 @@
         }
       }
     } catch {
-      // Server offline
+      // Server offline — fall through.
+    } finally {
+      // Flip after the first attempt (success or failure) so the Downloads
+      // page can drop skeletons and show its empty/offline state instead of
+      // spinning forever when the server is unreachable.
+      downloadsLoaded.set(true);
     }
   }
 

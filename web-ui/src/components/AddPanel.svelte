@@ -74,7 +74,9 @@
   <div class="flex gap-1 p-1 rounded-lg" style="background: var(--bg-surface-2)" role="tablist">
     <button
       role="tab"
+      id="add-tab-url"
       aria-selected={activeTab === "url"}
+      aria-controls="add-panel-url"
       onclick={() => (activeTab = "url")}
       class="flex-1 py-2 rounded-md text-sm font-medium transition-colors"
       style={activeTab === "url"
@@ -85,7 +87,9 @@
     </button>
     <button
       role="tab"
+      id="add-tab-file"
       aria-selected={activeTab === "file"}
+      aria-controls="add-panel-file"
       onclick={() => (activeTab = "file")}
       class="flex-1 py-2 rounded-md text-sm font-medium transition-colors"
       style={activeTab === "file"
@@ -97,6 +101,7 @@
   </div>
 
   {#if activeTab === "url"}
+    <div role="tabpanel" id="add-panel-url" aria-labelledby="add-tab-url" tabindex="0" class="space-y-4 outline-none">
     <textarea
       bind:value={urlInput}
       onkeydown={handleKeydown}
@@ -131,7 +136,9 @@
     >
       {loading ? tr($locale, "common.adding") : tr($locale, "add.submit")}
     </button>
+    </div>
   {:else}
+    <div role="tabpanel" id="add-panel-file" aria-labelledby="add-tab-file" tabindex="0" class="outline-none">
     <label
       class="flex flex-col items-center justify-center border-2 border-dashed rounded-xl py-10 cursor-pointer transition-colors"
       style="border-color: var(--border-color)"
@@ -141,5 +148,6 @@
       <p class="text-xs mt-1" style="color: var(--text-secondary)">{tr($locale, "add.file_types")}</p>
       <input type="file" accept=".nzb,.dlc,.txt" class="hidden" onchange={handleFileUpload} />
     </label>
+    </div>
   {/if}
 </div>

@@ -82,7 +82,7 @@
     style="background: var(--bg-surface)"
   >
     <div class="flex items-center justify-between mb-5">
-      <h2 id="feedback-title" class="text-lg font-bold" style="color: var(--text-primary)">Feedback</h2>
+      <h2 id="feedback-title" class="text-lg font-bold" style="color: var(--text-primary)">{tr($locale, "feedback.title")}</h2>
       <button
         onclick={onclose}
         class="p-1.5 rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center"
@@ -95,9 +95,9 @@
 
     {#if autoReported}
       <div class="rounded-xl p-3 mb-4 text-center" style="background: color-mix(in srgb, var(--neon-warning) 8%, transparent)">
-        <p class="text-xs font-semibold" style="color: var(--neon-warning)">Crash auto-reported</p>
+        <p class="text-xs font-semibold" style="color: var(--neon-warning)">{tr($locale, "feedback.crash_reported")}</p>
         {#if resultUrl}
-          <a href={resultUrl} target="_blank" rel="noopener" class="text-xs underline" style="color: var(--neon-primary)">View issue &rarr;</a>
+          <a href={resultUrl} target="_blank" rel="noopener" class="text-xs underline" style="color: var(--neon-primary)">{tr($locale, "feedback.view_issue")} &rarr;</a>
         {/if}
       </div>
     {/if}
@@ -113,8 +113,8 @@
         <Icon name="flag" size={20} />
       </div>
       <div class="flex-1">
-        <p class="font-semibold text-sm" style="color: var(--text-primary)">Report a Bug</p>
-        <p class="text-xs" style="color: var(--text-secondary)">Opens GitHub with pre-filled template</p>
+        <p class="font-semibold text-sm" style="color: var(--text-primary)">{tr($locale, "feedback.report_bug")}</p>
+        <p class="text-xs" style="color: var(--text-secondary)">{tr($locale, "feedback.opens_github")}</p>
       </div>
       <Icon name="external" size={14} class="text-[var(--text-secondary)]" />
     </a>
@@ -130,17 +130,17 @@
         <Icon name="plus" size={20} />
       </div>
       <div class="flex-1">
-        <p class="font-semibold text-sm" style="color: var(--text-primary)">Request a Feature</p>
-        <p class="text-xs" style="color: var(--text-secondary)">Opens GitHub with pre-filled template</p>
+        <p class="font-semibold text-sm" style="color: var(--text-primary)">{tr($locale, "feedback.request_feature")}</p>
+        <p class="text-xs" style="color: var(--text-secondary)">{tr($locale, "feedback.opens_github")}</p>
       </div>
       <Icon name="external" size={14} class="text-[var(--text-secondary)]" />
     </a>
 
     <p class="text-[10px] text-center" style="color: var(--text-secondary)">
       {#if systemInfo?.feedback_enabled}
-        Crashes are automatically reported.
+        {tr($locale, "feedback.auto_on")}
       {:else}
-        Set AMIGO_GITHUB_TOKEN for automatic crash reporting.
+        {tr($locale, "feedback.auto_off")}
       {/if}
     </p>
   </div>

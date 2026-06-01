@@ -30,12 +30,12 @@
     { id: "rose", label: "Rose", color: "#f43f5e" },
   ];
 
-  const intensities: { value: number; label: string }[] = [
-    { value: 0, label: "Off" },
-    { value: 0.25, label: "Low" },
-    { value: 0.5, label: "Mid" },
-    { value: 0.75, label: "High" },
-    { value: 1, label: "Full" },
+  const intensities: { value: number; key: string }[] = [
+    { value: 0, key: "intensity.off" },
+    { value: 0.25, key: "intensity.low" },
+    { value: 0.5, key: "intensity.mid" },
+    { value: 0.75, key: "intensity.high" },
+    { value: 1, key: "intensity.full" },
   ];
 
   const pages: { id: Page; key: string; icon: string }[] = [
@@ -91,14 +91,17 @@
       keywords: `palette color ${p.id} ${p.label} accent`,
       run: () => go(() => palette.set(p.id)),
     })),
-    ...intensities.map((it) => ({
-      id: `intensity-${it.value}`,
-      group: tr($locale, "cmd.group_appearance"),
-      label: tr($locale, "cmd.set_intensity", { name: it.label }),
-      icon: "bolt",
-      keywords: `neon intensity glow ${it.label}`,
-      run: () => go(() => neonIntensity.set(it.value)),
-    })),
+    ...intensities.map((it) => {
+      const name = tr($locale, it.key);
+      return {
+        id: `intensity-${it.value}`,
+        group: tr($locale, "cmd.group_appearance"),
+        label: tr($locale, "cmd.set_intensity", { name }),
+        icon: "bolt",
+        keywords: `neon intensity glow ${name}`,
+        run: () => go(() => neonIntensity.set(it.value)),
+      };
+    }),
   ]);
 
   let query = $state("");

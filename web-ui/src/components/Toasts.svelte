@@ -17,7 +17,9 @@
   // Non-color cue: a distinct glyph per type so the meaning survives without
   // relying on the accent colour alone (WCAG — don't encode by colour only).
   function iconFor(type: Toast["type"]): string {
-    return type === "success" ? "check" : "info";
+    if (type === "success") return "check";
+    if (type === "error") return "alert";
+    return "info";
   }
 
   function handleAction(toast: Toast) {

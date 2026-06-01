@@ -65,21 +65,28 @@
 
   async function handlePause() { await pauseDownload(download.id); }
   async function handleResume() { await resumeDownload(download.id); }
-  function handleDelete(e: MouseEvent) {
+  async function handleDelete(e: MouseEvent) {
     e.stopPropagation();
     if (!confirmingDelete) {
       confirmingDelete = true;
       confirmTimer = setTimeout(() => { confirmingDelete = false; }, 2000);
-    } else {
-      clearTimeout(confirmTimer);
-      confirmingDelete = false;
-      const url = download.url;
-      const label = download.filename || url;
-      deleteDownload(download.id);
-      addToast("info", tr($locale, "toast.deleted_one"), label, {
-        action: { label: tr($locale, "action.undo"), onAction: () => addDownload(url) },
-      });
+      return;
     }
+    clearTimeout(confirmTimer);
+    confirmingDelete = false;
+    const url = download.url;
+    const label = download.filename || url;
+    try {
+      await deleteDownload(download.id);
+    } catch {
+      // Don't claim success (and don't offer an Undo that would re-enqueue) if
+      // the delete never committed.
+      addToast("error", tr($locale, "toast.delete_failed"), label);
+      return;
+    }
+    addToast("info", tr($locale, "toast.deleted_one"), label, {
+      action: { label: tr($locale, "action.undo"), onAction: () => addDownload(url) },
+    });
   }
 
   function select() {
