@@ -56,6 +56,8 @@ export const deleteDownload = (id: string) => api<void>("DELETE", `/downloads/${
 export const getQueue = () => api<Download[]>("GET", "/queue");
 export const getHistory = () => api<Download[]>("GET", "/history");
 export const getPlugins = () => api<Plugin[]>("GET", "/plugins");
+export const setPluginEnabled = (id: string, enabled: boolean) =>
+  api<void>("PATCH", `/plugins/${encodeURIComponent(id)}`, { enabled });
 export const checkUpdates = () => api<unknown>("GET", "/updates/check");
 export const applyCoreUpdate = () => api<unknown>("POST", "/updates/core");
 export const getSystemInfo = () => api<unknown>("GET", "/system-info");
@@ -300,9 +302,13 @@ export const deleteRssFeed = (id: string) => api<void>("DELETE", `/rss/${id}`);
 // ========================================
 
 export function formatBytes(bytes: number): string {
-  if (bytes === 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB", "TB"];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
+  // 1024-based division needs IEC labels (KiB, not KB). The index must be
+  // clamped: fractional speeds (< 1 B/s) make Math.log negative and used to
+  // index units[-1], rendering "NaN undefined"; values beyond TiB would
+  // overflow the array the same way.
+  const units = ["B", "KiB", "MiB", "GiB", "TiB"];
+  if (!Number.isFinite(bytes) || bytes < 1) return "0 B";
+  const i = Math.min(units.length - 1, Math.floor(Math.log(bytes) / Math.log(1024)));
   return `${(bytes / Math.pow(1024, i)).toFixed(i > 0 ? 1 : 0)} ${units[i]}`;
 }
 

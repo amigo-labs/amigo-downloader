@@ -194,8 +194,11 @@ impl HttpDownloader {
             handles.push(handle);
         }
 
-        // Progress reporter task
-        let progress_reporter = {
+        // Progress reporter task. Wrapped in AbortOnDrop so it is torn down
+        // on every exit path — including a `tokio::select!` cancellation that
+        // drops this future — instead of looping forever (its only exit
+        // condition is "all bytes downloaded").
+        let progress_reporter = AbortOnDrop({
             let progress = chunk_progress.clone();
             let tx = progress_tx.clone();
             tokio::spawn(async move {
@@ -227,15 +230,31 @@ impl HttpDownloader {
                     }
                 }
             })
-        };
+        });
 
-        // Wait for all chunks
-        for handle in handles {
-            handle
-                .await
-                .map_err(|e| crate::Error::Other(e.to_string()))??;
+        // Wait for all chunks. Don't return early on the first failure:
+        // the progress reporter only exits once every byte is accounted
+        // for, so bailing out here would leak it (and the still-running
+        // sibling chunk tasks) and keep emitting progress events for a
+        // download that already failed.
+        let mut chunk_result: Result<(), crate::Error> = Ok(());
+        let mut handles = handles.into_iter();
+        for handle in &mut handles {
+            let res = match handle.await {
+                Ok(res) => res,
+                Err(e) => Err(crate::Error::Other(e.to_string())),
+            };
+            if let Err(e) = res {
+                chunk_result = Err(e);
+                break;
+            }
         }
-        progress_reporter.abort();
+        for handle in handles {
+            handle.abort();
+            let _ = handle.await;
+        }
+        drop(progress_reporter);
+        chunk_result?;
 
         // Reassemble chunks into final file (use temp name, rename on success)
         let dest_tmp = dest.with_extension("part");
@@ -732,6 +751,54 @@ impl super::ProtocolBackend for HttpDownloader {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn chunked_download_failure_stops_progress_reporter() {
+        // Regression test: when a chunk request fails, download_chunked used
+        // to return early without aborting the progress-reporter task, which
+        // then kept emitting progress events every 500 ms forever (its only
+        // exit condition is "all bytes downloaded").
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(500))
+            .mount(&mock)
+            .await;
+
+        let dl = HttpDownloader::new(
+            "amigo-test",
+            BandwidthLimiter::new(crate::bandwidth::BandwidthConfig::default()),
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let (tx, mut rx) = watch::channel(DownloadProgress {
+            bytes_downloaded: 0,
+            total_bytes: None,
+            speed_bytes_per_sec: 0,
+        });
+
+        let result = dl
+            .download_chunked(
+                &format!("{}/file.bin", mock.uri()),
+                &dir.path().join("file.bin"),
+                dir.path(),
+                4096,
+                2,
+                tx,
+            )
+            .await;
+        assert!(result.is_err(), "chunked download must fail on 500s");
+
+        // After the error the reporter must be gone: no progress updates may
+        // arrive anymore. (The leaked task used to tick every 500 ms.)
+        rx.mark_unchanged();
+        tokio::time::sleep(tokio::time::Duration::from_millis(1200)).await;
+        assert!(
+            !rx.has_changed().unwrap_or(false),
+            "progress reporter kept running after chunk failure"
+        );
+    }
 
     #[test]
     fn bytes_per_sec_guards_against_zero_elapsed() {

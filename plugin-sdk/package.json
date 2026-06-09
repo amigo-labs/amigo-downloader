@@ -1,6 +1,9 @@
 {
   "name": "@amigo/plugin-sdk",
-  "version": "0.0.0",
+  "version": "0.1.0",
+  "engines": {
+    "node": ">=22"
+  },
   "private": true,
   "description": "TypeScript SDK for building amigo-downloader plugins",
   "type": "module",
