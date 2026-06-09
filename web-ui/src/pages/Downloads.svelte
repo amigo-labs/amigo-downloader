@@ -4,7 +4,7 @@
   import {
     downloads, usenetDownloads, protocolFilter, openAddPanel,
     selectedIds, toggleSelection, clearSelection, selectAll,
-    searchQuery, downloadsLoaded,
+    searchQuery, downloadsLoaded, wsConnected,
   } from "../lib/stores";
   import { addToast } from "../lib/toast";
   import { locale, tr } from "../lib/i18n";
@@ -289,7 +289,15 @@
   {#if showSkeleton}
     <SkeletonCard count={5} />
   {:else if filtered.length === 0}
-    {#if emptyKey}
+    {#if !$wsConnected}
+      <!-- The list being empty while disconnected usually means we couldn't
+           load it, not that the queue is empty — say so instead. -->
+      <div class="flex flex-col items-center justify-center py-20 text-center">
+        <Icon name="wifi-off" size={32} />
+        <p class="mt-4 text-sm font-semibold" style="color: var(--text-primary)">{tr($locale, "downloads.offline")}</p>
+        <p class="text-xs mt-1" style="color: var(--text-secondary)">{tr($locale, "downloads.offline_hint")}</p>
+      </div>
+    {:else if emptyKey}
       <!-- Context-aware empty state (specific filter / search) -->
       <div class="flex flex-col items-center justify-center py-20 text-center">
         <Icon name="search" size={32} />

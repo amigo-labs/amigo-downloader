@@ -56,6 +56,8 @@ export const deleteDownload = (id: string) => api<void>("DELETE", `/downloads/${
 export const getQueue = () => api<Download[]>("GET", "/queue");
 export const getHistory = () => api<Download[]>("GET", "/history");
 export const getPlugins = () => api<Plugin[]>("GET", "/plugins");
+export const setPluginEnabled = (id: string, enabled: boolean) =>
+  api<void>("PATCH", `/plugins/${encodeURIComponent(id)}`, { enabled });
 export const checkUpdates = () => api<unknown>("GET", "/updates/check");
 export const applyCoreUpdate = () => api<unknown>("POST", "/updates/core");
 export const getSystemInfo = () => api<unknown>("GET", "/system-info");
