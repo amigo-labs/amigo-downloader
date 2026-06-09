@@ -60,11 +60,47 @@
 
   let confirmingDelete = $state(false);
   let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+  // Guards against rapid re-clicks firing the same request multiple times.
+  let busy = $state(false);
 
   onDestroy(() => clearTimeout(confirmTimer));
 
-  async function handlePause() { await pauseDownload(download.id); }
-  async function handleResume() { await resumeDownload(download.id); }
+  async function runAction(action: () => Promise<unknown>) {
+    if (busy) return;
+    busy = true;
+    try {
+      await action();
+    } catch {
+      addToast("error", tr($locale, "toast.action_failed"), download.filename || download.url);
+    } finally {
+      busy = false;
+    }
+  }
+
+  const handlePause = () => runAction(() => pauseDownload(download.id));
+  const handleResume = () => runAction(() => resumeDownload(download.id));
+  const handleRetry = () => runAction(() => retryDownload(download.id));
+
+  async function performDelete() {
+    const url = download.url;
+    const label = download.filename || url;
+    if (busy) return;
+    busy = true;
+    try {
+      await deleteDownload(download.id);
+    } catch {
+      // Don't claim success (and don't offer an Undo that would re-enqueue) if
+      // the delete never committed.
+      addToast("error", tr($locale, "toast.delete_failed"), label);
+      return;
+    } finally {
+      busy = false;
+    }
+    addToast("info", tr($locale, "toast.deleted_one"), label, {
+      action: { label: tr($locale, "action.undo"), onAction: () => addDownload(url) },
+    });
+  }
+
   async function handleDelete(e: MouseEvent) {
     e.stopPropagation();
     if (!confirmingDelete) {
@@ -74,19 +110,7 @@
     }
     clearTimeout(confirmTimer);
     confirmingDelete = false;
-    const url = download.url;
-    const label = download.filename || url;
-    try {
-      await deleteDownload(download.id);
-    } catch {
-      // Don't claim success (and don't offer an Undo that would re-enqueue) if
-      // the delete never committed.
-      addToast("error", tr($locale, "toast.delete_failed"), label);
-      return;
-    }
-    addToast("info", tr($locale, "toast.deleted_one"), label, {
-      action: { label: tr($locale, "action.undo"), onAction: () => addDownload(url) },
-    });
+    await performDelete();
   }
 
   function select() {
@@ -117,13 +141,15 @@
       { label: tr(lang, "action.open_browser"), icon: "globe", action: () => window.open(download.url, "_blank") },
     ];
     if (download.status === "downloading") {
-      items.push({ label: tr(lang, "action.pause"), icon: "pause", action: () => pauseDownload(download.id) });
+      items.push({ label: tr(lang, "action.pause"), icon: "pause", action: handlePause });
     } else if (download.status === "paused" || download.status === "queued") {
-      items.push({ label: tr(lang, "action.resume"), icon: "play", action: () => resumeDownload(download.id) });
+      items.push({ label: tr(lang, "action.resume"), icon: "play", action: handleResume });
     } else if (download.status === "failed") {
-      items.push({ label: tr(lang, "action.retry"), icon: "refresh", action: () => retryDownload(download.id) });
+      items.push({ label: tr(lang, "action.retry"), icon: "refresh", action: handleRetry });
     }
-    items.push({ label: tr(lang, "action.delete"), icon: "trash", action: () => deleteDownload(download.id), color: "var(--neon-accent)" });
+    // Same delete flow as the card button: errors surface as a toast and the
+    // success toast offers Undo (the menu can't host a two-step confirm).
+    items.push({ label: tr(lang, "action.delete"), icon: "trash", action: performDelete, color: "var(--neon-accent)" });
     return items;
   }
 
@@ -240,7 +266,7 @@
           <Icon name="copy" size={14} />
         </button>
         {#if download.status === "failed"}
-          <button onclick={(e: MouseEvent) => { e.stopPropagation(); retryDownload(download.id); }} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--neon-primary)" aria-label="{tr($locale, 'action.retry')} {download.filename || 'download'}">
+          <button onclick={(e: MouseEvent) => { e.stopPropagation(); handleRetry(); }} disabled={busy} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg disabled:opacity-50" style="color: var(--neon-primary)" aria-label="{tr($locale, 'action.retry')} {download.filename || 'download'}">
             <Icon name="refresh" size={14} />
           </button>
           {#if download.error}
@@ -255,15 +281,15 @@
           {/if}
         {/if}
         {#if download.status === "downloading"}
-          <button onclick={handlePause} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--text-secondary)" aria-label="{tr($locale, 'action.pause')} {download.filename || 'download'}">
+          <button onclick={(e: MouseEvent) => { e.stopPropagation(); handlePause(); }} disabled={busy} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg disabled:opacity-50" style="color: var(--text-secondary)" aria-label="{tr($locale, 'action.pause')} {download.filename || 'download'}">
             <Icon name="pause" size={16} />
           </button>
         {:else if download.status === "paused" || download.status === "queued"}
-          <button onclick={handleResume} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--text-secondary)" aria-label="{tr($locale, 'action.resume')} {download.filename || 'download'}">
+          <button onclick={(e: MouseEvent) => { e.stopPropagation(); handleResume(); }} disabled={busy} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg disabled:opacity-50" style="color: var(--text-secondary)" aria-label="{tr($locale, 'action.resume')} {download.filename || 'download'}">
             <Icon name="play" size={16} />
           </button>
         {/if}
-        <button onclick={handleDelete} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg" style="color: var(--neon-accent)" aria-label="{tr($locale, 'action.delete')} {download.filename || 'download'}">
+        <button onclick={handleDelete} disabled={busy} class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg disabled:opacity-50" style="color: var(--neon-accent)" aria-label="{tr($locale, 'action.delete')} {download.filename || 'download'}">
           {#if confirmingDelete}
             <span class="text-[10px] font-bold">{tr($locale, "action.sure")}</span>
           {:else}
