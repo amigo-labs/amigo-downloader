@@ -198,8 +198,7 @@ amigo-downloader/
 │           ├── Downloads.svelte
 │           ├── History.svelte
 │           ├── Plugins.svelte
-│           ├── Settings.svelte
-│           └── UsenetServers.svelte
+│           └── Settings.svelte
 ├── tauri/
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
@@ -242,8 +241,7 @@ amigo-downloader/
 │   ├── docker-compose.local.yml # Builds from source
 │   └── docker-compose.dev.yml
 ├── tests/
-│   ├── integration/
-│   └── plugins/
+│   └── README.md                # Pointer: integration tests live in crates/*/tests/
 └── docs/
     ├── plugin-api.md
     ├── architecture.md
@@ -477,7 +475,7 @@ Für komplexere Plugins existiert das separate Package `@amigo/plugin-sdk` mit h
 ### Sandboxing
 - Kein direkter Netzwerk/Filesystem/Prozess-Zugang
 - Resource Limits: 30s Timeout, 64MB RAM, 20 HTTP-Requests, 1MB Storage
-- Hot-Reload via Filesystem-Watcher
+- Reload: Laden eines Plugins mit bekannter `id` ersetzt die alte Version (genutzt von Plugin-Updates); kein Filesystem-Watcher — nach manuellen Änderungen Server neu starten oder `amigo-dl plugins test` zum Iterieren nutzen
 
 ---
 
@@ -611,7 +609,7 @@ Torrent/Magnet sind aktuell nicht implementiert. `crates/core/src/protocol/` ent
 - **Rust**: `cargo fmt` + `cargo clippy` (deny warnings), Rust 2024 Edition
 - **Error Handling**: `thiserror` für Library-Errors, `anyhow` nur in Binaries
 - **Async**: Alles async wo I/O involviert. Keine `block_on` im Core.
-- **Tests**: Unit-Tests inline, Integration-Tests in `tests/`
+- **Tests**: Unit-Tests inline, Integration-Tests in `crates/*/tests/` (siehe `tests/README.md`)
 - **Svelte**: TypeScript strict, Tailwind CSS v4
 - **Git**: Conventional Commits (`feat:`, `fix:`, `refactor:`, `docs:`)
 - **CI**: `cargo test`, `cargo clippy`, `npm run check`, Docker Build

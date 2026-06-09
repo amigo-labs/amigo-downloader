@@ -313,7 +313,30 @@ Also available as `console.log()`, `console.warn()`, `console.error()`.
 | HTTP requests | 20 per invocation |
 | Storage | 1 MB per plugin |
 
+In addition, the Host API caps its inputs *outside* the QuickJS context — the
+64 MB JS memory limit doesn't protect the host heap, so oversized arguments
+are rejected with an error instead of being processed:
+
+| Host API input | Cap |
+|----------------|-----|
+| Regex pattern (`regex*`) | 4 KiB |
+| Regex haystack (`regex*`) | 4 MiB |
+| Compiled regex NFA / DFA cache | 1 MiB / 2 MiB |
+| HTML passed to `htmlQuery*` / `htmlSearchMeta` / … | 8 MiB |
+| Base64 input (`base64Decode`) | 8 MiB |
+
 No direct network, filesystem, or process access. Everything is proxied through the Host API.
+
+## Reloading Plugins
+
+Plugins are loaded from the plugin directories at server startup. Loading a
+plugin whose `id` is already registered replaces the previous version, which
+is how plugin updates (`POST /api/v1/updates/plugins/{id}`) take effect
+without a restart. There is no filesystem watcher yet — after editing a
+plugin file on disk, restart the server (or re-trigger a load via the update
+endpoint) to pick up the change. For fast iteration during development, use
+`amigo-dl plugins test <plugin.ts> [url]`, which loads the file fresh on
+every run.
 
 ## Directory Structure
 
