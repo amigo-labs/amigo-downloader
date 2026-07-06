@@ -28,6 +28,15 @@ v0.1.0-Release-PR, deren Merge den Tag setzt und den (bewusst leeren)
       Public-Key passt.
 - [ ] Signier-Prozess für den Plugin-Registry-Index etablieren und
       dokumentieren (wer signiert beim Veröffentlichen neuer Plugins?).
+- [ ] Self-Update-Ed25519-**Private**-Key erzeugen und offline sichern;
+      sicherstellen, dass `AMIGO_UPDATE_PUBKEY_HEX` (Build-Arg in
+      `.github/workflows/release-build.yml` bzw. Docker-Build) zum
+      Public-Key passt. `crates/core/build.rs` verweigert Release-Builds
+      ohne diesen Key.
+- [ ] Release-Pipeline: jedes `amigo-server`-Binary mit dem Private-Key
+      signieren und die Detached-Signatur als `<asset>.sig`-Release-Asset
+      neben dem Binary und `<asset>.sha256` hochladen (der Self-Updater
+      erwartet sie und lehnt sonst das Update ab).
 
 ## Accounts & Test-Fixtures (für Verifikation nötig)
 

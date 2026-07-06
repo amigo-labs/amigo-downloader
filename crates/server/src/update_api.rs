@@ -155,6 +155,7 @@ async fn apply_core_update(
             can_self_update,
             download_url,
             sha256_url,
+            sig_url,
             ..
         } => {
             if !can_self_update {
@@ -166,12 +167,19 @@ async fn apply_core_update(
                 ));
             }
 
-            // Spawn background task for download + apply
+            // Spawn background task for download + apply. The announced version
+            // is passed through so the apply path re-checks it's an upgrade.
             let client = state.http_client.clone();
             let ver = latest.clone();
             tokio::spawn(async move {
-                match updater::download_and_apply(&client, &download_url, sha256_url.as_deref())
-                    .await
+                match updater::download_and_apply(
+                    &client,
+                    &download_url,
+                    sha256_url.as_deref(),
+                    sig_url.as_deref(),
+                    &ver,
+                )
+                .await
                 {
                     Ok(()) => tracing::info!("Core update to v{ver} applied — restart needed"),
                     Err(e) => tracing::error!("Core update failed: {e}"),

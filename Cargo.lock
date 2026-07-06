@@ -91,6 +91,7 @@ dependencies = [
  "chrono",
  "crc32fast",
  "dash-mpd",
+ "ed25519-dalek",
  "futures",
  "hex",
  "m3u8-rs",
