@@ -159,6 +159,18 @@ pub async fn download_and_verify(
     asset: &ReleaseAsset,
     sha256_url: Option<&str>,
 ) -> Result<PathBuf, crate::Error> {
+    // A checksum is mandatory: self-replacing the running binary with an
+    // unverified download would let anyone able to influence the release (or
+    // the resolved `github_repo`) achieve code execution. Bail before we even
+    // fetch the binary if no `.sha256` asset accompanies it. This is the only
+    // integrity check we have — there is no cryptographic signature — so it
+    // must never be optional.
+    let sha_url = sha256_url.ok_or_else(|| {
+        crate::Error::Update(
+            "refusing to apply update: release has no .sha256 checksum asset".into(),
+        )
+    })?;
+
     info!("Downloading update: {} ({} bytes)", asset.name, asset.size);
 
     let resp = client
@@ -174,32 +186,36 @@ pub async fn download_and_verify(
         .await
         .map_err(|e| crate::Error::Update(format!("Download failed: {e}")))?;
 
-    // Verify SHA256 if checksum URL provided
-    if let Some(sha_url) = sha256_url {
-        let expected = client
-            .get(sha_url)
-            .send()
-            .await
-            .map_err(|e| crate::Error::Update(format!("Checksum download failed: {e}")))?
-            .text()
-            .await
-            .map_err(|e| crate::Error::Update(format!("Checksum read failed: {e}")))?;
+    // Verify SHA256 (mandatory).
+    let expected = client
+        .get(sha_url)
+        .send()
+        .await
+        .map_err(|e| crate::Error::Update(format!("Checksum download failed: {e}")))?
+        .text()
+        .await
+        .map_err(|e| crate::Error::Update(format!("Checksum read failed: {e}")))?;
 
-        let expected = expected
-            .split_whitespace()
-            .next()
-            .unwrap_or("")
-            .to_lowercase();
+    let expected = expected
+        .split_whitespace()
+        .next()
+        .unwrap_or("")
+        .to_lowercase();
 
-        let mut hasher = Sha256::new();
-        hasher.update(&bytes);
-        let actual = hex::encode(hasher.finalize());
-
-        if actual != expected {
-            return Err(crate::Error::ChecksumMismatch);
-        }
-        debug!("SHA256 verified: {actual}");
+    if expected.len() != 64 || !expected.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return Err(crate::Error::Update(
+            "checksum asset did not contain a valid SHA256 hex digest".into(),
+        ));
     }
+
+    let mut hasher = Sha256::new();
+    hasher.update(&bytes);
+    let actual = hex::encode(hasher.finalize());
+
+    if actual != expected {
+        return Err(crate::Error::ChecksumMismatch);
+    }
+    debug!("SHA256 verified: {actual}");
 
     // Write to temp file
     let tmp = tempfile::NamedTempFile::new()
@@ -357,5 +373,24 @@ mod tests {
         let asset = select_asset(&release);
         assert!(asset.is_some());
         assert!(!asset.unwrap().name.ends_with(".sha256"));
+    }
+
+    #[tokio::test]
+    async fn test_download_refuses_without_checksum() {
+        // A release with no .sha256 asset must NOT be applied unverified. The
+        // check happens before any network I/O, so we can assert it offline.
+        let asset = ReleaseAsset {
+            name: "amigo-server".into(),
+            browser_download_url: "http://127.0.0.1:9/never-fetched".into(),
+            size: 0,
+        };
+        let client = reqwest::Client::new();
+        let err = download_and_verify(&client, &asset, None)
+            .await
+            .expect_err("must refuse to apply an unverified update");
+        assert!(
+            matches!(err, crate::Error::Update(_)),
+            "expected an Update error, got {err:?}"
+        );
     }
 }

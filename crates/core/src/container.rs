@@ -1,13 +1,22 @@
-//! DLC, CCF, and RSDF container import/export.
+//! DLC container import/export.
 //!
-//! DLC (Download Link Container) uses AES-128-CBC encryption with Base64 encoding.
-//! The format is used by JDownloader, pyLoad, and other download managers.
+//! ## What is supported
+//! This module handles the **plain** (unencrypted) DLC form: a Base64-encoded
+//! XML document listing `<package>`/`<file>` entries. That is what
+//! [`export_dlc`] produces and what [`import_dlc`] reads back.
 //!
-//! ## DLC Format
-//! - The file contains Base64-encoded, AES-128-CBC encrypted XML
-//! - Key derivation uses a service endpoint (or known key for offline mode)
-//! - The decrypted XML contains `<package>` elements with `<file>` children
-//! - Each `<file>` has a Base64-encoded `<url>`, optional `<filename>` and `<size>`
+//! ## What is NOT supported (and why)
+//! Encrypted DLC files cannot be decrypted here. The classic DLC format derives
+//! its AES key via a key-exchange with JDownloader's DLC web service, which has
+//! been offline for years — there is no offline key for the general case, so
+//! `import_dlc` rejects an encrypted payload rather than pretend to handle it.
+//! CCF and RSDF (see [`import_ccf`] / [`import_rsdf`]) are likewise not
+//! implemented in the core here.
+//!
+//! ## Plain DLC format
+//! - Base64-encoded XML (no encryption layer)
+//! - `<package>` elements with `<file>` children
+//! - Each `<file>` has a Base64-encoded `<url>`, optional `<filename>`/`<size>`
 
 use serde::{Deserialize, Serialize};
 

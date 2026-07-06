@@ -22,7 +22,13 @@ export default defineConfig({
   },
   server: {
     proxy: {
-      "/api": "http://localhost:1516",
+      // `ws: true` so the /api/v1/ws WebSocket upgrade is proxied too;
+      // without it the live connection status / updates silently fail under
+      // `vite dev` (production is unaffected — the server serves both).
+      "/api": {
+        target: "http://localhost:1516",
+        ws: true,
+      },
     },
   },
 });

@@ -93,6 +93,10 @@ pub struct Coordinator {
     resolvers: Vec<Arc<dyn UrlResolver>>,
     /// Signaled when a download completes/fails so the queue can advance.
     queue_notify: Arc<tokio::sync::Notify>,
+    /// Serializes `try_start_next` so two concurrent callers (an `add_download`
+    /// and the queue-advance loop) can't both observe the same free slot and
+    /// double-start the same queued row.
+    start_lock: Arc<Mutex<()>>,
 }
 
 /// Capacity of the per-coordinator broadcast channel that fans
@@ -124,6 +128,7 @@ impl Coordinator {
             event_tx,
             resolvers: Vec::new(),
             queue_notify: Arc::new(tokio::sync::Notify::new()),
+            start_lock: Arc::new(Mutex::new(())),
         }
     }
 
@@ -285,22 +290,32 @@ impl Coordinator {
         Ok(id)
     }
 
-    /// Try to start the next queued download if we have capacity.
+    /// Start queued downloads until either the concurrency limit is reached or
+    /// the queue is empty.
+    ///
+    /// Holding `start_lock` for the whole pass serializes concurrent callers so
+    /// they cannot both see the same free slot and double-start a row (TOCTOU);
+    /// looping fills *every* free slot in one pass so recovery (which re-queues
+    /// N downloads and calls this once) ramps up to the configured concurrency
+    /// instead of running strictly serially.
     async fn try_start_next(&self) -> Result<(), crate::Error> {
-        let active_count = {
-            let active = self.active.lock().await;
-            active.len() as u32
-        };
+        let _guard = self.start_lock.lock().await;
 
-        if active_count >= self.config.lock().await.max_concurrent_downloads {
-            return Ok(());
-        }
-
-        let queued = self
-            .storage
-            .list_downloads_by_status(QueueStatus::Queued)
-            .await?;
-        if let Some(next) = queued.into_iter().next() {
+        let max = self.config.lock().await.max_concurrent_downloads;
+        loop {
+            let active_count = self.active.lock().await.len() as u32;
+            if active_count >= max {
+                break;
+            }
+            let queued = self
+                .storage
+                .list_downloads_by_status(QueueStatus::Queued)
+                .await?;
+            // start_download flips the row to Downloading and inserts it into
+            // `active`, so the next iteration's query no longer returns it.
+            let Some(next) = queued.into_iter().next() else {
+                break;
+            };
             self.start_download(&next.id).await?;
         }
 
@@ -433,7 +448,11 @@ impl Coordinator {
                             match protocol.as_str() {
                                 "hls" => Box::new(HlsDownloader::new(user_agent, 8)),
                                 "dash" => Box::new(DashDownloader::new(user_agent, 8)),
-                                _ => Box::new(HttpDownloader::new(user_agent, bandwidth.clone())),
+                                _ => Box::new(HttpDownloader::new_with_headers(
+                                    user_agent,
+                                    &job.headers,
+                                    bandwidth.clone(),
+                                )),
                             };
                         backend.download(&job, ptx, crx).await
                     };
@@ -474,6 +493,13 @@ impl Coordinator {
                         id: download_id.clone(),
                     });
                     info!("Download completed: {download_id}");
+                }
+                Err(crate::Error::Cancelled) => {
+                    // The transfer was stopped by the user, not by a failure:
+                    // pause() has already set the row to Paused and cancel() has
+                    // deleted it. Overwriting the status with Failed here (the
+                    // old behaviour) made a paused download show up as failed.
+                    info!("Download stopped (paused/cancelled): {download_id}");
                 }
                 Err(e) => {
                     let error_msg = e.to_string();

@@ -335,6 +335,16 @@ impl Config {
         let content = std::fs::read_to_string(path)?;
         let config: Self = toml::from_str(&content)
             .map_err(|e| crate::Error::Other(format!("Failed to parse config: {e}")))?;
+        // Reject invalid values up front (e.g. a hand-edited negative
+        // retry.base_delay_secs) instead of panicking later when they feed
+        // Duration::from_secs_f64 in RetryPolicy::from.
+        let errors = config.validate();
+        if !errors.is_empty() {
+            return Err(crate::Error::Other(format!(
+                "Invalid config: {}",
+                errors.join("; ")
+            )));
+        }
         info!("Loaded config from {}", path.display());
         Ok(config)
     }
@@ -383,6 +393,14 @@ impl Config {
         }
         if self.http.timeout_connect_secs == 0 {
             errors.push("http.timeout_connect_secs must be > 0".into());
+        }
+        // Delays feed Duration::from_secs_f64, which panics on negative/NaN,
+        // so reject those here rather than crashing later in RetryPolicy::from.
+        if !self.retry.base_delay_secs.is_finite() || self.retry.base_delay_secs < 0.0 {
+            errors.push("retry.base_delay_secs must be a finite, non-negative number".into());
+        }
+        if !self.retry.max_delay_secs.is_finite() || self.retry.max_delay_secs < 0.0 {
+            errors.push("retry.max_delay_secs must be a finite, non-negative number".into());
         }
         if self.retry.max_delay_secs < self.retry.base_delay_secs {
             errors.push("retry.max_delay_secs must be >= retry.base_delay_secs".into());
@@ -500,5 +518,42 @@ mod tests {
         // File should now exist with defaults
         assert!(path.exists());
         std::fs::remove_dir_all(path.parent().unwrap()).ok();
+    }
+
+    #[test]
+    fn test_validate_rejects_bad_retry_delays() {
+        let mut cfg = Config::default();
+        cfg.retry.base_delay_secs = -1.0;
+        assert!(
+            cfg.validate().iter().any(|e| e.contains("base_delay_secs")),
+            "negative base delay must be rejected: {:?}",
+            cfg.validate()
+        );
+
+        let mut cfg = Config::default();
+        cfg.retry.base_delay_secs = f64::NAN;
+        assert!(
+            !cfg.validate().is_empty(),
+            "NaN base delay must be rejected"
+        );
+    }
+
+    #[test]
+    fn test_load_rejects_invalid_config() {
+        // A hand-edited config with a negative retry delay must fail to load
+        // rather than panic later in RetryPolicy::from (Duration::from_secs_f64).
+        // Serialize a full, otherwise-valid config so load() parses cleanly and
+        // fails at the validation step, not at the parse step.
+        let dir = std::env::temp_dir().join("amigo-config-test-invalid");
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("config.toml");
+        let mut cfg = Config::default();
+        cfg.retry.base_delay_secs = -1.0;
+        let toml_str = toml::to_string_pretty(&cfg).unwrap();
+        std::fs::write(&path, toml_str).unwrap();
+
+        let result = Config::load(&path);
+        assert!(result.is_err(), "invalid config must not load");
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

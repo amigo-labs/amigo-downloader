@@ -131,8 +131,13 @@ module.exports = {
         const videoId = extractVideoId(url);
         if (!videoId) return "unknown";
 
+        // Percent-encode the nested watch URL so its own `?v=…` query does not
+        // merge into the outer oembed query (which would bind `&format=json` to
+        // the wrong URL). YouTube tolerates the un-encoded form, but it is
+        // still a malformed URL.
+        const watchUrl = encodeURIComponent("https://www.youtube.com/watch?v=" + videoId);
         const resp = amigo.httpGet(
-            "https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=" + videoId + "&format=json"
+            "https://www.youtube.com/oembed?url=" + watchUrl + "&format=json"
         );
 
         if (resp.status === 200) return "online";

@@ -199,10 +199,23 @@ async fn stats(State(state): State<AppState>) -> Json<StatsResponse> {
     })
 }
 
+/// Validate a user-submitted download URL against the SSRF guard. Mirrors the
+/// policy already enforced on Click'n'Load, RSS, and webhook URLs so every
+/// URL-submission path blocks loopback / RFC1918 / link-local / metadata
+/// targets consistently. Returns a human-readable rejection reason.
+async fn guard_download_url(url: &str) -> Result<(), String> {
+    crate::net_guard::validate_outbound_url(url, false)
+        .await
+        .map_err(|e| format!("URL rejected: {e}"))
+}
+
 async fn add_download(
     State(state): State<AppState>,
     Json(req): Json<AddDownloadRequest>,
 ) -> Result<(StatusCode, Json<AddResponse>), (StatusCode, Json<ErrorResponse>)> {
+    if let Err(error) = guard_download_url(&req.url).await {
+        return Err((StatusCode::BAD_REQUEST, Json(ErrorResponse { error })));
+    }
     match state.coordinator.add_download(&req.url, req.filename).await {
         Ok(id) => Ok((StatusCode::CREATED, Json(AddResponse { id }))),
         Err(e) => Err((
@@ -221,6 +234,10 @@ async fn add_batch(
     let mut ids = Vec::new();
     let mut errors = Vec::new();
     for url in &req.urls {
+        if let Err(e) = guard_download_url(url).await {
+            errors.push(format!("{url}: {e}"));
+            continue;
+        }
         match state.coordinator.add_download(url, None).await {
             Ok(id) => ids.push(id),
             Err(e) => errors.push(format!("{url}: {e}")),
@@ -605,6 +622,10 @@ async fn upload_container(
     let mut added = Vec::new();
     for pkg in &packages {
         for link in &pkg.links {
+            if let Err(e) = guard_download_url(&link.url).await {
+                tracing::warn!("DLC link {} rejected: {e}", link.url);
+                continue;
+            }
             match state
                 .coordinator
                 .add_download(&link.url, link.filename.clone())
@@ -914,6 +935,13 @@ async fn put_config(
     // Update runtime state (bandwidth limiter, retry policy, etc.)
     state.coordinator.update_config(new_config.clone()).await;
 
+    // Keep the webhook dispatcher in sync with the persisted config so hooks
+    // added/edited via PUT /config actually fire (and removed ones stop).
+    state
+        .webhook_dispatcher
+        .set_endpoints(new_config.webhooks.clone())
+        .await;
+
     tracing::info!("Config updated and saved to {:?}", state.config_path);
     Ok(Json(redact_config(new_config)))
 }
@@ -1122,6 +1150,25 @@ async fn cancel_captcha(
 
 // --- Webhook handlers ---
 
+/// Persist the current in-memory webhook set to the config file (so it
+/// survives a restart) and refresh the coordinator's runtime config. Keeps the
+/// two sources of truth — the dispatcher and `config.webhooks` — in sync;
+/// previously create/delete only touched the dispatcher, so hooks vanished on
+/// restart and `GET /config` disagreed with `GET /webhooks`.
+async fn persist_webhooks(state: &AppState) {
+    let endpoints = state.webhook_dispatcher.list_endpoints().await;
+    let mut config = state.coordinator.config().await;
+    config.webhooks = endpoints;
+    // Best-effort: the webhook is already live in the dispatcher, so a save
+    // failure (e.g. read-only fs) must not fail the request — just log it. A
+    // valid production config always saves cleanly.
+    if let Err(e) = config.save(&state.config_path) {
+        tracing::error!("Failed to persist webhooks to config: {e}");
+        return;
+    }
+    state.coordinator.update_config(config).await;
+}
+
 async fn list_webhooks(State(state): State<AppState>) -> Json<serde_json::Value> {
     let endpoints = state.webhook_dispatcher.list_endpoints().await;
     Json(serde_json::to_value(endpoints).unwrap_or_default())
@@ -1165,6 +1212,7 @@ async fn create_webhook(
     };
     let resp = serde_json::to_value(&endpoint).unwrap_or_default();
     state.webhook_dispatcher.add_endpoint(endpoint).await;
+    persist_webhooks(&state).await;
     Ok((StatusCode::CREATED, Json(resp)))
 }
 
@@ -1173,6 +1221,7 @@ async fn delete_webhook(
     Path(id): Path<String>,
 ) -> Result<StatusCode, StatusCode> {
     if state.webhook_dispatcher.remove_endpoint(&id).await {
+        persist_webhooks(&state).await;
         Ok(StatusCode::NO_CONTENT)
     } else {
         Err(StatusCode::NOT_FOUND)

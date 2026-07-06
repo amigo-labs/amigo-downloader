@@ -126,6 +126,13 @@ pub enum Error {
     #[error("Download cancelled")]
     Cancelled,
 
+    /// A chunked download requested a byte range but the server answered with
+    /// `200 OK` (the full body) instead of `206 Partial Content`. Recognised
+    /// explicitly so the caller can restart the download as a single stream
+    /// instead of concatenating N full copies into a corrupt file.
+    #[error("server ignored Range request (200 instead of 206)")]
+    RangeNotSupported,
+
     #[error("{0}")]
     Other(String),
 }

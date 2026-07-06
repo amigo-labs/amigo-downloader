@@ -119,6 +119,9 @@ const translations: Record<Locale, Record<string, string>> = {
     "toast.deleted_one": "Download deleted",
     "toast.delete_failed": "Failed to delete download",
     "toast.action_failed": "Action failed",
+    "toast.limit_set": "Limit set to {mbps} MB/s",
+    "toast.limit_disabled": "Speed limit disabled",
+    "toast.limit_save_failed": "Failed to save limit",
 
     // Side panel
     "panel.details": "Download Details",
@@ -238,6 +241,9 @@ const translations: Record<Locale, Record<string, string>> = {
     "feedback.opens_github": "Opens GitHub with pre-filled template",
     "feedback.auto_on": "Crashes are automatically reported.",
     "feedback.auto_off": "Set AMIGO_GITHUB_TOKEN for automatic crash reporting.",
+    "feedback.known_issue": "Known issue #{number}",
+    "feedback.already_reported": "Already reported",
+    "feedback.crash_reported_as": "Crash reported as #{number}",
 
     // History
     "history.empty": "No download history yet",
@@ -414,6 +420,9 @@ const translations: Record<Locale, Record<string, string>> = {
     "toast.deleted_one": "Download gelöscht",
     "toast.delete_failed": "Download konnte nicht gelöscht werden",
     "toast.action_failed": "Aktion fehlgeschlagen",
+    "toast.limit_set": "Limit auf {mbps} MB/s gesetzt",
+    "toast.limit_disabled": "Geschwindigkeitslimit deaktiviert",
+    "toast.limit_save_failed": "Limit konnte nicht gespeichert werden",
 
     "panel.details": "Download-Details",
 
@@ -522,6 +531,9 @@ const translations: Record<Locale, Record<string, string>> = {
     "feedback.opens_github": "Öffnet GitHub mit vorausgefülltem Template",
     "feedback.auto_on": "Abstürze werden automatisch gemeldet.",
     "feedback.auto_off": "AMIGO_GITHUB_TOKEN setzen für automatische Absturzberichte.",
+    "feedback.known_issue": "Bekanntes Problem #{number}",
+    "feedback.already_reported": "Bereits gemeldet",
+    "feedback.crash_reported_as": "Absturz gemeldet als #{number}",
 
     "history.empty": "Noch kein Download-Verlauf",
     "history.empty_hint": "Abgeschlossene Downloads erscheinen hier",

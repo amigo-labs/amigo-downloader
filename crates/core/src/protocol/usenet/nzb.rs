@@ -126,10 +126,13 @@ fn parse_segments(xml: &str) -> Vec<NzbSegment> {
     let mut pos = 0;
     while let Some(start) = xml[pos..].find("<segment ") {
         let abs_start = pos + start;
-        let tag_end = xml[abs_start..]
-            .find('>')
-            .map(|p| abs_start + p)
-            .unwrap_or(xml.len());
+        // A `<segment` with no closing `>` before EOF is malformed. Bail
+        // rather than defaulting tag_end to xml.len(), which then made
+        // `content_start = tag_end + 1` slice past the end and panic.
+        let Some(rel_end) = xml[abs_start..].find('>') else {
+            break;
+        };
+        let tag_end = abs_start + rel_end;
         let tag = &xml[abs_start..tag_end];
 
         let number = extract_xml_attr(tag, "number")
@@ -168,11 +171,13 @@ fn extract_xml_attr(tag: &str, attr: &str) -> Option<String> {
 }
 
 fn unescape_xml(s: &str) -> String {
-    s.replace("&amp;", "&")
-        .replace("&lt;", "<")
+    // `&amp;` must be replaced LAST: doing it first turns `&amp;lt;` into
+    // `&lt;` and then into `<`, double-unescaping the input.
+    s.replace("&lt;", "<")
         .replace("&gt;", ">")
         .replace("&quot;", "\"")
         .replace("&apos;", "'")
+        .replace("&amp;", "&")
 }
 
 #[cfg(test)]
@@ -226,5 +231,25 @@ mod tests {
     fn test_empty_nzb() {
         let result = parse_nzb("<nzb></nzb>");
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_segments_unterminated_tag_does_not_panic() {
+        // `<segment ` with no closing `>` before EOF used to compute
+        // content_start = xml.len() + 1 and slice out of bounds.
+        let segs = parse_segments("<segment number=\"1\" bytes=\"10\"");
+        assert!(segs.is_empty());
+        // A well-formed opening tag but no closing </segment> must also be safe.
+        let segs = parse_segments("<segment number=\"1\" bytes=\"10\">mid@x");
+        assert!(segs.is_empty());
+    }
+
+    #[test]
+    fn test_unescape_xml_no_double_unescape() {
+        // `&amp;lt;` is the escaped form of the literal text `&lt;` and must
+        // decode to exactly that, not to `<`.
+        assert_eq!(unescape_xml("&amp;lt;"), "&lt;");
+        assert_eq!(unescape_xml("a &amp; b"), "a & b");
+        assert_eq!(unescape_xml("&lt;tag&gt;"), "<tag>");
     }
 }

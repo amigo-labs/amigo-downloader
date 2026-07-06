@@ -93,17 +93,15 @@ module.exports = {
     },
 
     login(username: string, password: string): boolean {
-        // Real-Debrid uses API keys, not username/password.
-        // Store the API key (passed as password, username is ignored).
-        amigo.storageSet("api_key", password);
-        amigo.logInfo("Real-Debrid API key saved");
-
-        // Verify the key works
+        // Real-Debrid uses API keys, not username/password (passed as password,
+        // username is ignored). Verify the key works BEFORE persisting it, so a
+        // bad key isn't left in storage on failure and reused later.
         const resp = amigo.httpGet(API_BASE + "/user", {
             headers: { "Authorization": "Bearer " + password },
         });
         if (resp.status === 200) {
             const user = parseApiJson(resp.body, "/user");
+            amigo.storageSet("api_key", password);
             amigo.logInfo("Authenticated as: " + user.username + " (Premium: " + user.type + ")");
             return true;
         }

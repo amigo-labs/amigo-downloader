@@ -110,6 +110,12 @@ impl WebhookDispatcher {
         self.endpoints.write().await.push(endpoint);
     }
 
+    /// Replace all endpoints wholesale. Used to keep the dispatcher in sync
+    /// with the persisted config when it is edited via `PUT /config`.
+    pub async fn set_endpoints(&self, endpoints: Vec<WebhookEndpoint>) {
+        *self.endpoints.write().await = endpoints;
+    }
+
     /// Remove a webhook endpoint by ID.
     pub async fn remove_endpoint(&self, id: &str) -> bool {
         let mut endpoints = self.endpoints.write().await;

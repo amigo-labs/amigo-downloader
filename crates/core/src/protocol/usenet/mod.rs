@@ -186,10 +186,20 @@ impl UsenetDownloader {
             )));
         }
 
-        // Download article body
-        let body = conn.body(&segment.message_id).await;
-        pool.release(conn).await;
-        let body = body?;
+        // Download article body. On error the connection may hold buffered or
+        // partial response data, so it must NOT be returned to the pool —
+        // dropping it closes the socket and avoids desyncing the next command
+        // that would otherwise read the stale tail of this response.
+        let body = match conn.body(&segment.message_id).await {
+            Ok(body) => {
+                pool.release(conn).await;
+                body
+            }
+            Err(e) => {
+                drop(conn);
+                return Err(e);
+            }
+        };
 
         // Decode yEnc
         let decoded = decode_yenc(&body)?;

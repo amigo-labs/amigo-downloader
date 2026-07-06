@@ -34,42 +34,50 @@ pub fn decode_yenc(article_body: &[u8]) -> Result<YencDecoded, crate::Error> {
         part_crc32: None,
     };
 
-    let text = String::from_utf8_lossy(article_body);
+    // Operate on raw bytes: a yEnc-encoded binary spans the full 0..=255 range,
+    // so decoding it through `String::from_utf8_lossy` would rewrite every
+    // invalid UTF-8 byte to U+FFFD and corrupt the output. Only the ASCII
+    // header/trailer lines are interpreted as text.
     let mut in_body = false;
-    let mut lines = text.lines().peekable();
+    let mut lines = article_body
+        .split(|&b| b == b'\n')
+        .map(|line| line.strip_suffix(b"\r").unwrap_or(line))
+        .peekable();
 
     while let Some(line) = lines.next() {
-        if line.starts_with("=ybegin ") {
-            // Parse ybegin header
-            result.name = extract_yenc_param(line, "name");
-            result.size = extract_yenc_param(line, "size").and_then(|s| s.parse().ok());
-            result.part = extract_yenc_param(line, "part").and_then(|s| s.parse().ok());
-            result.total = extract_yenc_param(line, "total").and_then(|s| s.parse().ok());
+        if line.starts_with(b"=ybegin ") {
+            // Parse ybegin header (ASCII/text).
+            let header = String::from_utf8_lossy(line);
+            result.name = extract_yenc_param(&header, "name");
+            result.size = extract_yenc_param(&header, "size").and_then(|s| s.parse().ok());
+            result.part = extract_yenc_param(&header, "part").and_then(|s| s.parse().ok());
+            result.total = extract_yenc_param(&header, "total").and_then(|s| s.parse().ok());
 
             // Check for =ypart header (multipart)
             if let Some(next_line) = lines.peek()
-                && next_line.starts_with("=ypart ")
+                && next_line.starts_with(b"=ypart ")
             {
-                let part_line = lines.next().unwrap();
-                result.begin = extract_yenc_param(part_line, "begin").and_then(|s| s.parse().ok());
-                result.end = extract_yenc_param(part_line, "end").and_then(|s| s.parse().ok());
+                let part_line = String::from_utf8_lossy(lines.next().unwrap());
+                result.begin = extract_yenc_param(&part_line, "begin").and_then(|s| s.parse().ok());
+                result.end = extract_yenc_param(&part_line, "end").and_then(|s| s.parse().ok());
             }
             in_body = true;
             continue;
         }
 
-        if line.starts_with("=yend ") {
-            // Parse yend trailer
-            result.crc32 = extract_yenc_param(line, "crc32")
+        if line.starts_with(b"=yend ") {
+            // Parse yend trailer (ASCII/text).
+            let trailer = String::from_utf8_lossy(line);
+            result.crc32 = extract_yenc_param(&trailer, "crc32")
                 .and_then(|s| u32::from_str_radix(s.trim_start_matches("0x"), 16).ok());
-            result.part_crc32 = extract_yenc_param(line, "pcrc32")
+            result.part_crc32 = extract_yenc_param(&trailer, "pcrc32")
                 .and_then(|s| u32::from_str_radix(s.trim_start_matches("0x"), 16).ok());
             break;
         }
 
         if in_body {
-            // Decode yEnc data line
-            decode_yenc_line(line.as_bytes(), &mut result.data);
+            // Decode yEnc data line from raw bytes.
+            decode_yenc_line(line, &mut result.data);
         }
     }
 
@@ -191,5 +199,36 @@ mod tests {
     fn test_no_yenc_data() {
         let result = decode_yenc(b"Just some random text\nwithout yenc");
         assert!(result.is_err());
+    }
+
+    /// Encode `data` the way a real yEnc producer does, escaping only the
+    /// critical bytes, then assert we decode it back byte-for-byte. This
+    /// exercises the full 0..=255 range, which the ASCII-only tests above
+    /// never did — and which the old `from_utf8_lossy` path corrupted.
+    #[test]
+    fn test_roundtrip_full_byte_range() {
+        let data: Vec<u8> = (0..=255u8).collect();
+
+        let mut body = Vec::new();
+        body.extend_from_slice(b"=ybegin line=128 size=256 name=all.bin\n");
+        for &b in &data {
+            let enc = b.wrapping_add(42);
+            // Escape NUL, LF, CR, and '=' (the yEnc critical characters).
+            if matches!(enc, 0x00 | 0x0A | 0x0D | 0x3D) {
+                body.push(b'=');
+                body.push(enc.wrapping_add(64));
+            } else {
+                body.push(enc);
+            }
+        }
+        body.extend_from_slice(b"\n=yend size=256\n");
+
+        let decoded = decode_yenc(&body).expect("decode");
+        assert_eq!(decoded.name.as_deref(), Some("all.bin"));
+        assert_eq!(decoded.size, Some(256));
+        assert_eq!(
+            decoded.data, data,
+            "full-range binary must round-trip without corruption"
+        );
     }
 }

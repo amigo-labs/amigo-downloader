@@ -29,6 +29,15 @@ describe("detect", () => {
     expect(detect(sample)).toBe("dlc");
   });
 
+  it("classifies a long hex payload as RSDF, not DLC", () => {
+    const host = createMockHostApi().api;
+    setHostApi(host);
+    // 128 hex chars: hex is a subset of the base64 charset, so before the
+    // ordering fix this matched the DLC (base64, len>=100) branch first.
+    const sample = encode("ab".repeat(64));
+    expect(detect(sample)).toBe("rsdf");
+  });
+
   it("returns null on binary payload without magic", () => {
     const host = createMockHostApi().api;
     setHostApi(host);

@@ -289,7 +289,12 @@ async fn handle_append(coordinator: &Arc<Coordinator>, params: &[Value]) -> RpcR
 
     // NZBContent can be base64-encoded NZB data or a URL
     let nzb_data = if nzb_content.starts_with("http://") || nzb_content.starts_with("https://") {
-        // URL mode — we'd need to fetch it, for now just add as URL download
+        // URL mode — we'd need to fetch it, for now just add as URL download.
+        // Guard against SSRF to internal targets, consistent with the REST
+        // download paths.
+        if let Err(e) = crate::net_guard::validate_outbound_url(nzb_content, false).await {
+            return Err((-32000, format!("URL rejected: {e}")));
+        }
         match coordinator
             .add_download(nzb_content, Some(nzb_filename.to_string()))
             .await

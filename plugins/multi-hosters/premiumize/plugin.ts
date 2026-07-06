@@ -87,15 +87,15 @@ module.exports = {
     },
 
     login(username: string, password: string): boolean {
-        amigo.storageSet("api_key", password);
-        amigo.logInfo("Premiumize API key saved");
-
+        // Validate the key BEFORE persisting it, so a bad key isn't left in
+        // storage on failure and reused by resolve()/checkOnline().
         const resp = amigo.httpGet(API_BASE + "/account/info", {
             headers: { "Authorization": "Bearer " + password },
         });
         if (resp.status === 200) {
             const user = parseApiJson(resp.body, "/account/info");
             if (user.status === "success") {
+                amigo.storageSet("api_key", password);
                 amigo.logInfo("Authenticated as: " + user.customer_id + " (Premium until: " + user.premium_until + ")");
                 return true;
             }
