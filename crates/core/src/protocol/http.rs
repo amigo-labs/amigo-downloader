@@ -2,6 +2,7 @@
 //!
 //! Supports multi-chunk parallel downloads, resume, and progress reporting.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -64,8 +65,30 @@ pub struct HttpDownloader {
 
 impl HttpDownloader {
     pub fn new(user_agent: &str, bandwidth: BandwidthLimiter) -> Self {
+        Self::new_with_headers(user_agent, &HashMap::new(), bandwidth)
+    }
+
+    /// Build a downloader whose client sends `headers` on every request. Used
+    /// so resolver-supplied headers (Referer, Authorization, …) carried on the
+    /// `DownloadJob` actually reach the server instead of being dropped.
+    /// Header names/values that are not valid HTTP are skipped.
+    pub fn new_with_headers(
+        user_agent: &str,
+        headers: &HashMap<String, String>,
+        bandwidth: BandwidthLimiter,
+    ) -> Self {
+        let mut header_map = reqwest::header::HeaderMap::new();
+        for (k, v) in headers {
+            if let (Ok(name), Ok(value)) = (
+                reqwest::header::HeaderName::from_bytes(k.as_bytes()),
+                reqwest::header::HeaderValue::from_str(v),
+            ) {
+                header_map.insert(name, value);
+            }
+        }
         let client = reqwest::Client::builder()
             .user_agent(user_agent)
+            .default_headers(header_map)
             .build()
             .unwrap_or_else(|_| reqwest::Client::new());
         Self { client, bandwidth }
@@ -164,6 +187,11 @@ impl HttpDownloader {
                 "num_chunks must be greater than 0".into(),
             ));
         }
+        // Each chunk needs at least one byte; with more chunks than bytes,
+        // chunk_size would be 0 and `start + chunk_size - 1` would underflow.
+        // Clamp the chunk count to the byte count for tiny inputs. (The trait
+        // caller already clamps, but this pub fn must be safe on its own.)
+        let num_chunks = (num_chunks as u64).min(total_size.max(1)) as u32;
         let chunk_size = total_size / num_chunks as u64;
         let mut handles = Vec::with_capacity(num_chunks as usize);
 
@@ -177,7 +205,7 @@ impl HttpDownloader {
         for i in 0..num_chunks {
             let start = i as u64 * chunk_size;
             let end = if i == num_chunks - 1 {
-                total_size - 1
+                total_size.saturating_sub(1)
             } else {
                 start + chunk_size - 1
             };

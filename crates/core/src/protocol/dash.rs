@@ -121,6 +121,13 @@ impl DashDownloader {
     }
 }
 
+/// Upper bound on the number of media segments a single representation may
+/// expand to. A malformed/malicious MPD (tiny segment duration, or a huge
+/// SegmentTimeline `r` repeat count) could otherwise allocate a multi-billion
+/// element Vec and exhaust memory. 100k comfortably covers a multi-hour stream
+/// at typical 2–6 s segment durations.
+const MAX_DASH_SEGMENTS: usize = 100_000;
+
 /// Build segment URLs from MPD structure.
 fn build_segment_urls(
     mpd_url: &str,
@@ -154,9 +161,18 @@ fn build_segment_urls(
                 for s in &timeline.segments {
                     let t = s.t.unwrap_or(time);
                     time = t;
-                    let repeat = s.r.unwrap_or(0);
+                    // `r` may be negative ("repeat until end of period"), which
+                    // we do not expand; clamp to 0 so it produces a single
+                    // segment rather than a garbage/negative range.
+                    let repeat = s.r.unwrap_or(0).max(0);
 
                     for _ in 0..=repeat {
+                        if urls.len() >= MAX_DASH_SEGMENTS {
+                            return Err(crate::Error::Other(format!(
+                                "DASH manifest expands to more than {MAX_DASH_SEGMENTS} \
+                                 segments — refusing (malformed or malicious manifest)"
+                            )));
+                        }
                         let url = expand_template_with_time(media_template, repr, number, time);
                         urls.push(resolve_url(mpd_url, &url));
                         time += s.d;
@@ -175,6 +191,12 @@ fn build_segment_urls(
                 let segment_duration = duration / timescale as f64;
                 if segment_duration > 0.0 {
                     let num_segments = (period_duration / segment_duration).ceil() as u64;
+                    if num_segments > MAX_DASH_SEGMENTS as u64 {
+                        return Err(crate::Error::Other(format!(
+                            "DASH manifest declares {num_segments} segments \
+                             (> {MAX_DASH_SEGMENTS}) — refusing (malformed or malicious manifest)"
+                        )));
+                    }
                     let start_number = template.startNumber.unwrap_or(1);
 
                     for i in 0..num_segments {
