@@ -317,19 +317,20 @@ impl HostApi {
                 || request.url().host_str() != next_url.host_str()
                 || request.url().port_or_known_default() != next_url.port_or_known_default();
 
-            // Standard method/body rewriting for the redirect.
+            // Standard method/body rewriting for the redirect. 303 always
+            // becomes GET; 301/302 downgrade POST to GET (per browser
+            // behaviour); 307/308 preserve method and body.
             match status {
                 reqwest::StatusCode::SEE_OTHER => {
                     *request.method_mut() = reqwest::Method::GET;
                     *request.body_mut() = None;
                 }
-                reqwest::StatusCode::MOVED_PERMANENTLY | reqwest::StatusCode::FOUND => {
-                    if request.method() == reqwest::Method::POST {
-                        *request.method_mut() = reqwest::Method::GET;
-                        *request.body_mut() = None;
-                    }
+                reqwest::StatusCode::MOVED_PERMANENTLY | reqwest::StatusCode::FOUND
+                    if request.method() == reqwest::Method::POST =>
+                {
+                    *request.method_mut() = reqwest::Method::GET;
+                    *request.body_mut() = None;
                 }
-                // 307/308 preserve method and body.
                 _ => {}
             }
 
