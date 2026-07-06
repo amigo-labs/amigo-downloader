@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onDestroy } from "svelte";
   import { pauseDownload, resumeDownload, retryDownload, deleteDownload, addDownload, formatBytes, formatSpeed } from "../lib/api";
-  import { openDetailPanel, selectedDownloadId, selectedIds, toggleSelection, crashReport } from "../lib/stores";
+  import { openDetailPanel, selectedDownloadId, selectedIds, toggleSelection, crashReport, showFeedbackDialog } from "../lib/stores";
   import { addToast } from "../lib/toast";
   import { locale, tr } from "../lib/i18n";
   import ChunkViz from "@amigo/ui/components/ChunkViz.svelte";
@@ -271,7 +271,7 @@
           </button>
           {#if download.error}
             <button
-              onclick={() => crashReport.set({ download_id: download.id, error_message: download.error })}
+              onclick={() => { crashReport.set({ download_id: download.id, error_message: download.error }); showFeedbackDialog.set(true); }}
               class="icon-btn min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg text-[10px] font-medium"
               style="color: var(--neon-warning)"
               aria-label="{tr($locale, 'action.report')} {download.filename || 'download'}"

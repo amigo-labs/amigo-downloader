@@ -45,9 +45,16 @@
         autoReported = true;
         resultUrl = data.issue_url;
         if (data.deduplicated) {
-          addToast("info", `Known issue #${data.issue_number}`, "Already reported");
+          addToast(
+            "info",
+            tr($locale, "feedback.known_issue", { number: data.issue_number }),
+            tr($locale, "feedback.already_reported"),
+          );
         } else {
-          addToast("info", `Crash reported as #${data.issue_number}`);
+          addToast(
+            "info",
+            tr($locale, "feedback.crash_reported_as", { number: data.issue_number }),
+          );
         }
       }
     } catch (e) { console.error("Auto crash report failed:", e); }

@@ -1,6 +1,6 @@
 <script lang="ts">
   import { flip } from "svelte/animate";
-  import { pauseDownload, resumeDownload, deleteDownload, addBatch } from "../lib/api";
+  import { pauseDownload, resumeDownload, deleteDownload, addBatch, reorderQueue } from "../lib/api";
   import {
     downloads, usenetDownloads, protocolFilter, openAddPanel,
     selectedIds, toggleSelection, clearSelection, selectAll,
@@ -152,21 +152,33 @@
   }
 
   function handleDrop(targetId: string) {
-    return (e: DragEvent) => {
+    return async (e: DragEvent) => {
       e.preventDefault();
-      if (!draggedId || draggedId === targetId) { draggedId = null; return; }
+      const dragged = draggedId;
+      draggedId = null;
+      if (!dragged || dragged === targetId) return;
       // Reorder in the correct store based on protocol filter
       const store = $protocolFilter === "usenet" ? usenetDownloads : downloads;
+      let newOrder: string[] = [];
       store.update((list) => {
         const items = [...list];
-        const fromIdx = items.findIndex((d) => d.id === draggedId);
+        const fromIdx = items.findIndex((d) => d.id === dragged);
         const toIdx = items.findIndex((d) => d.id === targetId);
         if (fromIdx === -1 || toIdx === -1) return list;
         const [item] = items.splice(fromIdx, 1);
         items.splice(toIdx, 0, item);
+        newOrder = items.map((d) => d.id);
         return items;
       });
-      draggedId = null;
+      // Persist the new order via PATCH /queue/reorder, otherwise the next
+      // 10s poll / WS refresh reverts the list to the server's order.
+      if (newOrder.length) {
+        try {
+          await reorderQueue(newOrder);
+        } catch (err) {
+          console.error("Failed to persist reorder:", err);
+        }
+      }
     };
   }
 </script>

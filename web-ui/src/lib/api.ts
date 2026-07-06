@@ -54,6 +54,7 @@ export const resumeDownload = (id: string) => api<void>("PATCH", `/downloads/${i
 export const retryDownload = (id: string) => api<void>("PATCH", `/downloads/${id}`, { action: "retry" });
 export const deleteDownload = (id: string) => api<void>("DELETE", `/downloads/${id}`);
 export const getQueue = () => api<Download[]>("GET", "/queue");
+export const reorderQueue = (ids: string[]) => api<void>("PATCH", "/queue/reorder", { ids });
 export const getHistory = () => api<Download[]>("GET", "/history");
 export const getPlugins = () => api<Plugin[]>("GET", "/plugins");
 export const setPluginEnabled = (id: string, enabled: boolean) =>
