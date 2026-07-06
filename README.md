@@ -64,6 +64,16 @@ cargo run --release --bin amigo-server
 
 ### CLI
 
+Install the latest pre-built `amigo-dl` binary (Linux/macOS, x86_64/aarch64):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/amigo-labs/amigo-downloader/main/scripts/install.sh | bash
+```
+
+The installer resolves the latest release, verifies its SHA-256 checksum, and
+installs to `/usr/local/bin` (override with `AMIGO_INSTALL_DIR`). Or build from
+source with Cargo:
+
 ```bash
 # Install to ~/.cargo/bin/
 cargo install --path crates/cli

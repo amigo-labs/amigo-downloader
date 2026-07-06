@@ -1,15 +1,18 @@
 <script lang="ts">
-  import { pauseDownload, resumeDownload, deleteDownload } from "../lib/api";
+  import { flip } from "svelte/animate";
+  import { pauseDownload, resumeDownload, deleteDownload, addBatch } from "../lib/api";
   import {
     downloads, usenetDownloads, protocolFilter, openAddPanel,
     selectedIds, toggleSelection, clearSelection, selectAll,
-    searchQuery,
+    searchQuery, downloadsLoaded, wsConnected,
   } from "../lib/stores";
   import { addToast } from "../lib/toast";
+  import { locale, tr } from "../lib/i18n";
+  import { flipConfig } from "../lib/motion";
   import DownloadCard from "../components/DownloadCard.svelte";
   import DownloadCompactRow from "../components/DownloadCompactRow.svelte";
+  import SkeletonCard from "../components/SkeletonCard.svelte";
   import Icon from "@amigo/ui/components/Icon.svelte";
-
 
   let filter = $state<string>("all");
   let confirmingBatchDelete = $state(false);
@@ -33,12 +36,7 @@
   };
 
   const filters = ["all", "downloading", "queued", "paused", "completed", "failed"];
-  const sortOptions = [
-    { value: "status", label: "Status" },
-    { value: "name", label: "Name" },
-    { value: "size", label: "Size" },
-    { value: "date", label: "Date" },
-  ];
+  const sortOptions = ["status", "name", "size", "date"];
 
   // Merge HTTP + Usenet downloads based on protocol filter
   let allDownloads = $derived(() => {
@@ -65,6 +63,8 @@
   );
 
   let batchMode = $derived($selectedIds.size > 0);
+  // Show skeletons only on the very first load, before any data has arrived.
+  let showSkeleton = $derived(!$downloadsLoaded && allDownloads().length === 0);
 
   function countByStatus(status: string): number {
     return allDownloads().filter((d) => d.status === status).length;
@@ -84,7 +84,10 @@
     for (const id of $selectedIds) {
       try { await pauseDownload(id); } catch { failed++; }
     }
-    addToast(failed ? "error" : "info", failed ? `Paused ${total - failed}/${total} downloads (${failed} failed)` : `Paused ${total} downloads`);
+    addToast(failed ? "error" : "info",
+      failed
+        ? tr($locale, "batch.paused_partial", { done: total - failed, total, failed })
+        : tr($locale, "batch.paused", { count: total }));
     clearSelection();
   }
 
@@ -94,7 +97,10 @@
     for (const id of $selectedIds) {
       try { await resumeDownload(id); } catch { failed++; }
     }
-    addToast(failed ? "error" : "info", failed ? `Resumed ${total - failed}/${total} downloads (${failed} failed)` : `Resumed ${total} downloads`);
+    addToast(failed ? "error" : "info",
+      failed
+        ? tr($locale, "batch.resumed_partial", { done: total - failed, total, failed })
+        : tr($locale, "batch.resumed", { count: total }));
     clearSelection();
   }
 
@@ -106,13 +112,29 @@
     }
     confirmingBatchDelete = false;
     const total = $selectedIds.size;
+    // Capture URLs up front so deletion can be undone (re-queues them).
+    const byId = new Map(allDownloads().map((d) => [d.id, d.url]));
+    const urls = [...$selectedIds].map((id) => byId.get(id)).filter((u): u is string => !!u);
     let failed = 0;
     for (const id of $selectedIds) {
       try { await deleteDownload(id); } catch { failed++; }
     }
-    addToast(failed ? "error" : "info", failed ? `Deleted ${total - failed}/${total} downloads (${failed} failed)` : `Deleted ${total} downloads`);
+    addToast(failed ? "error" : "info",
+      failed
+        ? tr($locale, "batch.deleted_partial", { done: total - failed, total, failed })
+        : tr($locale, "batch.deleted", { count: total }),
+      undefined,
+      urls.length > 0
+        ? { action: { label: tr($locale, "action.undo"), onAction: () => addBatch(urls) } }
+        : undefined);
     clearSelection();
   }
+
+  // Empty-state copy depends on context: searching, a specific filter, or the
+  // genuine first-run state (filter "all", nothing at all).
+  let emptyKey = $derived(
+    $searchQuery ? "empty.search" : filter !== "all" ? `empty.${filter}` : ""
+  );
 
   function handleDragStart(id: string) {
     return (e: DragEvent) => {
@@ -150,156 +172,194 @@
 </script>
 
 <div class="space-y-4">
-  <!-- Search bar + sort + view toggle -->
-  <div class="flex gap-2 items-center">
-    <div class="flex-1 flex items-center gap-2 rounded-lg px-3 py-2" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
-      <Icon name="search" size={16} />
-      <input
-        type="text"
-        placeholder="Search downloads..."
-        bind:value={$searchQuery}
-        class="flex-1 bg-transparent text-sm outline-none"
-        style="color: var(--text-primary)"
-        aria-label="Search downloads"
-      />
-      {#if $searchQuery}
-        <button onclick={() => searchQuery.set("")} class="icon-btn p-0.5 rounded" style="color: var(--text-secondary)" aria-label="Clear search">
-          <Icon name="x" size={14} />
+  <!-- Sticky toolbar: search + sort + view + filters stay in reach while scrolling -->
+  <div class="toolbar-sticky space-y-3 -mx-1 px-1 pt-1 pb-2">
+    <div class="flex gap-2 items-center flex-wrap">
+      <div class="flex-1 min-w-[12rem] flex items-center gap-2 rounded-lg px-3 py-2" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
+        <Icon name="search" size={16} />
+        <input
+          type="text"
+          placeholder={tr($locale, "downloads.search")}
+          bind:value={$searchQuery}
+          class="flex-1 bg-transparent text-sm outline-none min-w-0"
+          style="color: var(--text-primary)"
+          aria-label={tr($locale, "downloads.search")}
+        />
+        {#if $searchQuery}
+          <button onclick={() => searchQuery.set("")} class="icon-btn p-0.5 rounded" style="color: var(--text-secondary)" aria-label={tr($locale, "common.close")}>
+            <Icon name="x" size={14} />
+          </button>
+        {/if}
+      </div>
+
+      <!-- Sort -->
+      <div class="flex items-center gap-1 rounded-lg px-2 py-1.5 shrink-0" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
+        <Icon name="sort" size={14} />
+        <select
+          bind:value={sortBy}
+          class="bg-transparent text-xs outline-none cursor-pointer"
+          style="color: var(--text-primary)"
+          aria-label={tr($locale, "downloads.sort_by")}
+        >
+          {#each sortOptions as opt}
+            <option value={opt} style="background: var(--bg-surface-2)">{tr($locale, `sort.${opt}`)}</option>
+          {/each}
+        </select>
+      </div>
+
+      <!-- View toggle -->
+      <div class="flex shrink-0 rounded-lg overflow-hidden" style="border: 1px solid var(--border-color)">
+        <button
+          onclick={() => setViewMode("grid")}
+          class="icon-btn p-2"
+          aria-pressed={viewMode === "grid"}
+          style="color: {viewMode === 'grid' ? 'var(--neon-primary)' : 'var(--text-secondary)'}; background: {viewMode === 'grid' ? 'var(--hover-bg)' : 'var(--bg-surface)'}"
+          aria-label={tr($locale, "downloads.grid_view")}
+        >
+          <Icon name="grid" size={14} />
+        </button>
+        <button
+          onclick={() => setViewMode("list")}
+          class="icon-btn p-2"
+          aria-pressed={viewMode === "list"}
+          style="color: {viewMode === 'list' ? 'var(--neon-primary)' : 'var(--text-secondary)'}; background: {viewMode === 'list' ? 'var(--hover-bg)' : 'var(--bg-surface)'}"
+          aria-label={tr($locale, "downloads.list_view")}
+        >
+          <Icon name="list" size={14} />
+        </button>
+      </div>
+    </div>
+
+    <!-- Filter chips (horizontally scrollable on narrow screens) + batch toggle -->
+    <div class="flex items-center gap-2">
+      <div role="radiogroup" aria-label="Filter by status" class="chip-rail flex gap-2 flex-1 overflow-x-auto">
+        {#each filters as f}
+          <button
+            role="radio"
+            aria-checked={filter === f}
+            onclick={() => (filter = f)}
+            class="filter-chip px-3 py-1.5 rounded-lg text-sm font-medium shrink-0"
+            style={filter === f
+              ? "background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--neon-primary)"
+              : "background: var(--bg-surface); color: var(--text-secondary)"}
+          >
+            {tr($locale, `filter.${f}`)}
+            <span class="ml-1 tabular-nums opacity-50">{f === "all" ? allDownloads().length : countByStatus(f)}</span>
+          </button>
+        {/each}
+      </div>
+
+      {#if filtered.length > 0}
+        <button
+          onclick={handleSelectAll}
+          class="filter-chip px-3 py-1.5 rounded-lg text-sm font-medium shrink-0 flex items-center"
+          style={batchMode
+            ? "background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--neon-primary)"
+            : "background: var(--bg-surface); color: var(--text-secondary)"}
+          aria-label={tr($locale, "downloads.select_all")}
+        >
+          <Icon name="check" size={14} />
+          {#if batchMode}<span class="ml-1 tabular-nums">{$selectedIds.size}</span>{/if}
         </button>
       {/if}
     </div>
-
-    <!-- Sort -->
-    <div class="flex items-center gap-1 rounded-lg px-2 py-1.5 shrink-0" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
-      <Icon name="sort" size={14} />
-      <select
-        bind:value={sortBy}
-        class="bg-transparent text-xs outline-none cursor-pointer"
-        style="color: var(--text-primary)"
-        aria-label="Sort by"
-      >
-        {#each sortOptions as opt}
-          <option value={opt.value} style="background: var(--bg-surface-2)">{opt.label}</option>
-        {/each}
-      </select>
-    </div>
-
-    <!-- View toggle -->
-    <div class="flex shrink-0 rounded-lg overflow-hidden" style="border: 1px solid var(--border-color)">
-      <button
-        onclick={() => setViewMode("grid")}
-        class="icon-btn p-2"
-        style="color: {viewMode === 'grid' ? 'var(--neon-primary)' : 'var(--text-secondary)'}; background: {viewMode === 'grid' ? 'var(--hover-bg)' : 'var(--bg-surface)'}"
-        aria-label="Grid view"
-      >
-        <Icon name="grid" size={14} />
-      </button>
-      <button
-        onclick={() => setViewMode("list")}
-        class="icon-btn p-2"
-        style="color: {viewMode === 'list' ? 'var(--neon-primary)' : 'var(--text-secondary)'}; background: {viewMode === 'list' ? 'var(--hover-bg)' : 'var(--bg-surface)'}"
-        aria-label="List view"
-      >
-        <Icon name="list" size={14} />
-      </button>
-    </div>
-  </div>
-
-  <!-- Filter chips + batch toolbar -->
-  <div class="flex items-center gap-2 flex-wrap">
-    <div role="radiogroup" aria-label="Filter by status" class="flex gap-2 flex-wrap flex-1">
-      {#each filters as f}
-        <button
-          role="radio"
-          aria-checked={filter === f}
-          onclick={() => (filter = f)}
-          class="filter-chip px-3 py-1.5 rounded-lg text-sm font-medium capitalize"
-          style={filter === f
-            ? "background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--neon-primary)"
-            : "background: var(--bg-surface); color: var(--text-secondary)"}
-        >
-          {f}
-          {#if f === "all"}
-            <span class="ml-1 opacity-50">{allDownloads().length}</span>
-          {:else}
-            <span class="ml-1 opacity-50">{countByStatus(f)}</span>
-          {/if}
-        </button>
-      {/each}
-    </div>
-
-    <!-- Batch select toggle -->
-    {#if filtered.length > 0}
-      <button
-        onclick={handleSelectAll}
-        class="filter-chip px-3 py-1.5 rounded-lg text-sm font-medium"
-        style={batchMode
-          ? "background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--neon-primary)"
-          : "background: var(--bg-surface); color: var(--text-secondary)"}
-        aria-label="Select all"
-      >
-        <Icon name="check" size={14} />
-        {#if batchMode}
-          <span class="ml-1">{$selectedIds.size}</span>
-        {/if}
-      </button>
-    {/if}
   </div>
 
   <!-- Batch actions bar -->
   {#if batchMode}
-    <div class="flex items-center gap-2 px-3 py-2 rounded-lg" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
-      <span class="text-xs font-semibold" style="color: var(--text-secondary)">{$selectedIds.size} selected</span>
+    <div class="flex items-center gap-2 px-3 py-2 rounded-lg flex-wrap" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
+      <span class="text-xs font-semibold" style="color: var(--text-secondary)">{$selectedIds.size} {tr($locale, "downloads.selected")}</span>
       <div class="flex-1"></div>
       <button onclick={batchPause} class="action-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold" style="background: var(--bg-surface-2); color: var(--neon-warning)">
-        <Icon name="pause" size={14} /> Pause
+        <Icon name="pause" size={14} /> {tr($locale, "batch.pause")}
       </button>
       <button onclick={batchResume} class="action-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold" style="background: var(--bg-surface-2); color: var(--neon-primary)">
-        <Icon name="play" size={14} /> Resume
+        <Icon name="play" size={14} /> {tr($locale, "batch.resume")}
       </button>
       <button onclick={batchDelete} class="action-btn flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold" style="background: var(--bg-surface-2); color: var(--neon-accent)">
-        <Icon name="trash" size={14} /> {confirmingBatchDelete ? "Sure?" : "Delete"}
+        <Icon name="trash" size={14} /> {confirmingBatchDelete ? tr($locale, "batch.confirm") : tr($locale, "batch.delete")}
       </button>
-      <button onclick={clearSelection} class="icon-btn p-1.5 rounded-lg" style="color: var(--text-secondary)" aria-label="Clear selection">
+      <button onclick={clearSelection} class="icon-btn p-1.5 rounded-lg" style="color: var(--text-secondary)" aria-label={tr($locale, "downloads.clear_selection")}>
         <Icon name="x" size={14} />
       </button>
     </div>
   {/if}
 
   <!-- Download list -->
-  {#if filtered.length === 0}
-    <div class="flex flex-col items-center justify-center py-20">
-      <img src="/amigo-logo.png" alt="" width="64" height="64" class="rounded-lg opacity-30" />
-      <p class="mt-4 text-sm" style="color: var(--text-secondary)">No downloads yet</p>
-      <button
-        onclick={() => openAddPanel()}
-        class="mt-4 flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors"
-        style="background: var(--neon-primary); color: var(--bg-deep)"
-      >
-        <Icon name="plus" size={16} />
-        Add your first download
-      </button>
-      <p class="text-xs mt-3" style="color: var(--text-secondary); opacity: 0.5">Ctrl+N to add &middot; Drag & drop supported</p>
-    </div>
-  {:else}
-    {#if viewMode === "grid"}
-      <div class="grid gap-3">
-        {#each filtered as download, i (download.id)}
-          <DownloadCard
-          {download}
-          index={i}
-          ondragstart={handleDragStart(download.id)}
-          ondragover={handleDragOver}
-          ondrop={handleDrop(download.id)}
-        />
-        {/each}
+  {#if showSkeleton}
+    <SkeletonCard count={5} />
+  {:else if filtered.length === 0}
+    {#if !$wsConnected}
+      <!-- The list being empty while disconnected usually means we couldn't
+           load it, not that the queue is empty — say so instead. -->
+      <div class="flex flex-col items-center justify-center py-20 text-center">
+        <Icon name="wifi-off" size={32} />
+        <p class="mt-4 text-sm font-semibold" style="color: var(--text-primary)">{tr($locale, "downloads.offline")}</p>
+        <p class="text-xs mt-1" style="color: var(--text-secondary)">{tr($locale, "downloads.offline_hint")}</p>
+      </div>
+    {:else if emptyKey}
+      <!-- Context-aware empty state (specific filter / search) -->
+      <div class="flex flex-col items-center justify-center py-20 text-center">
+        <Icon name="search" size={32} />
+        <p class="mt-4 text-sm" style="color: var(--text-secondary)">{tr($locale, emptyKey)}</p>
       </div>
     {:else}
-      <div class="flex flex-col gap-1">
-        {#each filtered as download (download.id)}
-          <DownloadCompactRow {download} />
-        {/each}
+      <!-- First-run empty state -->
+      <div class="flex flex-col items-center justify-center py-20 text-center">
+        <img src="/amigo-logo.png" alt="" width="64" height="64" class="rounded-lg opacity-30" />
+        <p class="mt-4 text-sm" style="color: var(--text-secondary)">{tr($locale, "downloads.no_downloads")}</p>
+        <button
+          onclick={() => openAddPanel()}
+          class="action-btn mt-4 flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold"
+          style="background: var(--neon-primary); color: var(--bg-deep); box-shadow: var(--neon-glow-sm)"
+        >
+          <Icon name="plus" size={16} />
+          {tr($locale, "downloads.add_first")}
+        </button>
+        <p class="text-xs mt-3" style="color: var(--text-secondary); opacity: 0.5">{tr($locale, "downloads.add_hint")}</p>
       </div>
     {/if}
+  {:else if viewMode === "grid"}
+    <div class="grid gap-3">
+      {#each filtered as download, i (download.id)}
+        <div animate:flip={flipConfig}>
+          <DownloadCard
+            {download}
+            index={i}
+            ondragstart={handleDragStart(download.id)}
+            ondragover={handleDragOver}
+            ondrop={handleDrop(download.id)}
+          />
+        </div>
+      {/each}
+    </div>
+  {:else}
+    <div class="flex flex-col gap-1">
+      {#each filtered as download (download.id)}
+        <div animate:flip={flipConfig}>
+          <DownloadCompactRow {download} />
+        </div>
+      {/each}
+    </div>
   {/if}
 </div>
+
+<style>
+  /* Toolbar sticks to the top of the scroll container so search/filters stay
+     reachable in long lists. Slightly translucent so cards scroll under it. */
+  .toolbar-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--bg-deep) 88%, transparent);
+    backdrop-filter: blur(8px);
+  }
+
+  /* Hide the scrollbar on the filter rail — it scrolls by drag/swipe. */
+  .chip-rail {
+    scrollbar-width: none;
+  }
+  .chip-rail::-webkit-scrollbar {
+    display: none;
+  }
+</style>

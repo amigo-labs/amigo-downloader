@@ -2,6 +2,14 @@
 
 This walkthrough builds a small hoster plugin that extracts a download URL from a landing page. It covers the core lifecycle: scaffold → code → test.
 
+> **Status:** The SDK plugin model shown here (`definePlugin`, ESM default
+> export, `plugin.toml`) is developed against the SDK's mock host and is not
+> yet loaded by the amigo-downloader runtime. Plugins that should run inside
+> the app today use the CommonJS interface documented in `docs/plugin-api.md`
+> (`module.exports` with `urlPattern` and a synchronous `resolve()`); see
+> `plugins/template/plugin.ts` for a starting point. The runtime bridge for
+> SDK-style plugins is on the roadmap in `docs/plan-plugin-sdk.md`.
+
 ## 1. Scaffold
 
 ```

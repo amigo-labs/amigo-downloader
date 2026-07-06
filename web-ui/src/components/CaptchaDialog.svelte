@@ -1,7 +1,9 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { addToast } from "../lib/toast";
-  import Icon from "@amigo/ui/components/Icon.svelte";
+  import { locale, tr } from "../lib/i18n";
+  import { focusTrap } from "../lib/focusTrap";
+  import { scaleFade, dur } from "../lib/motion";
 
   let { captcha, onclose }: {
     captcha: {
@@ -26,7 +28,7 @@
       elapsed++;
       if (elapsed >= TIMEOUT) {
         if (timerRef) clearInterval(timerRef);
-        addToast("error", "Captcha timed out");
+        addToast("error", tr($locale, "captcha.expired"));
         onclose();
       }
     }, 1000);
@@ -72,12 +74,12 @@
         body: JSON.stringify({ answer: answer.trim() }),
       });
       if (res.ok) {
-        addToast("success", "Captcha solved");
+        addToast("success", tr($locale, "captcha.solved"));
       } else {
-        addToast("error", "Failed to submit captcha");
+        addToast("error", tr($locale, "captcha.failed"));
       }
     } catch {
-      addToast("error", "Failed to submit captcha");
+      addToast("error", tr($locale, "captcha.failed"));
     }
     if (timerRef) clearInterval(timerRef);
     onclose();
@@ -99,23 +101,24 @@
   }
 </script>
 
-<!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-  class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70"
-  onkeydown={handleKeydown}
+  class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
 >
   <!-- Dialog (audit C2) -->
   <div
+    use:focusTrap
     role="dialog"
     aria-modal="true"
     aria-labelledby="captcha-title"
-    class="w-full max-w-md mx-4 rounded-2xl shadow-2xl overflow-hidden"
-    style="background: var(--bg-surface); border: 1px solid var(--border-color)"
+    class="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden neon-card"
+    style="background: var(--bg-surface)"
+    onkeydown={handleKeydown}
+    transition:scaleFade={{ duration: dur(180), y: 8 }}
   >
     <!-- Header -->
     <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--border-color)">
       <div>
-        <h3 id="captcha-title" class="font-bold text-base" style="color: var(--text-primary)">Captcha Required</h3>
+        <h3 id="captcha-title" class="font-bold text-base" style="color: var(--text-primary)">{tr($locale, "captcha.title")}</h3>
         <p class="text-xs mt-0.5" style="color: var(--text-secondary)">
           {captcha.plugin_id} &middot; {captcha.captcha_type}
         </p>
@@ -152,10 +155,9 @@
       <input
         type="text"
         bind:value={answer}
-        placeholder="Enter captcha text..."
+        placeholder={tr($locale, "captcha.enter")}
         class="w-full px-4 py-3 rounded-lg text-center text-lg tracking-wider border"
         style="font-family: var(--font-mono);background: var(--bg-surface-2); border-color: var(--border-color); color: var(--text-primary)"
-        autofocus
         disabled={submitting}
       />
 
@@ -167,7 +169,7 @@
           style="border-color: var(--border-color); color: var(--text-secondary)"
           disabled={submitting}
         >
-          Skip
+          {tr($locale, "captcha.skip")}
         </button>
         <button
           onclick={submitAnswer}
@@ -175,7 +177,7 @@
           style="background: var(--neon-primary); color: var(--bg-deep)"
           disabled={!answer.trim() || submitting}
         >
-          {submitting ? "Submitting..." : "Solve"}
+          {submitting ? "…" : tr($locale, "captcha.solve")}
         </button>
       </div>
     </div>

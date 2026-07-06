@@ -76,7 +76,10 @@ pub enum DownloadEvent {
 
 /// Tracks an active download task.
 struct ActiveDownload {
-    cancel_tx: tokio::sync::oneshot::Sender<()>,
+    /// Cancellation signal. A `watch::<bool>` (rather than a one-shot) so the
+    /// flag survives across retry attempts — flipping it to `true` cancels a
+    /// download even while it is mid-retry.
+    cancel_tx: watch::Sender<bool>,
     progress_rx: watch::Receiver<DownloadProgress>,
 }
 
@@ -195,14 +198,11 @@ impl Coordinator {
         category: Option<String>,
         priority: i32,
     ) -> Result<String, crate::Error> {
-        // Duplicate detection: check if same URL is already queued/downloading
-        let existing = self.storage.list_downloads().await?;
-        if let Some(dup) = existing.iter().find(|d| {
-            d.url == url
-                && (d.status == "queued" || d.status == "downloading" || d.status == "paused")
-        }) {
-            info!("Duplicate download skipped: {} (existing: {})", url, dup.id);
-            return Ok(dup.id.clone());
+        // Duplicate detection: check if same URL is already queued/downloading.
+        // Indexed point lookup rather than scanning every download.
+        if let Some(dup_id) = self.storage.find_active_download_by_url(url).await? {
+            info!("Duplicate download skipped: {} (existing: {})", url, dup_id);
+            return Ok(dup_id);
         }
 
         let id = Uuid::new_v4().to_string();
@@ -323,7 +323,7 @@ impl Coordinator {
             status: "downloading".to_string(),
         });
 
-        let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
+        let (cancel_tx, cancel_rx) = watch::channel(false);
         let (progress_tx, progress_rx) = watch::channel(DownloadProgress {
             bytes_downloaded: 0,
             total_bytes: None,
@@ -381,21 +381,13 @@ impl Coordinator {
             // and the UI silently froze at "0%" through every retry. We
             // clone the same sender into each attempt so every byte of
             // progress flows through the original watch.
-            let mut original_cancel_rx = Some(cancel_rx);
-
             let result = retry_with_policy(&retry_policy, |attempt| {
                 let ptx = progress_tx.clone();
 
-                // The cancel channel is still a oneshot: cancel() consumes
-                // the sender so a second cancel is a no-op (intentional).
-                // After the first attempt that consumed `cancel_rx` the
-                // download cannot be cancelled mid-retry; that branch is
-                // tracked by audit #13 follow-up. Use a placeholder rx so
-                // retries don't block on cancel forever.
-                let crx = original_cancel_rx.take().unwrap_or_else(|| {
-                    let (_tx, rx) = tokio::sync::oneshot::channel();
-                    rx
-                });
+                // The cancel signal is a `watch::<bool>` shared across every
+                // attempt: each retry gets its own receiver clone, so flipping
+                // the flag to `true` cancels the download even mid-retry.
+                let crx = cancel_rx.clone();
 
                 let storage = &storage;
                 let download_id = &download_id;
@@ -448,7 +440,7 @@ impl Coordinator {
 
                     match result {
                         Ok(value) => RetryOutcome::Success(value),
-                        Err(e) if e.to_string().contains("cancelled") => RetryOutcome::Abort(e),
+                        Err(e @ crate::Error::Cancelled) => RetryOutcome::Abort(e),
                         Err(e) => {
                             warn!("Download attempt failed: {download_id} — {e}");
                             RetryOutcome::Retry(e)
@@ -511,7 +503,7 @@ impl Coordinator {
     pub async fn pause(&self, id: &str) -> Result<(), crate::Error> {
         let mut active = self.active.lock().await;
         if let Some(dl) = active.remove(id) {
-            let _ = dl.cancel_tx.send(());
+            dl.cancel_tx.send_replace(true);
         }
         self.storage
             .update_download_status(id, QueueStatus::Paused)
@@ -536,7 +528,7 @@ impl Coordinator {
     pub async fn cancel(&self, id: &str) -> Result<(), crate::Error> {
         let mut active = self.active.lock().await;
         if let Some(dl) = active.remove(id) {
-            let _ = dl.cancel_tx.send(());
+            dl.cancel_tx.send_replace(true);
         }
         drop(active);
         self.storage.delete_download(id).await?;

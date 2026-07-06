@@ -2,6 +2,8 @@
   import { onDestroy } from "svelte";
   import { pauseDownload, resumeDownload, retryDownload, deleteDownload, formatBytes, formatSpeed } from "../lib/api";
   import { openDetailPanel, selectedIds, toggleSelection } from "../lib/stores";
+  import { addToast } from "../lib/toast";
+  import { locale, tr } from "../lib/i18n";
   import Icon from "@amigo/ui/components/Icon.svelte";
 
   let { download }: { download: any } = $props();
@@ -29,14 +31,33 @@
     "var(--text-secondary)"
   );
 
+  const KNOWN_STATUS = ["downloading", "completed", "failed", "paused", "queued"];
+  let statusLabel = $derived(
+    KNOWN_STATUS.includes(download.status) ? tr($locale, `status.${download.status}`) : download.status
+  );
+
   let isActive = $derived(download.status === "downloading");
   let batchMode = $derived($selectedIds.size > 0);
   let isBatchSelected = $derived($selectedIds.has(download.id));
 
   let confirmingDelete = $state(false);
   let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+  // Guards against rapid re-clicks firing the same request multiple times.
+  let busy = $state(false);
 
   onDestroy(() => clearTimeout(confirmTimer));
+
+  async function runAction(action: () => Promise<unknown>) {
+    if (busy) return;
+    busy = true;
+    try {
+      await action();
+    } catch {
+      addToast("error", tr($locale, "toast.action_failed"), download.filename || download.url);
+    } finally {
+      busy = false;
+    }
+  }
 
   function handleDelete(e: MouseEvent) {
     e.stopPropagation();
@@ -46,7 +67,7 @@
     } else {
       clearTimeout(confirmTimer);
       confirmingDelete = false;
-      deleteDownload(download.id);
+      runAction(() => deleteDownload(download.id));
     }
   }
 </script>
@@ -82,15 +103,15 @@
   <!-- Progress bar (inline) -->
   <div class="w-20 shrink-0">
     <div class="progress-bar">
-      <div class="progress-bar-fill" class:active={isActive} style="width: {progress}%"></div>
+      <div class="progress-bar-fill" class:active={isActive} style="width: {progress}%; transition: width var(--dur-base, 0.25s) var(--ease-out, ease)"></div>
     </div>
   </div>
 
   <!-- Progress % -->
-  <span class="w-10 text-right text-xs shrink-0" style="font-family: var(--font-mono); color: var(--text-secondary)">{progress}%</span>
+  <span class="w-10 text-right text-xs shrink-0 tabular-nums" style="font-family: var(--font-mono); color: var(--text-secondary)">{progress}%</span>
 
   <!-- Speed -->
-  <span class="w-20 text-right text-xs shrink-0" style="font-family: var(--font-mono); color: var(--neon-primary)">
+  <span class="w-20 text-right text-xs shrink-0 tabular-nums" style="font-family: var(--font-mono); color: var(--neon-primary)">
     {isActive ? formatSpeed(download.speed) : "\u2014"}
   </span>
 
@@ -99,27 +120,27 @@
     class="w-16 text-center text-[10px] font-semibold uppercase shrink-0 px-1.5 py-0.5 rounded-full"
     style="color: {statusColor}; background: color-mix(in srgb, {statusColor} 10%, transparent)"
   >
-    {download.status}
+    {statusLabel}
   </span>
 
   <!-- Actions -->
   <div class="flex gap-0.5 shrink-0" onclick={(e) => e.stopPropagation()}>
     {#if download.status === "downloading"}
-      <button onclick={() => pauseDownload(download.id)} class="icon-btn p-2 rounded min-w-[36px] min-h-[36px] flex items-center justify-center" style="color: var(--text-secondary)" aria-label="Pause">
+      <button onclick={() => runAction(() => pauseDownload(download.id))} disabled={busy} class="icon-btn p-2 rounded min-w-[36px] min-h-[36px] flex items-center justify-center disabled:opacity-50" style="color: var(--text-secondary)" aria-label={tr($locale, "action.pause")}>
         <Icon name="pause" size={14} />
       </button>
     {:else if download.status === "paused" || download.status === "queued"}
-      <button onclick={() => resumeDownload(download.id)} class="icon-btn p-2 rounded min-w-[36px] min-h-[36px] flex items-center justify-center" style="color: var(--text-secondary)" aria-label="Resume">
+      <button onclick={() => runAction(() => resumeDownload(download.id))} disabled={busy} class="icon-btn p-2 rounded min-w-[36px] min-h-[36px] flex items-center justify-center disabled:opacity-50" style="color: var(--text-secondary)" aria-label={tr($locale, "action.resume")}>
         <Icon name="play" size={14} />
       </button>
     {:else if download.status === "failed"}
-      <button onclick={() => retryDownload(download.id)} class="icon-btn p-2 rounded min-w-[36px] min-h-[36px] flex items-center justify-center" style="color: var(--neon-primary)" aria-label="Retry">
+      <button onclick={() => runAction(() => retryDownload(download.id))} disabled={busy} class="icon-btn p-2 rounded min-w-[36px] min-h-[36px] flex items-center justify-center disabled:opacity-50" style="color: var(--neon-primary)" aria-label={tr($locale, "action.retry")}>
         <Icon name="refresh" size={14} />
       </button>
     {/if}
-    <button onclick={handleDelete} class="icon-btn p-2 rounded min-w-[36px] min-h-[36px] flex items-center justify-center" style="color: {confirmingDelete ? 'var(--neon-accent)' : 'var(--text-secondary)'}" aria-label="Delete">
+    <button onclick={handleDelete} disabled={busy} class="icon-btn p-2 rounded min-w-[36px] min-h-[36px] flex items-center justify-center disabled:opacity-50" style="color: {confirmingDelete ? 'var(--neon-accent)' : 'var(--text-secondary)'}" aria-label={tr($locale, "action.delete")}>
       {#if confirmingDelete}
-        <span class="text-[10px] font-semibold px-1">Sure?</span>
+        <span class="text-[10px] font-semibold px-1">{tr($locale, "action.sure")}</span>
       {:else}
         <Icon name="trash" size={14} />
       {/if}

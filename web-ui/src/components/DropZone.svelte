@@ -1,6 +1,7 @@
 <script lang="ts">
   import { addDownload, addBatch, importDlc, uploadNzb } from "../lib/api";
   import { addToast } from "../lib/toast";
+  import { locale, tr } from "../lib/i18n";
 
   let dragging = $state(false);
   let dragCounter = $state(0);
@@ -36,21 +37,21 @@
         try {
           if (ext === "dlc") {
             await importDlc(file);
-            addToast("success", "DLC imported", file.name);
+            addToast("success", tr($locale, "drop.dlc_imported"), file.name);
           } else if (ext === "nzb") {
             const text = await file.text();
             await uploadNzb(text);
-            addToast("success", "NZB imported", file.name);
+            addToast("success", tr($locale, "drop.nzb_imported"), file.name);
           } else {
             const text = await file.text();
             const urls = text.split("\n").map((u) => u.trim()).filter((u) => u.startsWith("http"));
             if (urls.length > 0) {
               await addBatch(urls);
-              addToast("success", `Added ${urls.length} URLs`, file.name);
+              addToast("success", tr($locale, "drop.urls_added", { count: urls.length }), file.name);
             }
           }
         } catch {
-          addToast("error", "Import failed", file.name);
+          addToast("error", tr($locale, "drop.import_failed"), file.name);
         }
       }
       return;
@@ -62,13 +63,13 @@
       try {
         if (urls.length === 1) {
           await addDownload(urls[0]);
-          addToast("success", "Download added", urls[0]);
+          addToast("success", tr($locale, "add.added"), urls[0]);
         } else if (urls.length > 1) {
           await addBatch(urls);
-          addToast("success", `Added ${urls.length} downloads`);
+          addToast("success", tr($locale, "add.added_many", { count: urls.length }));
         }
       } catch {
-        addToast("error", "Failed to add download");
+        addToast("error", tr($locale, "add.failed"));
       }
     }
   }
@@ -88,8 +89,8 @@
       style="border-color: var(--neon-primary); background: var(--bg-surface)"
     >
       <img src="/amigo-logo.png" alt="" width="64" height="64" class="rounded-lg opacity-60" />
-      <p class="text-xl font-bold" style="color: var(--neon-primary)">Drop it like it's hot!</p>
-      <p class="text-sm" style="color: var(--text-secondary)">URLs, NZB, DLC, or text files</p>
+      <p class="text-xl font-bold" style="color: var(--neon-primary)">{tr($locale, "drop.title")}</p>
+      <p class="text-sm" style="color: var(--text-secondary)">{tr($locale, "drop.hint")}</p>
     </div>
   </div>
 {/if}

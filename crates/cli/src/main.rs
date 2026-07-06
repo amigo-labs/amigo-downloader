@@ -531,8 +531,10 @@ async fn direct_download(
         speed_bytes_per_sec: 0,
     });
 
-    let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel::<()>();
-    let _ = cancel_tx; // Keep alive — drop only on ctrl-c
+    // The CLI direct path has no interactive cancel handler. Dropping the
+    // sender leaves `wait_for_cancel` pending for the whole download, so it
+    // never spuriously cancels.
+    let (_, cancel_rx) = tokio::sync::watch::channel(false);
 
     // Use ProtocolBackend trait dispatch — same as server
     let bw = BandwidthLimiter::new(config.bandwidth);

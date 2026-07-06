@@ -16,15 +16,44 @@ default-members = [
     "crates/cli",
 ]
 
+# Release profile tuned for runtime speed and small binaries.
+# `[profile.*]` is only honored in the workspace root and applies to all members.
+# `panic = "abort"` is safe here: the codebase has no catch_unwind / std::panic
+# recovery and rquickjs surfaces JS errors as Err, not via unwinding. It only
+# affects the release profile, so `cargo test` (test profile) is unaffected —
+# but do not run `cargo test --release`.
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
 license = "MIT"
 repository = "https://github.com/amigo-labs/amigo-downloader"
+homepage = "https://github.com/amigo-labs/amigo-downloader"
+authors = ["amigo-labs"]
+description = "Fast, modular download manager in Rust — HTTP, Usenet, HLS/DASH, with a TypeScript plugin system and a responsive Web UI."
 
 [workspace.dependencies]
-# Async runtime
-tokio = { version = "1", features = ["full"] }
+# Async runtime. Feature set is the union of what the member crates actually
+# use (rt-multi-thread is mandatory: plugin-runtime relies on block_in_place,
+# which panics on a current-thread runtime). This drops `process` and `io-std`
+# from the old `full`. Test builds restore `full` via dev-dependencies.
+tokio = { version = "1", features = [
+    "rt",
+    "rt-multi-thread",
+    "macros",
+    "sync",
+    "fs",
+    "io-util",
+    "time",
+    "net",
+    "signal",
+] }
 
 # Serialization
 serde = { version = "1", features = ["derive"] }

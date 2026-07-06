@@ -3,6 +3,7 @@
   import { usenetServers, features, type UsenetServer } from "../../lib/stores";
   import { getUsenetServers, addUsenetServer, deleteUsenetServer } from "../../lib/api";
   import { addToast } from "../../lib/toast";
+  import { locale, tr } from "../../lib/i18n";
 
   let showAddForm = $state(false);
   let saving = $state(false);
@@ -37,11 +38,11 @@
         username: username.trim(), password, connections, priority,
       });
       usenetServers.update((s) => [...s, server as UsenetServer]);
-      addToast("success", "Server added");
+      addToast("success", tr($locale, "usenet.added"));
       resetForm();
       showAddForm = false;
     } catch (e: any) {
-      addToast("error", e.message || "Failed to add server");
+      addToast("error", e.message || tr($locale, "usenet.add_failed"));
     } finally {
       saving = false;
     }
@@ -51,22 +52,22 @@
     try {
       await deleteUsenetServer(id);
       usenetServers.update((s) => s.filter((srv) => srv.id !== id));
-      addToast("success", "Server removed");
+      addToast("success", tr($locale, "usenet.removed"));
     } catch {
-      addToast("error", "Failed to remove server");
+      addToast("error", tr($locale, "usenet.remove_failed"));
     }
   }
 </script>
 
 <section>
   <div class="flex items-center justify-between mb-4">
-    <h3 class="text-lg font-bold" style="color: var(--text-primary)">Usenet Servers</h3>
+    <h3 class="text-lg font-bold" style="color: var(--text-primary)">{tr($locale, "usenet.title")}</h3>
     <button
       onclick={() => (showAddForm = !showAddForm)}
       class="px-3 py-1.5 rounded-lg text-xs font-semibold"
       style="background: var(--neon-primary); color: var(--bg-deep)"
     >
-      {showAddForm ? "Cancel" : "+ Add Server"}
+      {showAddForm ? tr($locale, "common.cancel") : tr($locale, "usenet.add")}
     </button>
   </div>
 
@@ -74,13 +75,13 @@
     <div class="rounded-xl p-5 space-y-3 mb-4" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">Name</label>
+          <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">{tr($locale, "usenet.name")}</label>
           <input type="text" bind:value={name} placeholder="My Usenet Server"
             class="w-full rounded-lg px-3 py-2 text-sm"
             style="background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
         </div>
         <div>
-          <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">Host</label>
+          <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">{tr($locale, "usenet.host")}</label>
           <input type="text" bind:value={host} placeholder="news.example.com"
             class="w-full rounded-lg px-3 py-2 text-sm"
             style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
@@ -88,19 +89,19 @@
       </div>
       <div class="grid grid-cols-3 gap-3">
         <div>
-          <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">Port</label>
+          <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">{tr($locale, "usenet.port")}</label>
           <input type="number" bind:value={port}
             class="w-full rounded-lg px-3 py-2 text-sm"
             style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
         </div>
         <div>
-          <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">Connections</label>
+          <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">{tr($locale, "usenet.connections")}</label>
           <input type="number" bind:value={connections} min="1" max="50"
             class="w-full rounded-lg px-3 py-2 text-sm"
             style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
         </div>
         <div>
-          <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">Priority</label>
+          <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">{tr($locale, "usenet.priority")}</label>
           <input type="number" bind:value={priority} min="0"
             class="w-full rounded-lg px-3 py-2 text-sm"
             style="font-family: var(--font-mono);background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
@@ -108,13 +109,13 @@
       </div>
       <div class="grid grid-cols-2 gap-3">
         <div>
-          <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">Username</label>
+          <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">{tr($locale, "usenet.username")}</label>
           <input type="text" bind:value={username}
             class="w-full rounded-lg px-3 py-2 text-sm"
             style="background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
         </div>
         <div>
-          <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">Password</label>
+          <label class="block text-xs font-medium mb-1" style="color: var(--text-secondary)">{tr($locale, "usenet.password")}</label>
           <input type="password" bind:value={password}
             class="w-full rounded-lg px-3 py-2 text-sm"
             style="background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-primary)" />
@@ -129,10 +130,10 @@
       <div class="flex gap-2 pt-2">
         <button onclick={handleAdd} disabled={saving || !name.trim() || !host.trim()}
           class="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
-          style="background: var(--neon-primary); color: var(--bg-deep)">{saving ? "Saving..." : "Save Server"}</button>
+          style="background: var(--neon-primary); color: var(--bg-deep)">{saving ? tr($locale, "common.saving") : tr($locale, "usenet.save")}</button>
         <button onclick={() => { resetForm(); showAddForm = false; }}
           class="px-4 py-2 rounded-lg text-sm"
-          style="color: var(--text-secondary)">Cancel</button>
+          style="color: var(--text-secondary)">{tr($locale, "common.cancel")}</button>
       </div>
     </div>
   {/if}
@@ -140,7 +141,7 @@
   {#if $usenetServers.length === 0 && !showAddForm}
     <div class="rounded-xl p-8 text-center" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
       <p class="text-sm" style="color: var(--text-secondary)">
-        No Usenet servers configured. Add a server to start downloading from Usenet.
+        {tr($locale, "usenet.empty")}
       </p>
     </div>
   {/if}
@@ -155,31 +156,31 @@
               {server.host}:{server.port} {server.ssl ? "(SSL)" : ""}
             </p>
             <p class="text-[10px] mt-0.5" style="color: var(--text-secondary)">
-              {server.connections} connections &middot; Priority {server.priority}
+              {tr($locale, "usenet.meta", { count: server.connections, priority: server.priority })}
             </p>
           </div>
           <button
             onclick={() => handleDelete(server.id)}
             class="px-2.5 py-1.5 rounded-lg text-xs shrink-0"
             style="color: var(--neon-accent); border: 1px solid color-mix(in srgb, var(--neon-accent) 20%, transparent)"
-          >Delete</button>
+          >{tr($locale, "common.delete")}</button>
         </div>
         {#if $features.server_stats}
           <div class="mt-3 pt-3 grid grid-cols-4 gap-2 text-center" style="border-top: 1px solid var(--border-color)">
             <div>
-              <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary)">Status</p>
-              <p class="text-xs font-semibold" style="color: var(--neon-success)">Idle</p>
+              <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary)">{tr($locale, "usenet.stat_status")}</p>
+              <p class="text-xs font-semibold" style="color: var(--neon-success)">{tr($locale, "usenet.idle")}</p>
             </div>
             <div>
-              <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary)">Active</p>
+              <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary)">{tr($locale, "usenet.stat_active")}</p>
               <p class="text-xs" style="font-family: var(--font-mono)">0/{server.connections}</p>
             </div>
             <div>
-              <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary)">Articles</p>
+              <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary)">{tr($locale, "usenet.stat_articles")}</p>
               <p class="text-xs" style="font-family: var(--font-mono)">&mdash;</p>
             </div>
             <div>
-              <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary)">Speed</p>
+              <p class="text-[10px] uppercase tracking-wide" style="color: var(--text-secondary)">{tr($locale, "usenet.stat_speed")}</p>
               <p class="text-xs" style="font-family: var(--font-mono)">&mdash;</p>
             </div>
           </div>
