@@ -127,7 +127,14 @@ impl BandwidthLimiter {
                 let elapsed = now.duration_since(state.last_refill);
                 let new_tokens = (elapsed.as_secs_f64() * limit as f64) as u64;
                 if new_tokens > 0 {
-                    state.tokens = (state.tokens + new_tokens).min(limit * 2);
+                    // Bucket capacity is normally 2× the per-second limit, but a
+                    // single request can legitimately exceed that (reqwest
+                    // yields 16–64 KiB+ chunks). Raise the cap to at least
+                    // `bytes` so the loop below can always eventually be
+                    // satisfied — otherwise a request larger than `limit*2`
+                    // spins forever and the download hangs.
+                    let cap = limit.saturating_mul(2).max(bytes);
+                    state.tokens = (state.tokens + new_tokens).min(cap);
                     state.last_refill = now;
                 }
 
@@ -189,6 +196,27 @@ mod tests {
         let limiter = BandwidthLimiter::new(BandwidthConfig::default());
         // Should return instantly (no blocking)
         limiter.acquire(1_000_000).await;
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn test_acquire_terminates_for_request_larger_than_bucket_cap() {
+        // A 100 KB/s limit caps the bucket at 200 KB, but reqwest can hand us a
+        // single 500 KB chunk. Before the fix, acquire() spun forever because
+        // tokens could never reach `bytes`. With the virtual clock the refill
+        // path runs quickly; assert the call actually completes.
+        let limiter = BandwidthLimiter::new(BandwidthConfig {
+            global_limit: 100_000,
+            ..Default::default()
+        });
+        // Drain the initial burst budget so the next request must wait on refill.
+        limiter.acquire(1024 * 1024).await;
+
+        let r = tokio::time::timeout(std::time::Duration::from_secs(60), limiter.acquire(500_000))
+            .await;
+        assert!(
+            r.is_ok(),
+            "acquire() must not hang for a request larger than limit*2"
+        );
     }
 
     #[test]

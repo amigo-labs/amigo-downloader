@@ -207,6 +207,14 @@ impl NntpConnection {
 
     /// Send a raw NNTP command.
     async fn send_command(&mut self, cmd: &str) -> Result<(), crate::Error> {
+        // Reject embedded CR/LF: message-ids and group names originate from
+        // untrusted NZB files, and an embedded newline would let them inject
+        // additional NNTP commands into the session (command injection).
+        if cmd.contains('\r') || cmd.contains('\n') {
+            return Err(crate::Error::Other(
+                "NNTP command contains illegal CR/LF".into(),
+            ));
+        }
         let payload = format!("{cmd}\r\n");
         timeout(NNTP_IO_TIMEOUT, self.writer.write_all(payload.as_bytes()))
             .await
@@ -240,11 +248,14 @@ impl NntpConnection {
     /// Read a multi-line response body (terminated by ".\r\n").
     async fn read_multiline_body(&mut self) -> Result<Vec<u8>, crate::Error> {
         let mut body = Vec::new();
-        let mut line = String::new();
+        // Read raw bytes, not a UTF-8 String: article bodies (yEnc-encoded
+        // binaries) span the full 0..=255 range, and `read_line` errors with
+        // InvalidData on any non-UTF-8 byte, breaking every binary download.
+        let mut line: Vec<u8> = Vec::new();
 
         loop {
             line.clear();
-            let n = timeout(NNTP_IO_TIMEOUT, self.reader.read_line(&mut line))
+            let n = timeout(NNTP_IO_TIMEOUT, self.reader.read_until(b'\n', &mut line))
                 .await
                 .map_err(|_| crate::Error::Other("NNTP read timed out".into()))?
                 .map_err(|e| crate::Error::Other(format!("NNTP read error: {e}")))?;
@@ -255,20 +266,27 @@ impl NntpConnection {
                 ));
             }
 
-            let trimmed = line.trim_end_matches('\n').trim_end_matches('\r');
+            let mut trimmed: &[u8] = &line;
+            if let Some(rest) = trimmed.strip_suffix(b"\n") {
+                trimmed = rest;
+            }
+            if let Some(rest) = trimmed.strip_suffix(b"\r") {
+                trimmed = rest;
+            }
 
-            // Dot-stuffing: a line starting with ".." has the first dot removed
-            if trimmed == "." {
+            // End-of-body terminator.
+            if trimmed == b"." {
                 break;
             }
 
-            let actual_line = if trimmed.starts_with("..") {
+            // Dot-stuffing: a line starting with ".." has the first dot removed.
+            let actual_line = if trimmed.starts_with(b"..") {
                 &trimmed[1..]
             } else {
                 trimmed
             };
 
-            body.extend_from_slice(actual_line.as_bytes());
+            body.extend_from_slice(actual_line);
             body.push(b'\n');
         }
 

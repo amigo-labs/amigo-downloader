@@ -475,6 +475,13 @@ impl Coordinator {
                     });
                     info!("Download completed: {download_id}");
                 }
+                Err(crate::Error::Cancelled) => {
+                    // The transfer was stopped by the user, not by a failure:
+                    // pause() has already set the row to Paused and cancel() has
+                    // deleted it. Overwriting the status with Failed here (the
+                    // old behaviour) made a paused download show up as failed.
+                    info!("Download stopped (paused/cancelled): {download_id}");
+                }
                 Err(e) => {
                     let error_msg = e.to_string();
                     error!("Download failed: {download_id} — {error_msg}");

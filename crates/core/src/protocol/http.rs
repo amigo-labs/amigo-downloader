@@ -432,6 +432,14 @@ async fn download_chunk(
         .await?
         .error_for_status()?;
 
+    // The server MUST acknowledge the Range with 206 Partial Content. A 200 OK
+    // means it ignored the header and is streaming the *whole* file into this
+    // chunk; reassembly would then concatenate N full copies into a corrupt,
+    // oversized output. Bail so the caller can restart as a single stream.
+    if resp.status() != reqwest::StatusCode::PARTIAL_CONTENT {
+        return Err(crate::Error::RangeNotSupported);
+    }
+
     let file = if existing_bytes > 0 {
         tokio::fs::OpenOptions::new()
             .append(true)
@@ -735,9 +743,27 @@ impl super::ProtocolBackend for HttpDownloader {
             let chunk_dir = job.temp_dir.join(&fname);
             tokio::fs::create_dir_all(&chunk_dir).await?;
 
-            tokio::select! {
-                result = self.download_chunked(&job.url, &dest, &chunk_dir, total, chunks, progress_tx) => result.map(|bytes| (bytes, dest)),
+            let chunked = tokio::select! {
+                result = self.download_chunked(&job.url, &dest, &chunk_dir, total, chunks, progress_tx.clone()) => result,
                 _ = super::wait_for_cancel(&mut cancel_rx) => Err(crate::Error::Cancelled),
+            };
+            match chunked {
+                // The server advertised Accept-Ranges but then ignored the
+                // Range header (returned 200). Restart cleanly as a single
+                // stream instead of failing or corrupting the output.
+                Err(crate::Error::RangeNotSupported) => {
+                    warn!(
+                        "Server ignored Range despite Accept-Ranges; \
+                         restarting {} as a single stream",
+                        job.url
+                    );
+                    let _ = tokio::fs::remove_dir_all(&chunk_dir).await;
+                    tokio::select! {
+                        result = self.download_single(&job.url, &dest, progress_tx) => result.map(|bytes| (bytes, dest)),
+                        _ = super::wait_for_cancel(&mut cancel_rx) => Err(crate::Error::Cancelled),
+                    }
+                }
+                other => other.map(|bytes| (bytes, dest)),
             }
         } else {
             tokio::select! {
@@ -751,6 +777,42 @@ impl super::ProtocolBackend for HttpDownloader {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn chunk_download_detects_ignored_range() {
+        // A server that answers a ranged GET with 200 OK (full body) instead of
+        // 206 must be detected: otherwise each chunk downloads the whole file
+        // and reassembly concatenates N copies into a corrupt output.
+        use wiremock::matchers::method;
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock = MockServer::start().await;
+        Mock::given(method("GET"))
+            .respond_with(ResponseTemplate::new(200).set_body_bytes(vec![0u8; 4096]))
+            .mount(&mock)
+            .await;
+
+        let bw = BandwidthLimiter::new(crate::bandwidth::BandwidthConfig::default());
+        let client = reqwest::Client::new();
+        let dir = tempfile::tempdir().unwrap();
+        let progress = [std::sync::atomic::AtomicU64::new(0)];
+        let err = download_chunk(
+            &client,
+            &bw,
+            &format!("{}/file.bin", mock.uri()),
+            &dir.path().join("chunk_0"),
+            0,
+            2047,
+            0,
+            &progress,
+        )
+        .await
+        .expect_err("a 200 response to a ranged chunk must be rejected");
+        assert!(
+            matches!(err, crate::Error::RangeNotSupported),
+            "expected RangeNotSupported, got {err:?}"
+        );
+    }
 
     #[tokio::test(flavor = "multi_thread")]
     async fn chunked_download_failure_stops_progress_reporter() {
