@@ -690,6 +690,48 @@ async fn test_webhook_crud_lifecycle() {
 }
 
 #[tokio::test]
+async fn test_webhook_without_secret_gets_generated_signing_secret() {
+    // Signing is mandatory: a webhook created without a secret must still get
+    // a random signing secret. The plaintext is returned once in the create
+    // response, then redacted from the listing.
+    let addr = spawn_test_server().await;
+    let client = test_client();
+    let base = base_url(addr);
+
+    let resp = client
+        .post(format!("{base}/api/v1/webhooks"))
+        .json(&serde_json::json!({
+            "name": "unsigned-hook",
+            "url": "https://example.com/webhook"
+        }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+    let hook: serde_json::Value = resp.json().await.unwrap();
+
+    // Create response returns the real secret once: 64 hex chars.
+    let secret = hook["secret"]
+        .as_str()
+        .expect("secret present in create response");
+    assert_eq!(secret.len(), 64, "generated secret must be 32 bytes hex");
+    assert!(secret.bytes().all(|b| b.is_ascii_hexdigit()));
+
+    // Listing must NOT leak the plaintext secret.
+    let resp = client
+        .get(format!("{base}/api/v1/webhooks"))
+        .send()
+        .await
+        .unwrap();
+    let body: serde_json::Value = resp.json().await.unwrap();
+    let listed_secret = body[0]["secret"].as_str().unwrap_or_default();
+    assert_ne!(
+        listed_secret, secret,
+        "listing must redact the plaintext signing secret"
+    );
+}
+
+#[tokio::test]
 async fn test_delete_nonexistent_webhook_returns_404() {
     let addr = spawn_test_server().await;
     let client = test_client();

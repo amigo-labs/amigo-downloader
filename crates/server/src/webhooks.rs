@@ -226,16 +226,11 @@ async fn dispatch_once(
         .header("X-Amigo-Event", event_type)
         .header("X-Amigo-Delivery", &delivery_id);
 
-    // HMAC-SHA256 signing
-    if let Some(secret) = &endpoint.secret {
-        use hmac::{Hmac, Mac};
-        type HmacSha256 = Hmac<sha2::Sha256>;
-        if let Ok(mut mac) = HmacSha256::new_from_slice(secret.as_bytes()) {
-            mac.update(payload_json.as_bytes());
-            let signature = hex::encode(mac.finalize().into_bytes());
-            req = req.header("X-Amigo-Signature", format!("sha256={signature}"));
-        }
-    }
+    // HMAC-SHA256 signing. Signing is mandatory: `endpoint.secret` is always
+    // populated (generated at creation time), so every payload carries a
+    // signature the receiver can verify.
+    let signature = sign_payload(&endpoint.secret, payload_json)?;
+    req = req.header("X-Amigo-Signature", signature);
 
     let resp = req
         .body(payload_json.to_string())
@@ -244,6 +239,23 @@ async fn dispatch_once(
         .map_err(|e| e.to_string())?;
 
     Ok(resp.status().as_u16())
+}
+
+/// Compute the `X-Amigo-Signature` header value for `payload`, signed with
+/// `secret`. Returns `sha256=<hex>` where the hex is HMAC-SHA256(secret,
+/// payload). `new_from_slice` accepts any key length, so the error path is
+/// effectively unreachable — but we surface it rather than send an unsigned
+/// request, so signing can never be silently skipped.
+fn sign_payload(secret: &str, payload: &str) -> Result<String, String> {
+    use hmac::{Hmac, Mac};
+    type HmacSha256 = Hmac<sha2::Sha256>;
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .map_err(|e| format!("failed to initialise webhook HMAC: {e}"))?;
+    mac.update(payload.as_bytes());
+    Ok(format!(
+        "sha256={}",
+        hex::encode(mac.finalize().into_bytes())
+    ))
 }
 
 /// Map a DownloadEvent to its webhook event type string.
@@ -262,4 +274,53 @@ fn event_type_string(event: &DownloadEvent) -> String {
         DownloadEvent::QueueEmpty => "queue.empty",
     }
     .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sign_payload_matches_known_hmac_vector() {
+        // RFC-4231-style check: HMAC-SHA256 of a fixed key + message. Computed
+        // independently (e.g. `printf 'payload' | openssl dgst -sha256 -hmac
+        // 'secret'`). Guards both the algorithm and the `sha256=` prefix.
+        let sig = sign_payload("secret", "payload").expect("sign");
+        assert_eq!(
+            sig,
+            "sha256=b82fcb791acec57859b989b430a826488ce2e479fdf92326bd0a2e8375a42ba4",
+        );
+    }
+
+    #[test]
+    fn signature_is_verifiable_with_the_stored_secret() {
+        // A receiver re-derives the HMAC over the raw body with the shared
+        // secret and compares. Same secret + body must reproduce the header.
+        let secret = amigo_core::config::generate_webhook_secret();
+        let body = r#"{"event":"download.completed","data":{}}"#;
+
+        let header = sign_payload(&secret, body).expect("sign");
+        let hex_sig = header.strip_prefix("sha256=").expect("sha256 prefix");
+
+        use hmac::{Hmac, Mac};
+        let mut mac = Hmac::<sha2::Sha256>::new_from_slice(secret.as_bytes()).expect("mac");
+        mac.update(body.as_bytes());
+        let expected = hex::encode(mac.finalize().into_bytes());
+        assert_eq!(hex_sig, expected);
+
+        // A wrong secret must NOT verify.
+        let other = amigo_core::config::generate_webhook_secret();
+        let bad = sign_payload(&other, body).expect("sign");
+        assert_ne!(
+            bad, header,
+            "different secrets must produce different signatures"
+        );
+    }
+
+    #[test]
+    fn generated_secret_is_64_hex_chars() {
+        let s = amigo_core::config::generate_webhook_secret();
+        assert_eq!(s.len(), 64);
+        assert!(s.bytes().all(|b| b.is_ascii_hexdigit()));
+    }
 }

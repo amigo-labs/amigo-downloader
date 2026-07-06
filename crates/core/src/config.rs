@@ -15,8 +15,13 @@ pub struct WebhookEndpoint {
     pub id: String,
     pub name: String,
     pub url: String,
-    #[serde(default)]
-    pub secret: Option<String>,
+    /// HMAC-SHA256 signing secret. Always present — every dispatched payload is
+    /// signed with `X-Amigo-Signature: sha256=<hmac>` so receivers can
+    /// authenticate events. A random secret is generated when an endpoint is
+    /// created (or when an older config without one is loaded) so signing can
+    /// never be silently disabled.
+    #[serde(default = "generate_webhook_secret")]
+    pub secret: String,
     #[serde(default = "default_webhook_events")]
     pub events: Vec<String>,
     #[serde(default = "default_true")]
@@ -25,6 +30,16 @@ pub struct WebhookEndpoint {
     pub retry_count: u32,
     #[serde(default = "default_retry_delay")]
     pub retry_delay_secs: u32,
+}
+
+/// Generate a random 32-byte webhook signing secret, hex-encoded.
+pub fn generate_webhook_secret() -> String {
+    use rand::TryRng;
+    let mut buf = [0u8; 32];
+    rand::rngs::SysRng
+        .try_fill_bytes(&mut buf)
+        .expect("OS RNG failure");
+    hex::encode(buf)
 }
 
 fn default_webhook_events() -> Vec<String> {

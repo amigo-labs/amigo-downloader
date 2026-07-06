@@ -868,9 +868,8 @@ fn redact_config(mut config: amigo_core::config::Config) -> amigo_core::config::
         config.feedback.github_token = REDACTED_SENTINEL.into();
     }
     for hook in &mut config.webhooks {
-        if hook.secret.is_some() {
-            hook.secret = Some(REDACTED_SENTINEL.into());
-        }
+        // Signing secrets are always set now; always mask.
+        hook.secret = REDACTED_SENTINEL.into();
     }
     config
 }
@@ -898,12 +897,16 @@ fn apply_secret_passthrough(
     // Webhooks are matched by id; if a hook with the same id already exists
     // and the incoming secret is the sentinel, restore the previous secret.
     for hook in &mut incoming.webhooks {
-        if hook.secret.as_deref() == Some(REDACTED_SENTINEL) {
+        if hook.secret == REDACTED_SENTINEL {
+            // Restore the previous secret if we know it; otherwise generate a
+            // fresh one so an endpoint can never end up with the sentinel as
+            // its literal signing key.
             hook.secret = existing
                 .webhooks
                 .iter()
                 .find(|h| h.id == hook.id)
-                .and_then(|h| h.secret.clone());
+                .map(|h| h.secret.clone())
+                .unwrap_or_else(amigo_core::config::generate_webhook_secret);
         }
     }
 }
@@ -1170,7 +1173,12 @@ async fn persist_webhooks(state: &AppState) {
 }
 
 async fn list_webhooks(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let endpoints = state.webhook_dispatcher.list_endpoints().await;
+    let mut endpoints = state.webhook_dispatcher.list_endpoints().await;
+    // Never expose the plaintext signing secret in a listing — the operator
+    // only sees it once, in the create response. Mask it like the config route.
+    for hook in &mut endpoints {
+        hook.secret = REDACTED_SENTINEL.into();
+    }
     Json(serde_json::to_value(endpoints).unwrap_or_default())
 }
 
@@ -1200,11 +1208,20 @@ async fn create_webhook(
             )
         })?;
 
+    // Signing is mandatory. If the caller didn't supply a secret, generate a
+    // random one server-side so the endpoint is always signed. The plaintext
+    // secret is returned once in this response (and never again by the listing
+    // route) so the operator can configure verification on the receiver.
+    let secret = req
+        .secret
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(amigo_core::config::generate_webhook_secret);
+
     let endpoint = amigo_core::config::WebhookEndpoint {
         id: uuid::Uuid::new_v4().to_string(),
         name: req.name,
         url: req.url,
-        secret: req.secret,
+        secret,
         events: req.events.unwrap_or_else(|| vec!["*".into()]),
         enabled: true,
         retry_count: 3,
@@ -1277,7 +1294,7 @@ mod config_redact_tests {
             id: "hook-1".into(),
             name: "test".into(),
             url: "https://example.com".into(),
-            secret: Some("hmacsecret".into()),
+            secret: "hmacsecret".into(),
             events: vec!["*".into()],
             enabled: true,
             retry_count: 3,
@@ -1299,10 +1316,7 @@ mod config_redact_tests {
         );
         assert_eq!(redacted.nzbget_api.password, REDACTED_SENTINEL);
         assert_eq!(redacted.feedback.github_token, REDACTED_SENTINEL);
-        assert_eq!(
-            redacted.webhooks[0].secret.as_deref(),
-            Some(REDACTED_SENTINEL)
-        );
+        assert_eq!(redacted.webhooks[0].secret, REDACTED_SENTINEL);
     }
 
     #[test]
