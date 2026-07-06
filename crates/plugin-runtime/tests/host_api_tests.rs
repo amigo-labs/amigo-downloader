@@ -308,3 +308,92 @@ async fn test_regex_and_html_helpers_work() {
     assert!(pkg.name.contains("b64=aGk="), "got {}", pkg.name);
     assert!(pkg.name.contains("dec=hi"), "got {}", pkg.name);
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_http_get_follows_redirect_chain_manually() {
+    // The plugin HTTP client is built with redirect(Policy::none()); redirects
+    // are followed manually in `execute_following_redirects`. This locks in
+    // that a normal 3xx chain still resolves to the final body.
+    let mock = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/start"))
+        .respond_with(
+            ResponseTemplate::new(302).insert_header("Location", format!("{}/middle", mock.uri())),
+        )
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/middle"))
+        .respond_with(
+            ResponseTemplate::new(302).insert_header("Location", format!("{}/end", mock.uri())),
+        )
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/end"))
+        .respond_with(ResponseTemplate::new(200).set_body_string("final-body"))
+        .mount(&mock)
+        .await;
+
+    let plugin = format!(
+        r#"
+        module.exports = {{
+            id: "ha-test", name: "x", version: "1.0.0", urlPattern: ".*",
+            resolve(_url) {{
+                var resp = amigo.httpGet("{base}/start");
+                return {{ name: "status=" + resp.status + " body=" + resp.body, downloads: [] }};
+            }},
+        }};
+        "#,
+        base = mock.uri()
+    );
+    let (_tmp, loader) = loader_with(permissive_limits(), &plugin).await;
+    let pkg = loader
+        .resolve("ha-test", "http://example.com/")
+        .await
+        .expect("resolve");
+    assert!(pkg.name.contains("status=200"), "got {}", pkg.name);
+    assert!(pkg.name.contains("body=final-body"), "got {}", pkg.name);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_redirect_target_is_revalidated_against_ssrf_policy() {
+    // A public host that 302-redirects to an internal/disallowed target is the
+    // classic SSRF-via-redirect bypass. Even under permissive limits (the
+    // initial loopback hop is allowed), the redirect target is re-validated per
+    // hop — here a non-http(s) scheme, which is rejected regardless of the
+    // private-network setting.
+    let mock = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/start"))
+        .respond_with(ResponseTemplate::new(302).insert_header("Location", "file:///etc/passwd"))
+        .mount(&mock)
+        .await;
+
+    let plugin = format!(
+        r#"
+        module.exports = {{
+            id: "ha-test", name: "x", version: "1.0.0", urlPattern: ".*",
+            resolve(_url) {{
+                try {{
+                    var resp = amigo.httpGet("{base}/start");
+                    return {{ name: "got=" + resp.status, downloads: [] }};
+                }} catch (e) {{
+                    return {{ name: "blocked:" + (e && e.message ? e.message : String(e)), downloads: [] }};
+                }}
+            }},
+        }};
+        "#,
+        base = mock.uri()
+    );
+    let (_tmp, loader) = loader_with(permissive_limits(), &plugin).await;
+    let pkg = loader
+        .resolve("ha-test", "http://example.com/")
+        .await
+        .expect("resolve");
+    assert!(
+        pkg.name.starts_with("blocked:"),
+        "redirect target must be re-validated and rejected, got {}",
+        pkg.name
+    );
+}
