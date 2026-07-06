@@ -43,8 +43,8 @@ impl RetryPolicy {
 
         // Add ±25% jitter to prevent thundering herd
         let jitter_range = (capped / 4).max(1);
-        let mut rng = rand::thread_rng();
-        let jitter = rng.gen_range(0..=jitter_range * 2) as i64 - jitter_range as i64;
+        let mut rng = rand::rng();
+        let jitter = rng.random_range(0..=jitter_range * 2) as i64 - jitter_range as i64;
         let with_jitter = (capped as i64 + jitter).max(0) as u64;
 
         Duration::from_millis(with_jitter)
