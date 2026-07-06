@@ -157,9 +157,13 @@
       const dragged = draggedId;
       draggedId = null;
       if (!dragged || dragged === targetId) return;
-      // Reorder in the correct store based on protocol filter
-      const store = $protocolFilter === "usenet" ? usenetDownloads : downloads;
-      let newOrder: string[] = [];
+      // Reorder within whichever store actually holds the dragged item (not
+      // the protocol filter — in the "all" view the item may be a usenet one).
+      // Cross-store drops (target in the other store) are a no-op.
+      const store = $usenetDownloads.some((d) => d.id === dragged)
+        ? usenetDownloads
+        : downloads;
+      let moved = false;
       store.update((list) => {
         const items = [...list];
         const fromIdx = items.findIndex((d) => d.id === dragged);
@@ -167,17 +171,19 @@
         if (fromIdx === -1 || toIdx === -1) return list;
         const [item] = items.splice(fromIdx, 1);
         items.splice(toIdx, 0, item);
-        newOrder = items.map((d) => d.id);
+        moved = true;
         return items;
       });
-      // Persist the new order via PATCH /queue/reorder, otherwise the next
-      // 10s poll / WS refresh reverts the list to the server's order.
-      if (newOrder.length) {
-        try {
-          await reorderQueue(newOrder);
-        } catch (err) {
-          console.error("Failed to persist reorder:", err);
-        }
+      if (!moved) return;
+      // Persist a COMPLETE ordering of both stores (matching the combined
+      // "all" view: HTTP then usenet). The server assigns priority purely by
+      // position, so sending only a subset would leave every omitted download
+      // at the default priority and reshuffle the global queue.
+      const newOrder = [...$downloads, ...$usenetDownloads].map((d) => d.id);
+      try {
+        await reorderQueue(newOrder);
+      } catch (err) {
+        console.error("Failed to persist reorder:", err);
       }
     };
   }

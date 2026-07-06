@@ -39,6 +39,13 @@ type RateLimiter = Arc<Mutex<HashMap<String, VecDeque<Instant>>>>;
 async fn rl_allow(rl: &RateLimiter, ip: &str) -> bool {
     let now = Instant::now();
     let mut map = rl.lock().await;
+    // Opportunistically drop fully-stale entries so the map can't grow without
+    // bound under many distinct (or spoofed X-Forwarded-For) source IPs — an
+    // entry whose newest timestamp is outside the window has no live requests.
+    map.retain(|_, q| {
+        q.back()
+            .is_some_and(|&ts| now.duration_since(ts) <= LOGIN_RL_WINDOW)
+    });
     let q = map.entry(ip.to_string()).or_default();
     while let Some(&ts) = q.front() {
         if now.duration_since(ts) > LOGIN_RL_WINDOW {
