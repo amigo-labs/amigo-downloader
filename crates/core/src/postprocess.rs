@@ -127,10 +127,22 @@ fn extract_rar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
         .map_err(|e| crate::Error::Other(format!("RAR header error: {e}")))?
     {
         let name = header.entry().filename.to_string_lossy().to_string();
-        debug!("Extracting: {name}");
-        open = header
-            .extract_with_base(output_dir)
-            .map_err(|e| crate::Error::Other(format!("RAR extract error for {name}: {e}")))?;
+        // extract_with_base writes to output_dir + the entry's *raw* path, so a
+        // `../` or absolute member would escape. Validate first and skip unsafe
+        // entries instead of extracting them.
+        open = if is_safe_archive_entry(&name) {
+            debug!("Extracting: {name}");
+            header
+                .extract_with_base(output_dir)
+                .map_err(|e| crate::Error::Other(format!("RAR extract error for {name}: {e}")))?
+        } else {
+            warn!(
+                "RAR entry {name:?} escapes output directory — skipping (path traversal blocked)"
+            );
+            header
+                .skip()
+                .map_err(|e| crate::Error::Other(format!("RAR skip error for {name}: {e}")))?
+        };
     }
 
     Ok(())
@@ -272,13 +284,65 @@ fn has_symlink_ancestor(root: &Path, path: &Path) -> Result<bool, crate::Error> 
     Ok(false)
 }
 
+/// True if an archive entry name is safe to extract beneath an output
+/// directory: after normalising `\`→`/`, it must consist only of "normal" (or
+/// `.`) path components — no `..`, no root, no drive/UNC prefix. `Path::join`
+/// with an absolute path silently replaces the base, and `Path::starts_with`
+/// is purely lexical so it does NOT catch `..`, so RAR, 7z, and tar all funnel
+/// entry names through this before anything is written (ZIP has its own,
+/// stricter component + symlink guard above).
+fn is_safe_archive_entry(name: &str) -> bool {
+    use std::path::Component;
+    let normalized = name.replace('\\', "/");
+    let normalized = normalized.trim_end_matches('/');
+    if normalized.is_empty() {
+        return false;
+    }
+    Path::new(normalized)
+        .components()
+        .all(|c| matches!(c, Component::Normal(_) | Component::CurDir))
+}
+
 fn extract_7z(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
-    sevenz_rust::decompress_file(archive, output_dir)
-        .map_err(|e| crate::Error::Other(format!("7z extraction failed: {e}")))?;
+    // sevenz_rust::decompress_file has no per-entry hook, so it would happily
+    // write a `../` member outside output_dir. Validate each entry name first.
+    sevenz_rust::decompress_file_with_extract_fn(archive, output_dir, |entry, reader, dest| {
+        if !is_safe_archive_entry(entry.name()) {
+            warn!(
+                "7z entry {:?} escapes output directory — skipping (path traversal blocked)",
+                entry.name()
+            );
+            return Ok(true); // skip this entry, keep going
+        }
+        sevenz_rust::default_entry_extract_fn(entry, reader, dest)
+    })
+    .map_err(|e| crate::Error::Other(format!("7z extraction failed: {e}")))?;
     Ok(())
 }
 
 fn extract_tar(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
+    // tar implementations differ in how they treat `..` members, so validate
+    // the member list ourselves and refuse the whole archive if any member
+    // would escape the output directory.
+    let listing = Command::new("tar")
+        .args(["tf", &archive.to_string_lossy()])
+        .output()
+        .map_err(|e| crate::Error::Other(format!("Failed to run tar: {e}. Is it installed?")))?;
+    if !listing.status.success() {
+        let stderr = String::from_utf8_lossy(&listing.stderr);
+        return Err(crate::Error::Other(format!("tar listing failed: {stderr}")));
+    }
+    let members = String::from_utf8_lossy(&listing.stdout);
+    for member in members.lines() {
+        let member = member.trim();
+        if !member.is_empty() && !is_safe_archive_entry(member) {
+            return Err(crate::Error::Other(format!(
+                "tar archive contains unsafe member {member:?} — \
+                 refusing extraction (path traversal blocked)"
+            )));
+        }
+    }
+
     run_external(
         "tar",
         &[
@@ -618,6 +682,74 @@ mod tests {
         ));
         assert!(archive_type(Path::new("file.txt")).is_none());
         assert!(archive_type(Path::new("file.mkv")).is_none());
+    }
+
+    #[test]
+    fn test_is_safe_archive_entry() {
+        // Safe entries.
+        assert!(is_safe_archive_entry("file.txt"));
+        assert!(is_safe_archive_entry("sub/dir/file.txt"));
+        assert!(is_safe_archive_entry("./file.txt"));
+        assert!(is_safe_archive_entry("dir/")); // trailing slash trimmed
+        // Traversal / absolute / prefix — all unsafe.
+        assert!(!is_safe_archive_entry("../escape"));
+        assert!(!is_safe_archive_entry("a/../../b"));
+        assert!(!is_safe_archive_entry("/etc/passwd"));
+        assert!(!is_safe_archive_entry("..\\..\\win")); // backslash normalised
+        assert!(!is_safe_archive_entry(".."));
+        assert!(!is_safe_archive_entry(""));
+    }
+
+    #[test]
+    fn test_extract_tar_refuses_path_traversal() {
+        // Build a tar whose single member escapes the extraction directory,
+        // then assert extract_tar refuses it. Skips gracefully if the local
+        // `tar` cannot produce such an archive (e.g. no --transform support).
+        let dir = tempfile::tempdir().unwrap();
+        let staging = dir.path().join("staging");
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(staging.join("evil"), b"pwned").unwrap();
+
+        let tar_path = dir.path().join("evil.tar");
+        let built = std::process::Command::new("tar")
+            .args([
+                "cf",
+                &tar_path.to_string_lossy(),
+                "-C",
+                &staging.to_string_lossy(),
+                "--transform=s,evil,../../../tmp/amigo-evil,",
+                "evil",
+            ])
+            .status();
+        let Ok(status) = built else {
+            return; // tar not available
+        };
+        if !status.success() || !tar_path.exists() {
+            return;
+        }
+
+        // Confirm the archive really contains a traversing member before we
+        // assert on the guard (otherwise the test would prove nothing).
+        let listing = std::process::Command::new("tar")
+            .args(["tf", &tar_path.to_string_lossy()])
+            .output()
+            .unwrap();
+        let members = String::from_utf8_lossy(&listing.stdout);
+        if !members.lines().any(|m| m.contains("..")) {
+            return; // --transform was ignored; nothing to test
+        }
+
+        let out = dir.path().join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let result = extract_tar(&tar_path, &out);
+        assert!(
+            result.is_err(),
+            "extract_tar must refuse an archive with a traversing member"
+        );
+        assert!(
+            !std::path::Path::new("/tmp/amigo-evil").exists(),
+            "traversing member must not be written outside output_dir"
+        );
     }
 
     /// A zip whose declared entry size exceeds the cumulative budget must

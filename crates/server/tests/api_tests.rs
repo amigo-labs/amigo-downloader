@@ -107,6 +107,30 @@ async fn test_add_download_returns_created() {
 }
 
 #[tokio::test]
+async fn test_add_download_rejects_ssrf_targets() {
+    // The main REST download path must apply the same SSRF guard as
+    // Click'n'Load / RSS / webhooks: loopback, RFC1918, and cloud-metadata
+    // targets are rejected with 400 rather than fetched off the network.
+    let addr = spawn_test_server().await;
+    let client = test_client();
+
+    for url in [
+        "http://127.0.0.1/secret",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://10.0.0.1/x",
+        "file:///etc/passwd",
+    ] {
+        let resp = client
+            .post(format!("{}/api/v1/downloads", base_url(addr)))
+            .json(&serde_json::json!({ "url": url }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400, "url {url} must be rejected");
+    }
+}
+
+#[tokio::test]
 async fn test_add_download_with_filename() {
     let addr = spawn_test_server().await;
     let client = test_client();
@@ -676,6 +700,52 @@ async fn test_delete_nonexistent_webhook_returns_404() {
         .await
         .unwrap();
     assert_eq!(resp.status(), 404);
+}
+
+#[tokio::test]
+async fn test_webhook_creation_syncs_to_config() {
+    // Regression: create/delete used to touch only the in-memory dispatcher,
+    // so hooks never reached config.webhooks (vanished on restart, and
+    // GET /config disagreed with GET /webhooks). Use a valid config so the
+    // save path runs, then assert the created hook appears in GET /config.
+    let config = Config {
+        max_concurrent_downloads: 1,
+        ..Config::default()
+    };
+    let state = amigo_server::build_test_state(config);
+    let app = amigo_server::build_test_router(state);
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, app).await.unwrap();
+    });
+
+    let client = test_client();
+    let base = base_url(addr);
+
+    let resp = client
+        .post(format!("{base}/api/v1/webhooks"))
+        .json(&serde_json::json!({ "name": "h", "url": "https://example.com/wh" }))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), 201);
+
+    let cfg: serde_json::Value = client
+        .get(format!("{base}/api/v1/config"))
+        .send()
+        .await
+        .unwrap()
+        .json()
+        .await
+        .unwrap();
+    let hooks = cfg["webhooks"].as_array().expect("webhooks array");
+    assert_eq!(
+        hooks.len(),
+        1,
+        "created webhook must be persisted to config"
+    );
+    assert_eq!(hooks[0]["url"], "https://example.com/wh");
 }
 
 // =============================================================================

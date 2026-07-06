@@ -57,6 +57,25 @@ const MAX_HTML_BYTES: usize = 8 * 1024 * 1024;
 /// input length on the heap, so unbounded inputs map to unbounded host RAM.
 const MAX_BASE64_INPUT_BYTES: usize = 8 * 1024 * 1024;
 
+/// Maximum wall-clock time a single plugin HTTP request may take before it is
+/// aborted. Matches the plugin execution deadline so a slow-loris endpoint
+/// cannot tie up the (serialized) plugin executor beyond the sandbox budget.
+const HTTP_TIMEOUT_SECS: u64 = 30;
+
+/// Connect-phase timeout for plugin HTTP requests.
+const HTTP_CONNECT_TIMEOUT_SECS: u64 = 15;
+
+/// Maximum number of redirects a plugin request follows. Every hop is
+/// re-validated against the SSRF policy (reqwest's own redirect handling is
+/// disabled), so a 3xx pointing at an internal address is rejected mid-chain
+/// instead of being fetched.
+const MAX_PLUGIN_REDIRECTS: usize = 10;
+
+/// Cap on a plugin HTTP response body buffered on the host heap. The 64 MiB
+/// QuickJS memory limit does not cover bytes allocated Rust-side (in `String` /
+/// `Bytes`) before they reach JS, so we bound them here.
+const MAX_RESPONSE_BODY_BYTES: usize = 32 * 1024 * 1024;
+
 fn enforce_input_limit(field: &str, len: usize, max: usize) -> Result<(), String> {
     if len > max {
         Err(format!(
@@ -142,6 +161,13 @@ impl HostApi {
         Self {
             http_client: reqwest::Client::builder()
                 .user_agent("amigo-downloader/0.1.0")
+                // Never let reqwest follow redirects on its own: `check_url_allowed`
+                // only validates the *initial* URL, so an auto-followed 3xx to an
+                // internal address would bypass the SSRF guard. We follow manually
+                // in `execute_following_redirects`, re-validating every hop.
+                .redirect(reqwest::redirect::Policy::none())
+                .timeout(std::time::Duration::from_secs(HTTP_TIMEOUT_SECS))
+                .connect_timeout(std::time::Duration::from_secs(HTTP_CONNECT_TIMEOUT_SECS))
                 .build()
                 .unwrap_or_else(|_| reqwest::Client::new()),
             cookies: Arc::new(Mutex::new(HashMap::new())),
@@ -241,13 +267,90 @@ impl HostApi {
 
     // --- Network functions (sync wrappers for use from JS) ---
 
+    /// Send `request` and manually follow up to [`MAX_PLUGIN_REDIRECTS`]
+    /// redirects, re-validating every hop against the SSRF policy. The HTTP
+    /// client is built with `redirect(Policy::none())`, so this is the only
+    /// place a redirect is ever followed — a 3xx whose `Location` points at a
+    /// private / loopback / metadata address is rejected here instead of being
+    /// fetched. Sensitive headers are dropped on a cross-origin hop.
+    async fn execute_following_redirects(
+        &self,
+        mut request: reqwest::Request,
+    ) -> Result<reqwest::Response, String> {
+        let mut hops = 0usize;
+        loop {
+            // Re-validate the exact URL we are about to hit (covers the initial
+            // request and every subsequent redirect target).
+            self.check_url_allowed(request.url().as_str()).await?;
+
+            let attempt = request
+                .try_clone()
+                .ok_or_else(|| "cannot follow redirect for a streaming body".to_string())?;
+            let resp = self
+                .http_client
+                .execute(attempt)
+                .await
+                .map_err(|e| e.to_string())?;
+
+            let status = resp.status();
+            if !status.is_redirection() {
+                return Ok(resp);
+            }
+
+            let location = match resp.headers().get(reqwest::header::LOCATION) {
+                // Own the value immediately so `resp` is free afterwards.
+                Some(loc) => loc.to_str().map_err(|e| e.to_string())?.to_string(),
+                // A 3xx without a Location is not actionable — hand it back.
+                None => return Ok(resp),
+            };
+
+            hops += 1;
+            if hops > MAX_PLUGIN_REDIRECTS {
+                return Err(format!("too many redirects (> {MAX_PLUGIN_REDIRECTS})"));
+            }
+
+            let next_url = request
+                .url()
+                .join(&location)
+                .map_err(|e| format!("invalid redirect location: {e}"))?;
+            let cross_origin = request.url().scheme() != next_url.scheme()
+                || request.url().host_str() != next_url.host_str()
+                || request.url().port_or_known_default() != next_url.port_or_known_default();
+
+            // Standard method/body rewriting for the redirect. 303 always
+            // becomes GET; 301/302 downgrade POST to GET (per browser
+            // behaviour); 307/308 preserve method and body.
+            match status {
+                reqwest::StatusCode::SEE_OTHER => {
+                    *request.method_mut() = reqwest::Method::GET;
+                    *request.body_mut() = None;
+                }
+                reqwest::StatusCode::MOVED_PERMANENTLY | reqwest::StatusCode::FOUND
+                    if request.method() == reqwest::Method::POST =>
+                {
+                    *request.method_mut() = reqwest::Method::GET;
+                    *request.body_mut() = None;
+                }
+                _ => {}
+            }
+
+            // Drop credential-bearing headers when the origin changes.
+            if cross_origin {
+                let headers = request.headers_mut();
+                headers.remove(reqwest::header::AUTHORIZATION);
+                headers.remove(reqwest::header::COOKIE);
+            }
+
+            *request.url_mut() = next_url;
+        }
+    }
+
     pub async fn http_get(
         &self,
         url: &str,
         headers: Option<HashMap<String, String>>,
     ) -> Result<(u16, String, HashMap<String, String>), String> {
         self.check_request_limit().await?;
-        self.check_url_allowed(url).await?;
         debug!("Plugin http_get: {url}");
 
         let mut req = self.http_client.get(url);
@@ -257,14 +360,16 @@ impl HostApi {
             }
         }
 
-        let resp = req.send().await.map_err(|e| e.to_string())?;
+        let request = req.build().map_err(|e| e.to_string())?;
+        let resp = self.execute_following_redirects(request).await?;
         let status = resp.status().as_u16();
         let resp_headers: HashMap<String, String> = resp
             .headers()
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
             .collect();
-        let body = resp.text().await.map_err(|e| e.to_string())?;
+        let bytes = read_body_capped(resp).await?;
+        let body = String::from_utf8_lossy(&bytes).into_owned();
 
         Ok((status, body, resp_headers))
     }
@@ -277,7 +382,6 @@ impl HostApi {
         headers: Option<HashMap<String, String>>,
     ) -> Result<(u16, String, HashMap<String, String>), String> {
         self.check_request_limit().await?;
-        self.check_url_allowed(url).await?;
         debug!("Plugin http_post: {url}");
 
         let mut req = self
@@ -291,7 +395,8 @@ impl HostApi {
             }
         }
 
-        let resp = req.send().await.map_err(|e| e.to_string())?;
+        let request = req.build().map_err(|e| e.to_string())?;
+        let resp = self.execute_following_redirects(request).await?;
 
         let status = resp.status().as_u16();
         let resp_headers: HashMap<String, String> = resp
@@ -299,7 +404,8 @@ impl HostApi {
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
             .collect();
-        let body = resp.text().await.map_err(|e| e.to_string())?;
+        let bytes = read_body_capped(resp).await?;
+        let body = String::from_utf8_lossy(&bytes).into_owned();
 
         Ok((status, body, resp_headers))
     }
@@ -310,7 +416,6 @@ impl HostApi {
         headers: Option<HashMap<String, String>>,
     ) -> Result<(u16, HashMap<String, String>), String> {
         self.check_request_limit().await?;
-        self.check_url_allowed(url).await?;
         debug!("Plugin http_head: {url}");
 
         let mut req = self.http_client.head(url);
@@ -320,7 +425,8 @@ impl HostApi {
             }
         }
 
-        let resp = req.send().await.map_err(|e| e.to_string())?;
+        let request = req.build().map_err(|e| e.to_string())?;
+        let resp = self.execute_following_redirects(request).await?;
 
         let status = resp.status().as_u16();
         let headers: HashMap<String, String> = resp
@@ -863,7 +969,6 @@ impl HostApi {
         headers: Option<HashMap<String, String>>,
     ) -> Result<(u16, String, HashMap<String, String>), String> {
         self.check_request_limit().await?;
-        self.check_url_allowed(url).await?;
         debug!("Plugin http_post_form: {url}");
 
         let mut req = self.http_client.post(url).form(fields);
@@ -873,14 +978,16 @@ impl HostApi {
             }
         }
 
-        let resp = req.send().await.map_err(|e| e.to_string())?;
+        let request = req.build().map_err(|e| e.to_string())?;
+        let resp = self.execute_following_redirects(request).await?;
         let status = resp.status().as_u16();
         let resp_headers: HashMap<String, String> = resp
             .headers()
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
             .collect();
-        let body = resp.text().await.map_err(|e| e.to_string())?;
+        let bytes = read_body_capped(resp).await?;
+        let body = String::from_utf8_lossy(&bytes).into_owned();
 
         Ok((status, body, resp_headers))
     }
@@ -892,7 +999,6 @@ impl HostApi {
         headers: Option<HashMap<String, String>>,
     ) -> Result<String, String> {
         self.check_request_limit().await?;
-        self.check_url_allowed(url).await?;
         debug!("Plugin http_get_binary: {url}");
 
         let mut req = self.http_client.get(url);
@@ -902,8 +1008,9 @@ impl HostApi {
             }
         }
 
-        let resp = req.send().await.map_err(|e| e.to_string())?;
-        let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+        let request = req.build().map_err(|e| e.to_string())?;
+        let resp = self.execute_following_redirects(request).await?;
+        let bytes = read_body_capped(resp).await?;
         Ok(base64_encode_bytes(&bytes))
     }
 
@@ -914,7 +1021,6 @@ impl HostApi {
         headers: Option<HashMap<String, String>>,
     ) -> Result<String, String> {
         self.check_request_limit().await?;
-        self.check_url_allowed(url).await?;
         debug!("Plugin http_follow_redirects: {url}");
 
         let mut req = self.http_client.head(url);
@@ -924,7 +1030,8 @@ impl HostApi {
             }
         }
 
-        let resp = req.send().await.map_err(|e| e.to_string())?;
+        let request = req.build().map_err(|e| e.to_string())?;
+        let resp = self.execute_following_redirects(request).await?;
         Ok(resp.url().to_string())
     }
 
@@ -944,6 +1051,30 @@ impl HostApi {
             .filter_map(|el| el.value().attr(attr).map(|s| s.to_string()))
             .collect())
     }
+}
+
+/// Read a response body into memory, aborting if it exceeds
+/// [`MAX_RESPONSE_BODY_BYTES`]. Bounds host heap usage that the QuickJS memory
+/// limit does not cover. Uses `Response::chunk` so a missing/lying
+/// `Content-Length` cannot smuggle an oversized body past the cap.
+async fn read_body_capped(mut resp: reqwest::Response) -> Result<Vec<u8>, String> {
+    if let Some(len) = resp.content_length()
+        && len > MAX_RESPONSE_BODY_BYTES as u64
+    {
+        return Err(format!(
+            "response body too large ({len} bytes; limit {MAX_RESPONSE_BODY_BYTES})"
+        ));
+    }
+    let mut buf = Vec::new();
+    while let Some(chunk) = resp.chunk().await.map_err(|e| e.to_string())? {
+        if buf.len() + chunk.len() > MAX_RESPONSE_BODY_BYTES {
+            return Err(format!(
+                "response body exceeded limit of {MAX_RESPONSE_BODY_BYTES} bytes"
+            ));
+        }
+        buf.extend_from_slice(&chunk);
+    }
+    Ok(buf)
 }
 
 fn parse_iso8601_duration(input: &str) -> Option<f64> {
@@ -1934,15 +2065,28 @@ fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
                 || v4.is_broadcast()
                 || v4.is_unspecified()
                 || v4.is_documentation()
+                || v4.is_multicast()
             {
                 return true;
             }
             let o = v4.octets();
+            // "This host on this network" 0.0.0.0/8 (0.x routes to localhost).
+            if o[0] == 0 {
+                return true;
+            }
+            // Reserved for future use 240.0.0.0/4.
+            if o[0] >= 240 {
+                return true;
+            }
+            // Benchmarking 198.18.0.0/15.
+            if o[0] == 198 && (18..=19).contains(&o[1]) {
+                return true;
+            }
             // CGNAT 100.64.0.0/10 is treated as non-public.
             o[0] == 100 && (64..=127).contains(&o[1])
         }
         IpAddr::V6(v6) => {
-            if v6.is_loopback() || v6.is_unspecified() {
+            if v6.is_loopback() || v6.is_unspecified() || v6.is_multicast() {
                 return true;
             }
             let segs = v6.segments();
@@ -1954,9 +2098,28 @@ fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
             if (segs[0] & 0xffc0) == 0xfe80 {
                 return true;
             }
-            // Walk IPv4-mapped addresses through the v4 check.
-            if let Some(v4) = v6.to_ipv4_mapped() {
+            // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d)
+            // inherit the embedded address's verdict.
+            if let Some(v4) = v6.to_ipv4() {
                 return is_blocked_ip(IpAddr::V4(v4));
+            }
+            // NAT64 / 6to4 / Teredo transition prefixes tunnel a v4 address.
+            let v4_from = |hi: u16, lo: u16| {
+                std::net::Ipv4Addr::new(
+                    (hi >> 8) as u8,
+                    (hi & 0xff) as u8,
+                    (lo >> 8) as u8,
+                    (lo & 0xff) as u8,
+                )
+            };
+            if segs[0] == 0x0064 && segs[1] == 0xff9b {
+                return is_blocked_ip(IpAddr::V4(v4_from(segs[6], segs[7])));
+            }
+            if segs[0] == 0x2002 {
+                return is_blocked_ip(IpAddr::V4(v4_from(segs[1], segs[2])));
+            }
+            if segs[0] == 0x2001 && segs[1] == 0x0000 {
+                return is_blocked_ip(IpAddr::V4(v4_from(segs[6] ^ 0xffff, segs[7] ^ 0xffff)));
             }
             false
         }

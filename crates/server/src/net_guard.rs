@@ -106,16 +106,31 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
                 || v4.is_broadcast()
                 || v4.is_unspecified()
                 || v4.is_documentation()
+                || v4.is_multicast()
             {
                 return true;
             }
             let o = v4.octets();
+            // "This host on this network" 0.0.0.0/8 — 0.x.y.z routes to
+            // localhost on Linux, so it is not a safe arbitrary target.
+            if o[0] == 0 {
+                return true;
+            }
+            // Reserved for future use 240.0.0.0/4 (255.255.255.255 is already
+            // caught by is_broadcast).
+            if o[0] >= 240 {
+                return true;
+            }
+            // Benchmarking 198.18.0.0/15.
+            if o[0] == 198 && (18..=19).contains(&o[1]) {
+                return true;
+            }
             // CGNAT 100.64.0.0/10 — used by ISPs for shared IPv4, not safe
             // as an arbitrary target.
             o[0] == 100 && (64..=127).contains(&o[1])
         }
         IpAddr::V6(v6) => {
-            if v6.is_loopback() || v6.is_unspecified() {
+            if v6.is_loopback() || v6.is_unspecified() || v6.is_multicast() {
                 return true;
             }
             let segs = v6.segments();
@@ -127,12 +142,48 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
             if (segs[0] & 0xffc0) == 0xfe80 {
                 return true;
             }
-            if let Some(v4) = v6.to_ipv4_mapped() {
+            // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d):
+            // inherit the embedded address's verdict so `::127.0.0.1` and
+            // `::ffff:169.254.169.254` cannot slip through.
+            if let Some(v4) = v6.to_ipv4() {
+                return is_blocked_ip(IpAddr::V4(v4));
+            }
+            // The transition prefixes below all embed an IPv4 address; block
+            // them when that embedded address is itself non-public.
+            if let Some(v4) = embedded_v4(segs) {
                 return is_blocked_ip(IpAddr::V4(v4));
             }
             false
         }
     }
+}
+
+/// Extract the IPv4 address embedded in an IPv6 transition prefix (NAT64
+/// `64:ff9b::/96`, 6to4 `2002::/16`, Teredo `2001:0000::/32`), if any. These
+/// prefixes tunnel v4 traffic and would otherwise bypass the v4 block list.
+fn embedded_v4(segs: [u16; 8]) -> Option<std::net::Ipv4Addr> {
+    let v4 = |hi: u16, lo: u16| {
+        std::net::Ipv4Addr::new(
+            (hi >> 8) as u8,
+            (hi & 0xff) as u8,
+            (lo >> 8) as u8,
+            (lo & 0xff) as u8,
+        )
+    };
+    // NAT64 well-known prefix 64:ff9b::/96 — v4 in the low 32 bits.
+    if segs[0] == 0x0064 && segs[1] == 0xff9b {
+        return Some(v4(segs[6], segs[7]));
+    }
+    // 6to4 2002::/16 — v4 in segments 1..=2.
+    if segs[0] == 0x2002 {
+        return Some(v4(segs[1], segs[2]));
+    }
+    // Teredo 2001:0000::/32 — obfuscated (bitwise-NOT) client v4 in the last
+    // two segments.
+    if segs[0] == 0x2001 && segs[1] == 0x0000 {
+        return Some(v4(segs[6] ^ 0xffff, segs[7] ^ 0xffff));
+    }
+    None
 }
 
 #[cfg(test)]
@@ -221,5 +272,36 @@ mod tests {
         assert!(is_blocked_ip(ip));
         let ip: IpAddr = "::ffff:169.254.169.254".parse().unwrap();
         assert!(is_blocked_ip(ip));
+    }
+
+    #[test]
+    fn blocks_extra_ipv4_ranges() {
+        for s in [
+            "0.0.0.1",         // 0.0.0.0/8
+            "0.1.2.3",         // 0.0.0.0/8
+            "224.0.0.1",       // multicast
+            "239.255.255.250", // multicast (SSDP)
+            "240.0.0.1",       // reserved 240/4
+            "198.18.0.1",      // benchmarking
+            "198.19.255.255",  // benchmarking
+        ] {
+            let ip: IpAddr = s.parse().unwrap();
+            assert!(is_blocked_ip(ip), "{s} should be blocked");
+        }
+        // A normal public address is still allowed.
+        assert!(!is_blocked_ip("1.1.1.1".parse().unwrap()));
+        assert!(!is_blocked_ip("198.20.0.1".parse().unwrap()));
+    }
+
+    #[test]
+    fn blocks_ipv6_transition_prefixes_embedding_private_v4() {
+        // IPv4-compatible ::a.b.c.d
+        assert!(is_blocked_ip("::127.0.0.1".parse().unwrap()));
+        // NAT64 64:ff9b::/96 embedding loopback
+        assert!(is_blocked_ip("64:ff9b::7f00:1".parse().unwrap()));
+        // 6to4 2002::/16 embedding RFC1918 10.0.0.1 → 2002:0a00:0001::
+        assert!(is_blocked_ip("2002:a00:1::".parse().unwrap()));
+        // IPv6 multicast ff00::/8
+        assert!(is_blocked_ip("ff02::1".parse().unwrap()));
     }
 }

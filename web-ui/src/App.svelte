@@ -178,15 +178,17 @@
       if (msg.type === "completed") {
         updateDownloadStatus(msg.id, "completed");
         const fname = (msg.data?.filename as string) || msg.id;
-        addToast("success", "Download complete", fname);
-        ariaAnnouncement.set(`Download complete: ${fname}`);
-        notifyIfHidden("Download complete", fname);
+        const title = tr($locale, "toast.download_complete");
+        addToast("success", title, fname);
+        ariaAnnouncement.set(`${title}: ${fname}`);
+        notifyIfHidden(title, fname);
       } else if (msg.type === "failed") {
         updateDownloadStatus(msg.id, "failed");
         const errMsg = (msg.data?.error as string) || msg.id;
-        addToast("error", "Download failed", errMsg);
-        ariaAnnouncement.set(`Download failed: ${errMsg}`);
-        notifyIfHidden("Download failed", errMsg);
+        const title = tr($locale, "toast.download_failed");
+        addToast("error", title, errMsg);
+        ariaAnnouncement.set(`${title}: ${errMsg}`);
+        notifyIfHidden(title, errMsg);
       } else if (msg.type === "captcha_challenge") {
         pendingCaptcha.set(msg.data as unknown as CaptchaChallenge);
       } else if (
@@ -224,11 +226,11 @@
     if (extracted) {
       addDownload(extracted)
         .then(() => {
-          addToast("success", "Download added!", extracted);
+          addToast("success", tr($locale, "add.added"), extracted);
           loadData();
         })
         .catch(() => {
-          addToast("error", "Failed to add download", extracted);
+          addToast("error", tr($locale, "add.failed"), extracted);
         });
     }
     history.replaceState({}, "", "/");
@@ -291,9 +293,14 @@
     appConfig.bandwidth.global_limit = limitBytes;
     try {
       await putConfig(appConfig);
-      addToast("info", limitEnabled ? `Limit set to ${limitMbps} MB/s` : "Speed limit disabled");
+      addToast(
+        "info",
+        limitEnabled
+          ? tr($locale, "toast.limit_set", { mbps: limitMbps })
+          : tr($locale, "toast.limit_disabled"),
+      );
     } catch {
-      addToast("error", "Failed to save limit");
+      addToast("error", tr($locale, "toast.limit_save_failed"));
     }
   }
 
@@ -302,8 +309,23 @@
     pageKey++;
   }
 
+  // True when the keystroke is going into a text field, so single-key
+  // shortcuts (digits, "?") must not steal it.
+  function isEditableTarget(e: KeyboardEvent): boolean {
+    const el = e.target as HTMLElement | null;
+    if (!el) return false;
+    const tag = el.tagName;
+    return (
+      tag === "INPUT" ||
+      tag === "TEXTAREA" ||
+      tag === "SELECT" ||
+      el.isContentEditable
+    );
+  }
+
   // Single global keyboard handler
   function handleKeydown(e: KeyboardEvent) {
+    const editable = isEditableTarget(e);
     // Command palette — the power-user entry point.
     if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
       e.preventDefault();
@@ -332,7 +354,10 @@
         return;
       }
     }
+    // Bare single-key shortcuts below must not fire while typing in a field.
+    if (editable) return;
     if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
       showShortcuts = !showShortcuts;
       return;
     }
@@ -348,6 +373,7 @@
     ) {
       const num = parseInt(e.key);
       if (num >= 1 && num <= allNav.length) {
+        e.preventDefault();
         navigate(allNav[num - 1].id);
       }
     }

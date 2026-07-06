@@ -87,15 +87,15 @@ module.exports = {
     },
 
     login(username: string, password: string): boolean {
-        amigo.storageSet("api_key", password);
-        amigo.logInfo("AllDebrid API key saved");
-
+        // Validate the key BEFORE persisting it: storing first meant a mistyped
+        // key was left in storage on failure and then used by resolve()/checkOnline().
         const resp = amigo.httpGet(
             API_BASE + "/user?agent=amigo-downloader&apikey=" + encodeURIComponent(password)
         );
         if (resp.status === 200) {
             const data = parseApiJson(resp.body, "/user");
             if (data.status === "success") {
+                amigo.storageSet("api_key", password);
                 amigo.logInfo("Authenticated as: " + data.data.user.username + " (Premium: " + data.data.user.isPremium + ")");
                 return true;
             }

@@ -124,17 +124,6 @@ impl PluginLoader {
         // Create a QuickJS context for this plugin
         let context = self.engine.create_context()?;
 
-        // Preliminary plugin ID from filename
-        let temp_id = path
-            .file_stem()
-            .and_then(|s| s.to_str())
-            .unwrap_or("unknown");
-
-        // Register host API
-        context.with(|ctx| {
-            host_api::register_host_api(&ctx, Arc::new(self.host_api.clone()), temp_id)
-        })?;
-
         // Inject `module.exports` for CommonJS-style default export.
         // Plugin writes: module.exports = { pluginId() {}, resolve(url) {}, ... }
         // After eval, __plugin_exports points to module.exports.
@@ -156,6 +145,15 @@ var __plugin_exports = module.exports;
         let name = context.get_export_string("name")?;
         let version = context.get_export_string("version")?;
         let url_pattern = context.get_export_string("urlPattern")?;
+
+        // Register the host API bound to the plugin's *declared* id. This must
+        // happen after evaluating the module (so we know the real id) but before
+        // `resolve()` or any callback runs — the module body itself only defines
+        // exports and never touches `amigo`. Binding to the declared id (rather
+        // than the file stem, which is always "plugin") is what isolates each
+        // plugin's cookie jar and storage namespace from every other plugin.
+        context
+            .with(|ctx| host_api::register_host_api(&ctx, Arc::new(self.host_api.clone()), &id))?;
 
         // Validate required function: resolve
         context
@@ -485,6 +483,66 @@ module.exports = {
 
         let no_match = loader.match_url("https://other-site.com/file.zip").await;
         assert!(no_match.is_none());
+
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn test_plugin_storage_is_isolated_by_declared_id() {
+        // Two plugins whose entry files are both named `plugin.js` (as every
+        // real plugin's is). Each writes a secret into per-plugin storage from
+        // resolve(). Before the fix the host API was bound to the file stem
+        // ("plugin") for both, so they shared one namespace and could read each
+        // other's secrets; now it is bound to the declared plugin id.
+        let dir = std::env::temp_dir().join("amigo-test-plugin-isolation");
+        std::fs::remove_dir_all(&dir).ok();
+        for (folder, id) in [("alpha", "alpha-hoster"), ("beta", "beta-hoster")] {
+            let plugin_dir = dir.join(folder);
+            std::fs::create_dir_all(&plugin_dir).unwrap();
+            std::fs::write(
+                plugin_dir.join("plugin.js"),
+                format!(
+                    r#"
+module.exports = {{
+    id: "{id}",
+    name: "{id}",
+    version: "1.0.0",
+    urlPattern: "https?://{folder}\\.com/.+",
+    resolve(url) {{
+        amigo.storageSet("secret", "{id}-value");
+        return {{ name: "x", downloads: [{{ url: url, filename: null, filesize: null, chunks_supported: true, max_chunks: null, headers: null, cookies: null, wait_seconds: null, mirrors: [] }}] }};
+    }},
+}};
+"#
+                ),
+            )
+            .unwrap();
+        }
+
+        let loader = PluginLoader::new(dir.clone(), SandboxLimits::default()).unwrap();
+        loader.discover().await.unwrap();
+
+        loader
+            .resolve("alpha-hoster", "https://alpha.com/f")
+            .await
+            .unwrap();
+        loader
+            .resolve("beta-hoster", "https://beta.com/f")
+            .await
+            .unwrap();
+
+        let api = loader.host_api();
+        // Each plugin's write lands under its own declared id ...
+        assert_eq!(
+            api.storage_get("alpha-hoster", "secret").await.as_deref(),
+            Some("alpha-hoster-value")
+        );
+        assert_eq!(
+            api.storage_get("beta-hoster", "secret").await.as_deref(),
+            Some("beta-hoster-value")
+        );
+        // ... and nothing leaks into the old shared "plugin" namespace.
+        assert_eq!(api.storage_get("plugin", "secret").await, None);
 
         std::fs::remove_dir_all(&dir).ok();
     }

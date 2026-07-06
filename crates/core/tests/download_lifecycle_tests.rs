@@ -289,3 +289,54 @@ async fn test_cancel_removes_download_row() {
         "cancelled download must be removed from storage, got {row:?}"
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_pause_does_not_mark_failed() {
+    // Regression: pausing an in-flight download used to end up "failed",
+    // because the download task's error arm overwrote the Paused status when
+    // the transfer returned Cancelled.
+    let body = b"never-seen";
+    let mock = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/slow.bin"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .insert_header("content-length", body.len().to_string())
+                .insert_header("accept-ranges", "none"),
+        )
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/slow.bin"))
+        .respond_with(
+            ResponseTemplate::new(200)
+                .set_delay(Duration::from_secs(10))
+                .set_body_bytes(body.to_vec()),
+        )
+        .mount(&mock)
+        .await;
+
+    let (_tmp, coord) = lifecycle_coordinator();
+    let id = coord
+        .add_download(&format!("{}/slow.bin", mock.uri()), None)
+        .await
+        .expect("add_download");
+
+    // Let the backend start the (stalled) transfer, then pause it.
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    coord.pause(&id).await.expect("pause");
+
+    // Give the download task time to observe the cancellation and finish.
+    tokio::time::sleep(Duration::from_millis(600)).await;
+
+    let row = coord
+        .storage()
+        .get_download(&id)
+        .await
+        .unwrap()
+        .expect("paused download row must still exist");
+    assert_eq!(
+        row.status, "paused",
+        "paused download must stay 'paused', not become 'failed'"
+    );
+}
