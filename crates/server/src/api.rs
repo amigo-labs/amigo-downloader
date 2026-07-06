@@ -1237,7 +1237,7 @@ async fn create_webhook(
     // route) so the operator can configure verification on the receiver.
     let secret = req
         .secret
-        .filter(|s| !s.is_empty())
+        .filter(|s| !s.trim().is_empty())
         .unwrap_or_else(amigo_core::config::generate_webhook_secret);
 
     let endpoint = amigo_core::config::WebhookEndpoint {

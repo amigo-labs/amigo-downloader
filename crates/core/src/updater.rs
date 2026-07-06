@@ -286,10 +286,14 @@ pub fn select_asset(release: &ReleaseInfo) -> Option<&ReleaseAsset> {
     let target = format!("amigo-server-{os}-{arch}");
     debug!("Looking for asset matching: {target}");
 
-    release
-        .assets
-        .iter()
-        .find(|a| a.name.starts_with(&target) && !a.name.ends_with(".sha256"))
+    release.assets.iter().find(|a| {
+        a.name.starts_with(&target)
+            // Exclude the sibling checksum and signature assets: they share the
+            // binary's name prefix, so picking one as the binary would break
+            // verification and derive bogus `.sha256` / `.sig` URLs.
+            && !a.name.ends_with(".sha256")
+            && !a.name.ends_with(".sig")
+    })
 }
 
 /// Download a release asset and verify it before returning the temp path.
@@ -548,35 +552,41 @@ mod tests {
 
     #[test]
     fn test_select_asset() {
+        let binary_name = format!(
+            "amigo-server-{}-{}",
+            std::env::consts::OS,
+            std::env::consts::ARCH
+        );
+        // Put the sibling `.sig` and `.sha256` assets *before* the binary so a
+        // naive first-match that only excludes `.sha256` would wrongly pick the
+        // `.sig` — this guards against that ordering bug.
         let release = ReleaseInfo {
             tag_name: "v0.2.0".into(),
             name: None,
             body: None,
             assets: vec![
                 ReleaseAsset {
-                    name: format!(
-                        "amigo-server-{}-{}",
-                        std::env::consts::OS,
-                        std::env::consts::ARCH
-                    ),
-                    browser_download_url: "https://example.com/binary".into(),
-                    size: 1024,
+                    name: format!("{binary_name}.sig"),
+                    browser_download_url: "https://example.com/binary.sig".into(),
+                    size: 64,
                 },
                 ReleaseAsset {
-                    name: format!(
-                        "amigo-server-{}-{}.sha256",
-                        std::env::consts::OS,
-                        std::env::consts::ARCH
-                    ),
+                    name: format!("{binary_name}.sha256"),
                     browser_download_url: "https://example.com/binary.sha256".into(),
                     size: 64,
+                },
+                ReleaseAsset {
+                    name: binary_name.clone(),
+                    browser_download_url: "https://example.com/binary".into(),
+                    size: 1024,
                 },
             ],
         };
 
-        let asset = select_asset(&release);
-        assert!(asset.is_some());
-        assert!(!asset.unwrap().name.ends_with(".sha256"));
+        let asset = select_asset(&release).expect("binary asset must be selected");
+        assert_eq!(asset.name, binary_name);
+        assert!(!asset.name.ends_with(".sha256"));
+        assert!(!asset.name.ends_with(".sig"));
     }
 
     #[tokio::test]

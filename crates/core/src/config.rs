@@ -19,8 +19,13 @@ pub struct WebhookEndpoint {
     /// signed with `X-Amigo-Signature: sha256=<hmac>` so receivers can
     /// authenticate events. A random secret is generated when an endpoint is
     /// created (or when an older config without one is loaded) so signing can
-    /// never be silently disabled.
-    #[serde(default = "generate_webhook_secret")]
+    /// never be silently disabled. An explicit empty/whitespace-only secret in
+    /// a hand-edited config is treated as missing and regenerated, so signing
+    /// can't be weakened to a trivially-forgeable key that way either.
+    #[serde(
+        default = "generate_webhook_secret",
+        deserialize_with = "deserialize_webhook_secret"
+    )]
     pub secret: String,
     #[serde(default = "default_webhook_events")]
     pub events: Vec<String>,
@@ -40,6 +45,22 @@ pub fn generate_webhook_secret() -> String {
         .try_fill_bytes(&mut buf)
         .expect("OS RNG failure");
     hex::encode(buf)
+}
+
+/// Deserialize a webhook `secret`, treating an empty or whitespace-only value
+/// as "missing" and generating a fresh random secret instead. `#[serde(default)]`
+/// only covers an *absent* field; this closes the gap where a hand-edited config
+/// sets `secret = ""` and silently weakens signing to a forgeable empty key.
+fn deserialize_webhook_secret<'de, D>(deserializer: D) -> Result<String, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let s = String::deserialize(deserializer)?;
+    Ok(if s.trim().is_empty() {
+        generate_webhook_secret()
+    } else {
+        s
+    })
 }
 
 fn default_webhook_events() -> Vec<String> {
@@ -458,6 +479,47 @@ impl Config {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn webhook_blank_secret_is_regenerated() {
+        // An explicit empty secret must not survive deserialization — it would
+        // be a trivially-forgeable HMAC key. It is regenerated instead.
+        let hook: WebhookEndpoint = toml::from_str(
+            r#"
+            id = "hook-1"
+            name = "test"
+            url = "https://example.com"
+            secret = ""
+        "#,
+        )
+        .unwrap();
+        assert_eq!(hook.secret.len(), 64, "empty secret must be regenerated");
+        assert!(hook.secret.bytes().all(|b| b.is_ascii_hexdigit()));
+
+        // Whitespace-only is likewise treated as missing.
+        let hook_ws: WebhookEndpoint = toml::from_str(
+            r#"
+            id = "hook-2"
+            name = "test"
+            url = "https://example.com"
+            secret = "   "
+        "#,
+        )
+        .unwrap();
+        assert_eq!(hook_ws.secret.len(), 64);
+
+        // A real secret is preserved verbatim.
+        let hook_real: WebhookEndpoint = toml::from_str(
+            r#"
+            id = "hook-3"
+            name = "test"
+            url = "https://example.com"
+            secret = "deadbeefcafe"
+        "#,
+        )
+        .unwrap();
+        assert_eq!(hook_real.secret, "deadbeefcafe");
+    }
 
     #[test]
     fn test_config_roundtrip_toml() {
