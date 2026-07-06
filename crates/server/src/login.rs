@@ -18,7 +18,7 @@ use axum::{
     routing::{get, post},
 };
 use axum_extra::extract::cookie::{Cookie, SameSite};
-use rand::TryRngCore;
+use rand::TryRng;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
@@ -97,7 +97,7 @@ pub fn login_router(state: AppState, auth: AuthState) -> Router {
 /// Generate a URL-safe opaque session id (32 bytes of randomness, hex-encoded).
 pub fn new_session_id() -> String {
     let mut buf = [0u8; 32];
-    rand::rngs::OsRng
+    rand::rngs::SysRng
         .try_fill_bytes(&mut buf)
         .expect("OS RNG failure");
     hex::encode(buf)

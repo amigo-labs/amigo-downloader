@@ -3,7 +3,7 @@
 use std::future::Future;
 use std::time::Duration;
 
-use rand::Rng;
+use rand::RngExt;
 use tracing::warn;
 
 #[derive(Clone)]
