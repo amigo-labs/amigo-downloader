@@ -199,10 +199,23 @@ async fn stats(State(state): State<AppState>) -> Json<StatsResponse> {
     })
 }
 
+/// Validate a user-submitted download URL against the SSRF guard. Mirrors the
+/// policy already enforced on Click'n'Load, RSS, and webhook URLs so every
+/// URL-submission path blocks loopback / RFC1918 / link-local / metadata
+/// targets consistently. Returns a human-readable rejection reason.
+async fn guard_download_url(url: &str) -> Result<(), String> {
+    crate::net_guard::validate_outbound_url(url, false)
+        .await
+        .map_err(|e| format!("URL rejected: {e}"))
+}
+
 async fn add_download(
     State(state): State<AppState>,
     Json(req): Json<AddDownloadRequest>,
 ) -> Result<(StatusCode, Json<AddResponse>), (StatusCode, Json<ErrorResponse>)> {
+    if let Err(error) = guard_download_url(&req.url).await {
+        return Err((StatusCode::BAD_REQUEST, Json(ErrorResponse { error })));
+    }
     match state.coordinator.add_download(&req.url, req.filename).await {
         Ok(id) => Ok((StatusCode::CREATED, Json(AddResponse { id }))),
         Err(e) => Err((
@@ -221,6 +234,10 @@ async fn add_batch(
     let mut ids = Vec::new();
     let mut errors = Vec::new();
     for url in &req.urls {
+        if let Err(e) = guard_download_url(url).await {
+            errors.push(format!("{url}: {e}"));
+            continue;
+        }
         match state.coordinator.add_download(url, None).await {
             Ok(id) => ids.push(id),
             Err(e) => errors.push(format!("{url}: {e}")),
@@ -605,6 +622,10 @@ async fn upload_container(
     let mut added = Vec::new();
     for pkg in &packages {
         for link in &pkg.links {
+            if let Err(e) = guard_download_url(&link.url).await {
+                tracing::warn!("DLC link {} rejected: {e}", link.url);
+                continue;
+            }
             match state
                 .coordinator
                 .add_download(&link.url, link.filename.clone())

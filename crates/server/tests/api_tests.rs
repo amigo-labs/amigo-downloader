@@ -107,6 +107,30 @@ async fn test_add_download_returns_created() {
 }
 
 #[tokio::test]
+async fn test_add_download_rejects_ssrf_targets() {
+    // The main REST download path must apply the same SSRF guard as
+    // Click'n'Load / RSS / webhooks: loopback, RFC1918, and cloud-metadata
+    // targets are rejected with 400 rather than fetched off the network.
+    let addr = spawn_test_server().await;
+    let client = test_client();
+
+    for url in [
+        "http://127.0.0.1/secret",
+        "http://169.254.169.254/latest/meta-data/",
+        "http://10.0.0.1/x",
+        "file:///etc/passwd",
+    ] {
+        let resp = client
+            .post(format!("{}/api/v1/downloads", base_url(addr)))
+            .json(&serde_json::json!({ "url": url }))
+            .send()
+            .await
+            .unwrap();
+        assert_eq!(resp.status(), 400, "url {url} must be rejected");
+    }
+}
+
+#[tokio::test]
 async fn test_add_download_with_filename() {
     let addr = spawn_test_server().await;
     let client = test_client();

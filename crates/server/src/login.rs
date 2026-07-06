@@ -4,23 +4,61 @@
 //! - `POST /api/v1/logout`  — requires auth; deletes the session row + clears the cookie.
 //! - `GET  /api/v1/me`      — requires auth; returns `{principal}`.
 
+use std::collections::{HashMap, VecDeque};
+use std::net::SocketAddr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use amigo_core::storage::SessionRow;
 use axum::{
     Json, Router,
-    extract::State,
-    http::{StatusCode, header},
+    extract::{ConnectInfo, State},
+    http::{HeaderMap, StatusCode, header},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
 use axum_extra::extract::cookie::{Cookie, SameSite};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
+use tokio::sync::Mutex;
 
 use crate::api::AppState;
-use crate::auth::{AuthState, Principal, SESSION_COOKIE};
+use crate::auth::{self, AuthState, Principal, SESSION_COOKIE};
 use crate::password;
+
+/// Max `/login` attempts per source-IP per window. Password verification uses
+/// Argon2 (expensive per attempt), but without a cap an attacker on a
+/// non-loopback bind could still brute-force a weak password unthrottled.
+const LOGIN_RL_MAX: usize = 10;
+const LOGIN_RL_WINDOW: Duration = Duration::from_secs(60);
+
+type RateLimiter = Arc<Mutex<HashMap<String, VecDeque<Instant>>>>;
+
+/// Check-and-record a login attempt, returning `false` when the per-IP limit
+/// is exceeded for the current window.
+async fn rl_allow(rl: &RateLimiter, ip: &str) -> bool {
+    let now = Instant::now();
+    let mut map = rl.lock().await;
+    let q = map.entry(ip.to_string()).or_default();
+    while let Some(&ts) = q.front() {
+        if now.duration_since(ts) > LOGIN_RL_WINDOW {
+            q.pop_front();
+        } else {
+            break;
+        }
+    }
+    if q.len() >= LOGIN_RL_MAX {
+        return false;
+    }
+    q.push_back(now);
+    true
+}
+
+#[derive(Clone)]
+struct LoginState {
+    app: AppState,
+    rl: RateLimiter,
+}
 
 #[derive(Deserialize)]
 struct LoginRequest {
@@ -37,14 +75,16 @@ struct MeResponse {
 
 pub fn login_router(state: AppState, auth: AuthState) -> Router {
     let auth_layer = axum::middleware::from_fn_with_state(auth.clone(), crate::auth::require_auth);
+    let ls = LoginState {
+        app: state,
+        rl: Arc::new(Mutex::new(HashMap::new())),
+    };
+    let auth_layer2 = auth_layer.clone();
     Router::new()
-        .route(
-            "/api/v1/logout",
-            post(logout).route_layer(auth_layer.clone()),
-        )
-        .route("/api/v1/me", get(me).route_layer(auth_layer))
+        .route("/api/v1/logout", post(logout).route_layer(auth_layer))
+        .route("/api/v1/me", get(me).route_layer(auth_layer2))
         .route("/api/v1/login", post(login))
-        .with_state(Arc::new((state, auth)))
+        .with_state(ls)
 }
 
 /// Generate a URL-safe opaque session id (32 bytes of randomness, hex-encoded).
@@ -80,11 +120,23 @@ pub async fn create_session(
 }
 
 async fn login(
-    State(s): State<Arc<(AppState, AuthState)>>,
+    State(s): State<LoginState>,
+    ConnectInfo(peer): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(req): Json<LoginRequest>,
 ) -> Response {
-    let (app, _auth) = &*s;
+    let app = &s.app;
     let cfg = app.coordinator.config().await;
+
+    let ip = auth::client_ip(&headers, Some(peer), cfg.server.trust_proxy);
+    if !rl_allow(&s.rl, &ip).await {
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(serde_json::json!({ "error": "rate_limited" })),
+        )
+            .into_response();
+    }
+
     let expected_user = cfg.server.admin_username.as_deref();
     let expected_hash = cfg.server.admin_password_hash.as_deref();
     let (Some(user), Some(hash)) = (expected_user, expected_hash) else {
@@ -120,11 +172,8 @@ async fn login(
         .into_response()
 }
 
-async fn logout(
-    State(s): State<Arc<(AppState, AuthState)>>,
-    req: axum::extract::Request,
-) -> Response {
-    let (app, _) = &*s;
+async fn logout(State(s): State<LoginState>, req: axum::extract::Request) -> Response {
+    let app = &s.app;
     if let Some(Principal::Session { session_id, .. }) = req.extensions().get::<Principal>() {
         let _ = app.coordinator.storage().delete_session(session_id).await;
     }

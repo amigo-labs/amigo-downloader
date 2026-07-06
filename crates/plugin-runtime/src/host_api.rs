@@ -2064,15 +2064,28 @@ fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
                 || v4.is_broadcast()
                 || v4.is_unspecified()
                 || v4.is_documentation()
+                || v4.is_multicast()
             {
                 return true;
             }
             let o = v4.octets();
+            // "This host on this network" 0.0.0.0/8 (0.x routes to localhost).
+            if o[0] == 0 {
+                return true;
+            }
+            // Reserved for future use 240.0.0.0/4.
+            if o[0] >= 240 {
+                return true;
+            }
+            // Benchmarking 198.18.0.0/15.
+            if o[0] == 198 && (18..=19).contains(&o[1]) {
+                return true;
+            }
             // CGNAT 100.64.0.0/10 is treated as non-public.
             o[0] == 100 && (64..=127).contains(&o[1])
         }
         IpAddr::V6(v6) => {
-            if v6.is_loopback() || v6.is_unspecified() {
+            if v6.is_loopback() || v6.is_unspecified() || v6.is_multicast() {
                 return true;
             }
             let segs = v6.segments();
@@ -2084,9 +2097,28 @@ fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
             if (segs[0] & 0xffc0) == 0xfe80 {
                 return true;
             }
-            // Walk IPv4-mapped addresses through the v4 check.
-            if let Some(v4) = v6.to_ipv4_mapped() {
+            // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d)
+            // inherit the embedded address's verdict.
+            if let Some(v4) = v6.to_ipv4() {
                 return is_blocked_ip(IpAddr::V4(v4));
+            }
+            // NAT64 / 6to4 / Teredo transition prefixes tunnel a v4 address.
+            let v4_from = |hi: u16, lo: u16| {
+                std::net::Ipv4Addr::new(
+                    (hi >> 8) as u8,
+                    (hi & 0xff) as u8,
+                    (lo >> 8) as u8,
+                    (lo & 0xff) as u8,
+                )
+            };
+            if segs[0] == 0x0064 && segs[1] == 0xff9b {
+                return is_blocked_ip(IpAddr::V4(v4_from(segs[6], segs[7])));
+            }
+            if segs[0] == 0x2002 {
+                return is_blocked_ip(IpAddr::V4(v4_from(segs[1], segs[2])));
+            }
+            if segs[0] == 0x2001 && segs[1] == 0x0000 {
+                return is_blocked_ip(IpAddr::V4(v4_from(segs[6] ^ 0xffff, segs[7] ^ 0xffff)));
             }
             false
         }
