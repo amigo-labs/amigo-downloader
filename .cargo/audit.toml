@@ -40,4 +40,12 @@ ignore = [
     # rand::rng() recursively. Reachable copy is a deep transitive in
     # the SWC chain; we don't install a custom logger that uses rand.
     "RUSTSEC-2026-0097",
+    # quick-xml DoS advisories (quadratic attribute scan / unbounded
+    # namespace allocation). Fixed in quick-xml >=0.41, but no consumer
+    # in our tree resolves to it yet: dash-mpd/pssh-box (DASH MPD parser)
+    # still pin quick-xml 0.37, and tauri-utils pins 0.38 — both are
+    # transitive and can't be bumped from this repo until those crates
+    # release. Remove once dash-mpd and Tauri move to quick-xml >=0.41.
+    "RUSTSEC-2026-0194", # quick-xml quadratic run time on duplicate attrs
+    "RUSTSEC-2026-0195", # quick-xml unbounded namespace allocation (NsReader)
 ]

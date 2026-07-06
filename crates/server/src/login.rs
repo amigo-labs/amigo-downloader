@@ -15,7 +15,7 @@ use axum::{
     routing::{get, post},
 };
 use axum_extra::extract::cookie::{Cookie, SameSite};
-use rand::RngCore;
+use rand::TryRngCore;
 use serde::{Deserialize, Serialize};
 
 use crate::api::AppState;
@@ -50,7 +50,9 @@ pub fn login_router(state: AppState, auth: AuthState) -> Router {
 /// Generate a URL-safe opaque session id (32 bytes of randomness, hex-encoded).
 pub fn new_session_id() -> String {
     let mut buf = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut buf);
+    rand::rngs::OsRng
+        .try_fill_bytes(&mut buf)
+        .expect("OS RNG failure");
     hex::encode(buf)
 }
 

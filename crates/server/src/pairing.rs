@@ -25,7 +25,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
-use rand::RngCore;
+use rand::TryRngCore;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use uuid::Uuid;
@@ -142,14 +142,18 @@ struct IdRequest {
 
 fn rand_hex(bytes: usize) -> String {
     let mut buf = vec![0u8; bytes];
-    rand::rngs::OsRng.fill_bytes(&mut buf);
+    rand::rngs::OsRng
+        .try_fill_bytes(&mut buf)
+        .expect("OS RNG failure");
     hex::encode(buf)
 }
 
 /// 6-digit fingerprint formatted as `NNN-NNN` for easy verbal comparison.
 fn fingerprint() -> String {
     let mut buf = [0u8; 4];
-    rand::rngs::OsRng.fill_bytes(&mut buf);
+    rand::rngs::OsRng
+        .try_fill_bytes(&mut buf)
+        .expect("OS RNG failure");
     let n = u32::from_le_bytes(buf) % 1_000_000;
     let s = format!("{n:06}");
     format!("{}-{}", &s[..3], &s[3..])
