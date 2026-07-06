@@ -127,9 +127,18 @@ function findDownloadLinks(html: string, pageUrl: string): ScoredLink[] {
         if (!href.startsWith("http")) {
             try { href = amigo.urlResolve(pageUrl, href); } catch { continue; }
         }
-        // Anchor inner text: strip tags from the element's outer HTML.
-        const outer = i < anchors.length ? anchors[i] : "";
-        const text = outer.replace(/<[^>]*>/g, "").trim();
+        // Anchor inner text: strip tags from the element's outer HTML. Strip
+        // repeatedly until stable — a single pass can leave a residual `<tag`
+        // behind (e.g. from `<<b>>`), which is what CodeQL flags as incomplete
+        // sanitization. The text is only used for keyword scoring below, never
+        // rendered, but keep it clean anyway.
+        let text = i < anchors.length ? anchors[i] : "";
+        let prev = "";
+        while (text !== prev) {
+            prev = text;
+            text = text.replace(/<[^>]*>/g, "");
+        }
+        text = text.trim();
         const score = scoreLink(href, text);
 
         if (score >= 20 && !seen.has(href)) {
