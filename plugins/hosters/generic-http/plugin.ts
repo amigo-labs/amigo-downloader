@@ -110,18 +110,26 @@ interface ScoredLink { href: string; text: string; score: number }
 
 /** Find all download-worthy links on an HTML page, scored and sorted. */
 function findDownloadLinks(html: string, pageUrl: string): ScoredLink[] {
-    const allHrefs = amigo.regexMatchAll('href=["\']([^"\']+)["\']', html);
-    const allTexts = amigo.regexMatchAll('<a[^>]+href=["\'][^"\']+["\'][^>]*>([^<]*)</a>', html);
+    // Pull hrefs and anchor markup from the SAME set of elements (`a[href]`)
+    // via the DOM parser, so index `i` always pairs an href with its own
+    // anchor text. The previous approach matched `href=` in *any* tag
+    // (stylesheets, images) but text only from `<a>`, so the two arrays
+    // drifted out of alignment and real download links scored on unrelated
+    // text — often dropping below the threshold entirely.
+    const hrefs = amigo.htmlQueryAllAttrs(html, "a[href]", "href");
+    const anchors = amigo.htmlQueryAll(html, "a[href]");
 
     const links: ScoredLink[] = [];
     const seen = new Set<string>();
 
-    for (let i = 0; i < allHrefs.length; i++) {
-        let href = allHrefs[i];
+    for (let i = 0; i < hrefs.length; i++) {
+        let href = hrefs[i];
         if (!href.startsWith("http")) {
             try { href = amigo.urlResolve(pageUrl, href); } catch { continue; }
         }
-        const text = (i < allTexts.length ? allTexts[i] : "") || "";
+        // Anchor inner text: strip tags from the element's outer HTML.
+        const outer = i < anchors.length ? anchors[i] : "";
+        const text = outer.replace(/<[^>]*>/g, "").trim();
         const score = scoreLink(href, text);
 
         if (score >= 20 && !seen.has(href)) {

@@ -105,6 +105,10 @@ module.exports = {
 
         // Try to find and submit the download form
         let downloadUrl: string | null = null;
+        // Mandatory countdown, if the site enforces one. Signalled to the
+        // engine via wait_seconds so the resolved link isn't fetched too early
+        // (which XFS sites answer with a 403 / redirect back to the wait page).
+        let waitSeconds: number | null = null;
 
         // Check if page already has a direct download link
         downloadUrl = amigo.htmlQueryAttr(page1.body, "a#direct-link, a.btn-download, a[href*='/d/'], a[href*='/dl/']", "href");
@@ -126,7 +130,8 @@ module.exports = {
                 const waitSecs = parseInt(waitMatch, 10);
                 if (waitSecs > 0 && waitSecs <= 120) {
                     amigo.logInfo("XFS: Waiting " + waitSecs + " seconds...");
-                    // We signal the wait to the engine via wait_seconds in the result
+                    // Signal the wait to the engine via wait_seconds in the result.
+                    waitSeconds = waitSecs;
                 }
             }
 
@@ -176,7 +181,7 @@ module.exports = {
                 max_chunks: 8,
                 headers: { "Referer": url },
                 cookies: null,
-                wait_seconds: null,
+                wait_seconds: waitSeconds,
                 mirrors: [],
             }],
         };
