@@ -28,7 +28,11 @@ CREATE TABLE IF NOT EXISTS downloads (
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     started_at TEXT,
     completed_at TEXT,
-    metadata TEXT
+    metadata TEXT,
+    -- Identity of the principal that created this download (e.g. the login
+    -- username). NULL for downloads created before this column existed or by
+    -- non-scoped paths (CLI/direct). Used to scope real-time events per user.
+    owner TEXT
 );
 
 CREATE TABLE IF NOT EXISTS chunks (
@@ -189,6 +193,10 @@ pub struct DownloadRow {
     pub created_at: String,
     pub started_at: Option<String>,
     pub completed_at: Option<String>,
+    /// Principal that created this download (login username, or a token/
+    /// preshared marker). `None` for legacy rows and non-scoped creators.
+    #[serde(default)]
+    pub owner: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -272,6 +280,22 @@ pub struct Storage {
 /// rowid) so the CREATE INDEX can succeed. Once the index exists the cleanup
 /// is skipped — `Storage::open` then runs no scans against `downloads` at
 /// startup.
+/// Add the `owner` column to `downloads` on databases created before it
+/// existed. `CREATE TABLE IF NOT EXISTS` never alters an existing table, so an
+/// upgraded install would otherwise be missing the column. Idempotent: checks
+/// `PRAGMA table_info` and only ALTERs when absent.
+fn ensure_owner_column(conn: &Connection) -> Result<(), crate::Error> {
+    let has_owner = conn
+        .prepare("PRAGMA table_info(downloads)")?
+        .query_map([], |row| row.get::<_, String>(1))?
+        .filter_map(Result::ok)
+        .any(|name| name == "owner");
+    if !has_owner {
+        conn.execute_batch("ALTER TABLE downloads ADD COLUMN owner TEXT;")?;
+    }
+    Ok(())
+}
+
 fn ensure_active_url_index(conn: &Connection) -> Result<(), crate::Error> {
     let index_exists: bool = conn
         .query_row(
@@ -326,6 +350,7 @@ impl Storage {
              PRAGMA temp_store=MEMORY;",
         )?;
         conn.execute_batch(SCHEMA)?;
+        ensure_owner_column(&conn)?;
         ensure_active_url_index(&conn)?;
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
@@ -339,6 +364,7 @@ impl Storage {
         let conn = Connection::open_in_memory()?;
         conn.execute_batch("PRAGMA foreign_keys=ON;")?;
         conn.execute_batch(SCHEMA)?;
+        ensure_owner_column(&conn)?;
         ensure_active_url_index(&conn)?;
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
@@ -350,12 +376,12 @@ impl Storage {
     pub async fn insert_download(&self, row: &DownloadRow) -> Result<(), crate::Error> {
         let db = self.db.lock().await;
         let result = db.execute(
-            "INSERT INTO downloads (id, url, protocol, filename, filesize, status, priority, package_id, plugin_id, download_dir, bytes_downloaded, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, datetime('now'))",
+            "INSERT INTO downloads (id, url, protocol, filename, filesize, status, priority, package_id, plugin_id, download_dir, bytes_downloaded, owner, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, datetime('now'))",
             rusqlite::params![
                 row.id, row.url, row.protocol, row.filename, row.filesize,
                 row.status, row.priority, row.package_id, row.plugin_id,
-                row.download_dir, row.bytes_downloaded,
+                row.download_dir, row.bytes_downloaded, row.owner,
             ],
         );
         match result {
@@ -385,7 +411,7 @@ impl Storage {
         let mut stmt = db.prepare_cached(
             "SELECT id, url, protocol, filename, filesize, status, priority, package_id, plugin_id,
                     download_dir, bytes_downloaded, speed_current, error_message, retry_count,
-                    created_at, started_at, completed_at
+                    created_at, started_at, completed_at, owner
              FROM downloads WHERE id = ?1",
         )?;
         let mut rows = stmt.query_map(rusqlite::params![id], row_to_download)?;
@@ -414,7 +440,7 @@ impl Storage {
         let mut stmt = db.prepare_cached(
             "SELECT id, url, protocol, filename, filesize, status, priority, package_id, plugin_id,
                     download_dir, bytes_downloaded, speed_current, error_message, retry_count,
-                    created_at, started_at, completed_at
+                    created_at, started_at, completed_at, owner
              FROM downloads ORDER BY priority DESC, created_at ASC",
         )?;
         let rows = stmt.query_map([], row_to_download)?;
@@ -430,7 +456,7 @@ impl Storage {
         let mut stmt = db.prepare_cached(
             "SELECT id, url, protocol, filename, filesize, status, priority, package_id, plugin_id,
                     download_dir, bytes_downloaded, speed_current, error_message, retry_count,
-                    created_at, started_at, completed_at
+                    created_at, started_at, completed_at, owner
              FROM downloads WHERE status = ?1 ORDER BY priority DESC, created_at ASC",
         )?;
         let rows = stmt.query_map(rusqlite::params![status_str], row_to_download)?;
@@ -550,7 +576,7 @@ impl Storage {
         let mut stmt = db.prepare(
             "SELECT id, url, protocol, filename, filesize, 'completed', 0, NULL, NULL,
                     download_dir, COALESCE(filesize, 0), 0, NULL, 0,
-                    completed_at, NULL, completed_at
+                    completed_at, NULL, completed_at, NULL
              FROM history ORDER BY completed_at DESC",
         )?;
         let rows = stmt.query_map([], row_to_download)?;
@@ -731,7 +757,7 @@ impl Storage {
         let mut stmt = db.prepare(
             "SELECT id, url, protocol, filename, filesize, status, priority, package_id, plugin_id,
                     download_dir, bytes_downloaded, speed_current, error_message, retry_count,
-                    created_at, started_at, completed_at
+                    created_at, started_at, completed_at, owner
              FROM downloads WHERE protocol = ?1 ORDER BY created_at DESC",
         )?;
         let rows = stmt.query_map(rusqlite::params![protocol], row_to_download)?;
@@ -1138,12 +1164,79 @@ fn row_to_download(row: &rusqlite::Row<'_>) -> rusqlite::Result<DownloadRow> {
         created_at: row.get(14)?,
         started_at: row.get(15)?,
         completed_at: row.get(16)?,
+        owner: row.get(17)?,
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ensure_owner_column_adds_missing_column_idempotently() {
+        // Simulate a database created before the `owner` column existed.
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE downloads (id TEXT PRIMARY KEY, url TEXT NOT NULL, protocol TEXT NOT NULL,
+                                     filename TEXT, filesize INTEGER, status TEXT NOT NULL,
+                                     priority INTEGER, package_id TEXT, plugin_id TEXT,
+                                     download_dir TEXT, bytes_downloaded INTEGER, speed_current INTEGER,
+                                     error_message TEXT, retry_count INTEGER, created_at TEXT,
+                                     started_at TEXT, completed_at TEXT);",
+        )
+        .unwrap();
+
+        let has_owner = |c: &Connection| -> bool {
+            c.prepare("PRAGMA table_info(downloads)")
+                .unwrap()
+                .query_map([], |r| r.get::<_, String>(1))
+                .unwrap()
+                .filter_map(Result::ok)
+                .any(|n| n == "owner")
+        };
+
+        assert!(!has_owner(&conn), "precondition: no owner column");
+        ensure_owner_column(&conn).unwrap();
+        assert!(has_owner(&conn), "owner column added by migration");
+        // Running again must not error (column already present).
+        ensure_owner_column(&conn).unwrap();
+    }
+
+    #[tokio::test]
+    async fn owner_round_trips_through_insert_and_read() {
+        let storage = Storage::open_memory().unwrap();
+        let mut row = DownloadRow {
+            id: "owned-1".into(),
+            url: "https://example.com/owned.zip".into(),
+            protocol: "http".into(),
+            filename: None,
+            filesize: None,
+            status: "queued".into(),
+            priority: 0,
+            package_id: None,
+            plugin_id: None,
+            download_dir: None,
+            bytes_downloaded: 0,
+            speed_current: 0,
+            error_message: None,
+            retry_count: 0,
+            created_at: String::new(),
+            started_at: None,
+            completed_at: None,
+            owner: Some("alice".into()),
+        };
+        storage.insert_download(&row).await.unwrap();
+        let fetched = storage.get_download("owned-1").await.unwrap().unwrap();
+        assert_eq!(fetched.owner.as_deref(), Some("alice"));
+
+        // An unowned download reads back as None.
+        row.id = "owned-2".into();
+        row.url = "https://example.com/unowned.zip".into();
+        row.owner = None;
+        storage.insert_download(&row).await.unwrap();
+        let fetched = storage.get_download("owned-2").await.unwrap().unwrap();
+        assert_eq!(fetched.owner, None);
+    }
 
     #[tokio::test]
     async fn test_insert_and_get_download() {
@@ -1166,6 +1259,7 @@ mod tests {
             created_at: String::new(),
             started_at: None,
             completed_at: None,
+            owner: None,
         };
         storage.insert_download(&row).await.unwrap();
         let fetched = storage.get_download("test-1").await.unwrap().unwrap();
@@ -1194,6 +1288,7 @@ mod tests {
             created_at: String::new(),
             started_at: None,
             completed_at: None,
+            owner: None,
         };
         storage.insert_download(&row).await.unwrap();
         storage

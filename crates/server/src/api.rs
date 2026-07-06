@@ -209,14 +209,31 @@ async fn guard_download_url(url: &str) -> Result<(), String> {
         .map_err(|e| format!("URL rejected: {e}"))
 }
 
+/// Derive the owner string stored on downloads (and used to scope real-time
+/// events) from the authenticated principal. Only login sessions are scoped by
+/// username; operator credentials (pre-shared / API token) and unauthenticated
+/// paths create unowned downloads that only admin clients see in the stream.
+fn principal_owner(principal: &Option<axum::Extension<crate::auth::Principal>>) -> Option<String> {
+    match principal.as_deref() {
+        Some(crate::auth::Principal::Session { username, .. }) => Some(username.clone()),
+        _ => None,
+    }
+}
+
 async fn add_download(
     State(state): State<AppState>,
+    principal: Option<axum::Extension<crate::auth::Principal>>,
     Json(req): Json<AddDownloadRequest>,
 ) -> Result<(StatusCode, Json<AddResponse>), (StatusCode, Json<ErrorResponse>)> {
     if let Err(error) = guard_download_url(&req.url).await {
         return Err((StatusCode::BAD_REQUEST, Json(ErrorResponse { error })));
     }
-    match state.coordinator.add_download(&req.url, req.filename).await {
+    let owner = principal_owner(&principal);
+    match state
+        .coordinator
+        .add_download_with_options(&req.url, req.filename, None, 0, owner)
+        .await
+    {
         Ok(id) => Ok((StatusCode::CREATED, Json(AddResponse { id }))),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -229,16 +246,22 @@ async fn add_download(
 
 async fn add_batch(
     State(state): State<AppState>,
+    principal: Option<axum::Extension<crate::auth::Principal>>,
     Json(req): Json<BatchRequest>,
 ) -> (StatusCode, Json<BatchResponse>) {
     let mut ids = Vec::new();
     let mut errors = Vec::new();
+    let owner = principal_owner(&principal);
     for url in &req.urls {
         if let Err(e) = guard_download_url(url).await {
             errors.push(format!("{url}: {e}"));
             continue;
         }
-        match state.coordinator.add_download(url, None).await {
+        match state
+            .coordinator
+            .add_download_with_options(url, None, None, 0, owner.clone())
+            .await
+        {
             Ok(id) => ids.push(id),
             Err(e) => errors.push(format!("{url}: {e}")),
         }

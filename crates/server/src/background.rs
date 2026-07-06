@@ -290,7 +290,7 @@ async fn fetch_and_process_feed(
         };
 
         match coordinator
-            .add_download_with_options(&url, None, category, 0)
+            .add_download_with_options(&url, None, category, 0, None)
             .await
         {
             Ok(_id) => {

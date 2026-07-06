@@ -74,6 +74,28 @@ pub enum DownloadEvent {
     QueueEmpty,
 }
 
+impl DownloadEvent {
+    /// The download this event is about, if any. Events tied to a specific
+    /// download are scoped per-owner in the event stream; events returning
+    /// `None` here (queue/plugin/captcha-resolution notifications) are global
+    /// and delivered to every authenticated client.
+    pub fn subject_download_id(&self) -> Option<&str> {
+        match self {
+            DownloadEvent::Added { id, .. }
+            | DownloadEvent::Progress { id, .. }
+            | DownloadEvent::StatusChanged { id, .. }
+            | DownloadEvent::Completed { id }
+            | DownloadEvent::Failed { id, .. }
+            | DownloadEvent::Removed { id } => Some(id),
+            DownloadEvent::CaptchaChallenge { download_id, .. } => Some(download_id),
+            DownloadEvent::PluginNotification { .. }
+            | DownloadEvent::CaptchaSolved { .. }
+            | DownloadEvent::CaptchaTimeout { .. }
+            | DownloadEvent::QueueEmpty => None,
+        }
+    }
+}
+
 /// Tracks an active download task.
 struct ActiveDownload {
     /// Cancellation signal. A `watch::<bool>` (rather than a one-shot) so the
@@ -90,6 +112,11 @@ pub struct Coordinator {
     retry_policy: Arc<Mutex<RetryPolicy>>,
     active: Arc<Mutex<HashMap<String, ActiveDownload>>>,
     event_tx: broadcast::Sender<DownloadEvent>,
+    /// Cache of download id → owning principal, used to scope real-time events
+    /// per user without a DB round-trip on every (frequent) progress event.
+    /// Populated at creation and lazily from storage on a miss; never evicted
+    /// so a `Removed` event still resolves to its owner after the row is gone.
+    owners: Arc<Mutex<HashMap<String, Option<String>>>>,
     resolvers: Vec<Arc<dyn UrlResolver>>,
     /// Signaled when a download completes/fails so the queue can advance.
     queue_notify: Arc<tokio::sync::Notify>,
@@ -126,6 +153,7 @@ impl Coordinator {
             retry_policy: Arc::new(Mutex::new(retry_policy)),
             active: Arc::new(Mutex::new(HashMap::new())),
             event_tx,
+            owners: Arc::new(Mutex::new(HashMap::new())),
             resolvers: Vec::new(),
             queue_notify: Arc::new(tokio::sync::Notify::new()),
             start_lock: Arc::new(Mutex::new(())),
@@ -162,6 +190,28 @@ impl Coordinator {
         self.event_tx.subscribe()
     }
 
+    /// Resolve the owning principal of a download, for per-user event scoping.
+    /// Reads the in-memory cache first (populated at creation) and falls back
+    /// to storage once for downloads not yet cached (e.g. recovered at startup
+    /// or created before ownership existed), caching the result.
+    pub async fn download_owner(&self, id: &str) -> Option<String> {
+        if let Some(owner) = self.owners.lock().await.get(id) {
+            return owner.clone();
+        }
+        let owner = self
+            .storage
+            .get_download(id)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|row| row.owner);
+        self.owners
+            .lock()
+            .await
+            .insert(id.to_string(), owner.clone());
+        owner
+    }
+
     /// Get the event sender (for wiring captcha manager, notifications, etc.)
     pub fn event_sender(&self) -> broadcast::Sender<DownloadEvent> {
         self.event_tx.clone()
@@ -186,22 +236,29 @@ impl Coordinator {
         *self.config.lock().await = new_config;
     }
 
-    /// Add a new download and start it if slots are available.
+    /// Add a new download and start it if slots are available. The download is
+    /// unowned (visible only to admin clients in the real-time event stream);
+    /// use [`add_download_with_options`](Self::add_download_with_options) to
+    /// attribute it to a specific principal.
     pub async fn add_download(
         &self,
         url: &str,
         filename: Option<String>,
     ) -> Result<String, crate::Error> {
-        self.add_download_with_options(url, filename, None, 0).await
+        self.add_download_with_options(url, filename, None, 0, None)
+            .await
     }
 
-    /// Add a download with category and priority.
+    /// Add a download with category, priority, and owning principal. `owner`
+    /// (e.g. a login username) scopes the download's real-time events to that
+    /// principal; `None` leaves it unowned (admin-only in the event stream).
     pub async fn add_download_with_options(
         &self,
         url: &str,
         filename: Option<String>,
         category: Option<String>,
         priority: i32,
+        owner: Option<String>,
     ) -> Result<String, crate::Error> {
         // Duplicate detection: check if same URL is already queued/downloading.
         // Indexed point lookup rather than scanning every download.
@@ -261,6 +318,7 @@ impl Coordinator {
             created_at: String::new(),
             started_at: None,
             completed_at: None,
+            owner: owner.clone(),
         };
 
         // The pre-check above is a fast path; the partial-unique index in the
@@ -277,6 +335,8 @@ impl Coordinator {
             }
             Err(e) => return Err(e),
         }
+        // Cache the owner so event filtering doesn't hit the DB per event.
+        self.owners.lock().await.insert(id.clone(), owner);
         let _ = self.event_tx.send(DownloadEvent::Added {
             id: id.clone(),
             url: url.to_string(),

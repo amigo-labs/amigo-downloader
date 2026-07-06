@@ -33,6 +33,79 @@ async fn test_add_download_creates_entry() {
 }
 
 #[tokio::test]
+async fn test_owner_is_attributed_and_resolvable() {
+    let coord = test_coordinator();
+
+    // A download created with an owner resolves to that owner (from cache and
+    // from a fresh storage lookup).
+    let owned = coord
+        .add_download_with_options(
+            "https://example.com/owned.zip",
+            None,
+            None,
+            0,
+            Some("alice".to_string()),
+        )
+        .await
+        .unwrap();
+    assert_eq!(coord.download_owner(&owned).await.as_deref(), Some("alice"));
+    assert_eq!(
+        coord
+            .storage()
+            .get_download(&owned)
+            .await
+            .unwrap()
+            .unwrap()
+            .owner
+            .as_deref(),
+        Some("alice")
+    );
+
+    // A plain add_download is unowned.
+    let unowned = coord
+        .add_download("https://example.com/unowned.zip", None)
+        .await
+        .unwrap();
+    assert_eq!(coord.download_owner(&unowned).await, None);
+}
+
+#[tokio::test]
+async fn test_subject_download_id_classifies_events() {
+    use amigo_core::coordinator::DownloadEvent;
+    // Download-scoped events expose their download id.
+    assert_eq!(
+        DownloadEvent::Added {
+            id: "d1".into(),
+            url: "u".into()
+        }
+        .subject_download_id(),
+        Some("d1")
+    );
+    assert_eq!(
+        DownloadEvent::CaptchaChallenge {
+            id: "c1".into(),
+            plugin_id: "p".into(),
+            download_id: "d2".into(),
+            image_url: "img".into(),
+            captcha_type: "image".into(),
+        }
+        .subject_download_id(),
+        Some("d2")
+    );
+    // Global events are not download-scoped.
+    assert_eq!(DownloadEvent::QueueEmpty.subject_download_id(), None);
+    assert_eq!(
+        DownloadEvent::PluginNotification {
+            plugin_id: "p".into(),
+            title: "t".into(),
+            message: "m".into(),
+        }
+        .subject_download_id(),
+        None
+    );
+}
+
+#[tokio::test]
 async fn test_add_download_deduplication() {
     let coord = test_coordinator();
     let id1 = coord
@@ -81,7 +154,7 @@ async fn test_add_download_with_filename() {
 async fn test_add_download_with_priority() {
     let coord = test_coordinator();
     let id = coord
-        .add_download_with_options("https://example.com/movie.mp4", None, None, 5)
+        .add_download_with_options("https://example.com/movie.mp4", None, None, 5, None)
         .await
         .unwrap();
 
@@ -225,6 +298,7 @@ async fn test_chunk_storage_roundtrip() {
         created_at: String::new(),
         started_at: None,
         completed_at: None,
+        owner: None,
     };
     storage.insert_download(&row).await.unwrap();
 
