@@ -29,6 +29,7 @@ fn make_download(id: &str, url: &str) -> DownloadRow {
         created_at: String::new(),
         started_at: None,
         completed_at: None,
+        owner: None,
     }
 }
 

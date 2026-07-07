@@ -23,6 +23,7 @@ toml = { workspace = true }
 semver = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
+ed25519-dalek = { workspace = true }
 self-replace = { workspace = true }
 tempfile = { workspace = true }
 m3u8-rs = { workspace = true }

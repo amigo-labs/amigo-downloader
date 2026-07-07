@@ -29,12 +29,16 @@ COPY crates/ crates/
 COPY tauri/ tauri/
 COPY --from=ui-builder /app/web-ui/dist web-ui/dist
 
-# Plugin-registry pubkey is baked into the binary at compile time
-# (crates/plugin-runtime/build.rs refuses to compile a release build
-# without it, so an all-zero placeholder can never ship). Production
-# images must be built with `--build-arg AMIGO_REGISTRY_PUBKEY_HEX=<real key>`.
+# Plugin-registry and self-update pubkeys are baked into the binary at compile
+# time (crates/plugin-runtime/build.rs and crates/core/build.rs each refuse to
+# compile a release build without their key, so an all-zero placeholder can
+# never ship). Production images must be built with
+# `--build-arg AMIGO_REGISTRY_PUBKEY_HEX=<real key>` and
+# `--build-arg AMIGO_UPDATE_PUBKEY_HEX=<real key>`.
 ARG AMIGO_REGISTRY_PUBKEY_HEX
 ENV AMIGO_REGISTRY_PUBKEY_HEX=${AMIGO_REGISTRY_PUBKEY_HEX}
+ARG AMIGO_UPDATE_PUBKEY_HEX
+ENV AMIGO_UPDATE_PUBKEY_HEX=${AMIGO_UPDATE_PUBKEY_HEX}
 RUN cargo build --release --bin amigo-server --bin amigo-dl
 
 # Stage 3: Runtime

@@ -1214,6 +1214,7 @@ async fn main() -> anyhow::Result<()> {
                         latest,
                         download_url,
                         sha256_url,
+                        sig_url,
                         ..
                     } => {
                         if !yes {
@@ -1226,6 +1227,8 @@ async fn main() -> anyhow::Result<()> {
                             &client,
                             &download_url,
                             sha256_url.as_deref(),
+                            sig_url.as_deref(),
+                            &latest,
                         )
                         .await?;
                         println!("Update applied! Restart amigo-dl to use v{latest}.");

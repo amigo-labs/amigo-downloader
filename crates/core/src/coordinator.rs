@@ -74,6 +74,28 @@ pub enum DownloadEvent {
     QueueEmpty,
 }
 
+impl DownloadEvent {
+    /// The download this event is about, if any. Events tied to a specific
+    /// download are scoped per-owner in the event stream; events returning
+    /// `None` here (queue/plugin/captcha-resolution notifications) are global
+    /// and delivered to every authenticated client.
+    pub fn subject_download_id(&self) -> Option<&str> {
+        match self {
+            DownloadEvent::Added { id, .. }
+            | DownloadEvent::Progress { id, .. }
+            | DownloadEvent::StatusChanged { id, .. }
+            | DownloadEvent::Completed { id }
+            | DownloadEvent::Failed { id, .. }
+            | DownloadEvent::Removed { id } => Some(id),
+            DownloadEvent::CaptchaChallenge { download_id, .. } => Some(download_id),
+            DownloadEvent::PluginNotification { .. }
+            | DownloadEvent::CaptchaSolved { .. }
+            | DownloadEvent::CaptchaTimeout { .. }
+            | DownloadEvent::QueueEmpty => None,
+        }
+    }
+}
+
 /// Tracks an active download task.
 struct ActiveDownload {
     /// Cancellation signal. A `watch::<bool>` (rather than a one-shot) so the
@@ -90,6 +112,14 @@ pub struct Coordinator {
     retry_policy: Arc<Mutex<RetryPolicy>>,
     active: Arc<Mutex<HashMap<String, ActiveDownload>>>,
     event_tx: broadcast::Sender<DownloadEvent>,
+    /// Cache of download id → owning principal, used to scope real-time events
+    /// per user without a DB round-trip on every (frequent) progress event.
+    /// Populated at creation and lazily from storage on a miss. LRU-bounded so
+    /// a long-running process can't accumulate one entry per download ever
+    /// seen; an evicted entry reloads from storage on the next miss, and the
+    /// recency touch keeps active/just-touched downloads resident so a
+    /// `Removed` event still resolves to its owner after the row is gone.
+    owners: Arc<Mutex<OwnerCache>>,
     resolvers: Vec<Arc<dyn UrlResolver>>,
     /// Signaled when a download completes/fails so the queue can advance.
     queue_notify: Arc<tokio::sync::Notify>,
@@ -104,6 +134,80 @@ pub struct Coordinator {
 /// produced at startup recovery (50+ status changes in flight) and during
 /// large parallel-download progress fan-out.
 const EVENT_CHANNEL_CAPACITY: usize = 4096;
+
+/// Upper bound on the number of download→owner mappings retained in memory.
+/// Generous enough to comfortably hold any realistic active+recent working
+/// set; entries beyond it are LRU-evicted and reload from storage on demand.
+const OWNER_CACHE_CAP: usize = 8192;
+
+/// LRU-bounded cache of download id → owning principal.
+///
+/// The owner lookup happens on the hot path (every download-scoped event, for
+/// every session-scoped WebSocket client), so it must avoid a DB round-trip in
+/// the common case — but it must also not grow without bound over the life of
+/// a long-running server. Entries carry a monotonically increasing "last use"
+/// tick; when the map is full, inserting a new id evicts the least-recently
+/// used entry. Eviction is safe: `download_owner` reloads a missing entry from
+/// storage, and because a hit refreshes recency, a download that is active or
+/// was just touched (e.g. one being cancelled, whose row is about to be
+/// deleted) is never the eviction victim, so its `Removed` event still
+/// resolves to the right owner.
+struct OwnerCache {
+    map: HashMap<String, (Option<String>, u64)>,
+    tick: u64,
+    cap: usize,
+}
+
+impl OwnerCache {
+    fn new(cap: usize) -> Self {
+        debug_assert!(cap > 0, "OwnerCache capacity must be non-zero");
+        Self {
+            map: HashMap::new(),
+            tick: 0,
+            cap,
+        }
+    }
+
+    /// Look up an id, refreshing its recency on a hit. Returns the cached owner
+    /// (the outer `Option` distinguishes a hit from a miss; the inner is the
+    /// possibly-`None` owner).
+    fn get(&mut self, id: &str) -> Option<Option<String>> {
+        self.tick += 1;
+        let tick = self.tick;
+        let entry = self.map.get_mut(id)?;
+        entry.1 = tick;
+        Some(entry.0.clone())
+    }
+
+    /// Insert (or overwrite) an id's owner, evicting the least-recently-used
+    /// entry first when the cache is full and the id is new.
+    fn insert(&mut self, id: String, owner: Option<String>) {
+        self.tick += 1;
+        if !self.map.contains_key(&id) && self.map.len() >= self.cap {
+            // Evict the least-recently-used entry. This runs only on inserts
+            // past capacity, so the O(n) scan is off the steady-state hot path.
+            if let Some(lru_id) = self
+                .map
+                .iter()
+                .min_by_key(|(_, (_, t))| *t)
+                .map(|(k, _)| k.clone())
+            {
+                self.map.remove(&lru_id);
+            }
+        }
+        self.map.insert(id, (owner, self.tick));
+    }
+
+    #[cfg(test)]
+    fn len(&self) -> usize {
+        self.map.len()
+    }
+
+    #[cfg(test)]
+    fn contains(&self, id: &str) -> bool {
+        self.map.contains_key(id)
+    }
+}
 
 impl Coordinator {
     pub fn new(config: Config, storage: Storage) -> Self {
@@ -126,6 +230,7 @@ impl Coordinator {
             retry_policy: Arc::new(Mutex::new(retry_policy)),
             active: Arc::new(Mutex::new(HashMap::new())),
             event_tx,
+            owners: Arc::new(Mutex::new(OwnerCache::new(OWNER_CACHE_CAP))),
             resolvers: Vec::new(),
             queue_notify: Arc::new(tokio::sync::Notify::new()),
             start_lock: Arc::new(Mutex::new(())),
@@ -162,6 +267,30 @@ impl Coordinator {
         self.event_tx.subscribe()
     }
 
+    /// Resolve the owning principal of a download, for per-user event scoping.
+    /// Reads the in-memory cache first (populated at creation) and falls back
+    /// to storage once for downloads not yet cached (e.g. recovered at startup
+    /// or created before ownership existed), caching the result.
+    pub async fn download_owner(&self, id: &str) -> Option<String> {
+        // A hit also refreshes recency so active/just-touched downloads stay
+        // resident in the LRU (see `OwnerCache`).
+        if let Some(owner) = self.owners.lock().await.get(id) {
+            return owner;
+        }
+        let owner = self
+            .storage
+            .get_download(id)
+            .await
+            .ok()
+            .flatten()
+            .and_then(|row| row.owner);
+        self.owners
+            .lock()
+            .await
+            .insert(id.to_string(), owner.clone());
+        owner
+    }
+
     /// Get the event sender (for wiring captcha manager, notifications, etc.)
     pub fn event_sender(&self) -> broadcast::Sender<DownloadEvent> {
         self.event_tx.clone()
@@ -186,22 +315,29 @@ impl Coordinator {
         *self.config.lock().await = new_config;
     }
 
-    /// Add a new download and start it if slots are available.
+    /// Add a new download and start it if slots are available. The download is
+    /// unowned (visible only to admin clients in the real-time event stream);
+    /// use [`add_download_with_options`](Self::add_download_with_options) to
+    /// attribute it to a specific principal.
     pub async fn add_download(
         &self,
         url: &str,
         filename: Option<String>,
     ) -> Result<String, crate::Error> {
-        self.add_download_with_options(url, filename, None, 0).await
+        self.add_download_with_options(url, filename, None, 0, None)
+            .await
     }
 
-    /// Add a download with category and priority.
+    /// Add a download with category, priority, and owning principal. `owner`
+    /// (e.g. a login username) scopes the download's real-time events to that
+    /// principal; `None` leaves it unowned (admin-only in the event stream).
     pub async fn add_download_with_options(
         &self,
         url: &str,
         filename: Option<String>,
         category: Option<String>,
         priority: i32,
+        owner: Option<String>,
     ) -> Result<String, crate::Error> {
         // Duplicate detection: check if same URL is already queued/downloading.
         // Indexed point lookup rather than scanning every download.
@@ -261,6 +397,7 @@ impl Coordinator {
             created_at: String::new(),
             started_at: None,
             completed_at: None,
+            owner: owner.clone(),
         };
 
         // The pre-check above is a fast path; the partial-unique index in the
@@ -277,6 +414,8 @@ impl Coordinator {
             }
             Err(e) => return Err(e),
         }
+        // Cache the owner so event filtering doesn't hit the DB per event.
+        self.owners.lock().await.insert(id.clone(), owner);
         let _ = self.event_tx.send(DownloadEvent::Added {
             id: id.clone(),
             url: url.to_string(),
@@ -744,5 +883,46 @@ impl Protocol {
             Protocol::Dash => "dash",
             Protocol::Usenet => "usenet",
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn owner_cache_is_bounded_and_reflects_owner() {
+        let mut cache = OwnerCache::new(4);
+        for i in 0..4 {
+            cache.insert(format!("dl-{i}"), Some(format!("user-{i}")));
+        }
+        assert_eq!(cache.len(), 4);
+        assert_eq!(cache.get("dl-2"), Some(Some("user-2".to_string())));
+        // A miss is distinct from a cached `None` owner.
+        cache.insert("unowned".to_string(), None);
+        // Inserting "unowned" (5th id into a cap-4 cache) evicted one entry.
+        assert_eq!(cache.len(), 4);
+        assert_eq!(cache.get("unowned"), Some(None));
+        assert_eq!(cache.get("missing"), None);
+    }
+
+    #[test]
+    fn owner_cache_evicts_least_recently_used() {
+        let mut cache = OwnerCache::new(3);
+        cache.insert("a".to_string(), Some("ua".to_string()));
+        cache.insert("b".to_string(), Some("ub".to_string()));
+        cache.insert("c".to_string(), Some("uc".to_string()));
+
+        // Touch "a" so it is the most-recently-used; "b" is now the LRU.
+        assert!(cache.get("a").is_some());
+
+        // Inserting a fourth id must evict the LRU ("b"), not the just-touched
+        // "a" — this is what keeps a soon-to-be-`Removed` download resolvable.
+        cache.insert("d".to_string(), Some("ud".to_string()));
+        assert_eq!(cache.len(), 3);
+        assert!(cache.contains("a"), "recently-touched entry must survive");
+        assert!(cache.contains("c"));
+        assert!(cache.contains("d"));
+        assert!(!cache.contains("b"), "LRU entry must be evicted");
     }
 }
