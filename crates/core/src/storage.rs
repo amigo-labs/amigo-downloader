@@ -341,9 +341,12 @@ impl Storage {
         // durable across application crashes, only risking the last transaction
         // on power loss. busy_timeout avoids spurious SQLITE_BUSY under the
         // concurrent access the server generates; temp_store=MEMORY keeps
-        // sorting/temp B-trees off disk.
+        // sorting/temp B-trees off disk. wal_autocheckpoint bounds the -wal
+        // file: without it the WAL grows unbounded on a long-running server
+        // that streams chatty progress updates (it can reach gigabytes).
         conn.execute_batch(
             "PRAGMA journal_mode=WAL;
+             PRAGMA wal_autocheckpoint=1000;
              PRAGMA foreign_keys=ON;
              PRAGMA synchronous=NORMAL;
              PRAGMA busy_timeout=5000;
