@@ -432,8 +432,11 @@ impl Config {
         }
         // Delays feed Duration::from_secs_f64, which panics on negative/NaN,
         // so reject those here rather than crashing later in RetryPolicy::from.
-        if !self.retry.base_delay_secs.is_finite() || self.retry.base_delay_secs < 0.0 {
-            errors.push("retry.base_delay_secs must be a finite, non-negative number".into());
+        // A base delay below 0.1s (including 0.0) makes the exponential backoff
+        // emit ~zero delay on every attempt, spinning the CPU on a failing
+        // download, so enforce a 0.1s floor.
+        if !self.retry.base_delay_secs.is_finite() || self.retry.base_delay_secs < 0.1 {
+            errors.push("retry.base_delay_secs must be a finite number >= 0.1".into());
         }
         if !self.retry.max_delay_secs.is_finite() || self.retry.max_delay_secs < 0.0 {
             errors.push("retry.max_delay_secs must be a finite, non-negative number".into());
@@ -612,6 +615,24 @@ mod tests {
         assert!(
             !cfg.validate().is_empty(),
             "NaN base delay must be rejected"
+        );
+
+        // A zero (or sub-0.1s) base delay would hot-loop the retry backoff and
+        // must be rejected too.
+        let mut cfg = Config::default();
+        cfg.retry.base_delay_secs = 0.0;
+        assert!(
+            cfg.validate().iter().any(|e| e.contains("base_delay_secs")),
+            "zero base delay must be rejected: {:?}",
+            cfg.validate()
+        );
+
+        let mut cfg = Config::default();
+        cfg.retry.base_delay_secs = 0.05;
+        assert!(
+            cfg.validate().iter().any(|e| e.contains("base_delay_secs")),
+            "sub-0.1s base delay must be rejected: {:?}",
+            cfg.validate()
         );
     }
 
