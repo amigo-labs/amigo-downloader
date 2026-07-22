@@ -34,9 +34,17 @@ impl From<crate::config::RetryConfig> for RetryPolicy {
 }
 
 impl RetryPolicy {
+    /// Minimum base delay enforced regardless of configuration.
+    ///
+    /// A `base_delay` of zero would make the exponential backoff emit
+    /// `Duration::ZERO` on every attempt, turning a failing download into a
+    /// 100% CPU hot-loop. Config validation rejects sub-0.1s values, but this
+    /// clamp is a defense-in-depth guard for any `RetryPolicy` built directly.
+    const MIN_BASE_DELAY_MS: u64 = 100;
+
     /// Calculate delay for attempt N with exponential backoff + jitter.
     pub fn delay_for_attempt(&self, attempt: u32) -> Duration {
-        let base = self.base_delay.as_millis() as u64;
+        let base = (self.base_delay.as_millis() as u64).max(Self::MIN_BASE_DELAY_MS);
         let exp_delay = base.saturating_mul(2u64.saturating_pow(attempt));
         let max = self.max_delay.as_millis() as u64;
         let capped = exp_delay.min(max);
@@ -208,5 +216,25 @@ mod tests {
         .await;
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_zero_base_delay_does_not_hot_loop() {
+        // A misconfigured zero base delay must still yield a non-zero backoff
+        // thanks to the MIN_BASE_DELAY_MS clamp, otherwise a failing download
+        // would spin the CPU at 100%.
+        let policy = RetryPolicy {
+            max_retries: 5,
+            base_delay: Duration::ZERO,
+            max_delay: Duration::from_secs(60),
+        };
+
+        for attempt in 0..4 {
+            let d = policy.delay_for_attempt(attempt);
+            assert!(
+                d.as_millis() >= RetryPolicy::MIN_BASE_DELAY_MS as u128 / 2,
+                "attempt {attempt} delay {d:?} too small — would hot-loop"
+            );
+        }
     }
 }

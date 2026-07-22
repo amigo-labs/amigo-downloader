@@ -215,8 +215,12 @@ async fn submit_feedback(
         ));
     }
 
+    // Scrub potentially-sensitive text before it reaches a public issue.
+    let title = scrub(title);
+    let description = scrub(&req.description);
+
     // Build issue body
-    let mut body = format!("## Description\n\n{}\n", req.description);
+    let mut body = format!("## Description\n\n{description}\n");
 
     // Add system info if requested
     if req.include_system_info.unwrap_or(true) {
@@ -259,7 +263,7 @@ async fn submit_feedback(
             body.push_str(&format!("- **Download ID:** `{id}`\n"));
         }
         if let Some(ref err) = ctx.error_message {
-            body.push_str(&format!("- **Error:** {err}\n"));
+            body.push_str(&format!("- **Error:** {}\n", scrub(err)));
         }
         // Note: We intentionally don't include the URL to avoid leaking private links
     }
@@ -453,9 +457,106 @@ fn urlencoding(s: &str) -> String {
     result
 }
 
+/// Redact likely-sensitive substrings from user- or plugin-supplied text
+/// before it is posted to a (potentially public) GitHub issue.
+///
+/// Plugin error strings can carry bearer tokens, cookies, credentials, emails,
+/// or signed URLs. This is a best-effort scrubber — it errs toward
+/// over-redaction rather than leaking a secret.
+fn scrub(input: &str) -> String {
+    use std::sync::LazyLock;
+
+    use regex::Regex;
+
+    // (pattern, replacement). Applied in order; earlier rules take precedence.
+    static RULES: LazyLock<Vec<(Regex, &'static str)>> = LazyLock::new(|| {
+        let r = |p: &str| Regex::new(p).expect("valid scrubber regex");
+        vec![
+            // Whole Authorization / Cookie / Set-Cookie header lines.
+            (
+                r(
+                    r"(?i)\b(authorization|cookie|set-cookie|x-api-key|api[-_]?key)\s*[:=]\s*[^\r\n]+",
+                ),
+                "$1: [REDACTED]",
+            ),
+            // Standalone bearer tokens not preceded by the header above.
+            (
+                r(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+"),
+                "Bearer [REDACTED]",
+            ),
+            // password / passwd / pwd / token / secret assignments.
+            (
+                r(r#"(?i)\b(password|passwd|pwd|token|secret)\s*[=:]\s*[^\s&"']+"#),
+                "$1=[REDACTED]",
+            ),
+            // Query strings on http(s) URLs (paths often carry signed tokens).
+            (r(r"(https?://[^\s?#]+)\?[^\s]*"), "$1?[REDACTED]"),
+            // Email addresses.
+            (
+                r(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"),
+                "[REDACTED_EMAIL]",
+            ),
+            // Long opaque base64/token blobs (keys, JWTs, signed params).
+            (r(r"[A-Za-z0-9+/_-]{40,}={0,2}"), "[REDACTED]"),
+        ]
+    });
+
+    let mut out = input.to_string();
+    for (re, replacement) in RULES.iter() {
+        out = re.replace_all(&out, *replacement).into_owned();
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scrub_redacts_bearer_and_headers() {
+        let s = scrub("failed: Authorization: Bearer sk-abc123DEF456ghi789JKL012mno345");
+        assert!(!s.contains("sk-abc123"), "bearer token leaked: {s}");
+        assert!(s.contains("[REDACTED]"));
+
+        let s = scrub("Cookie: session=deadbeefdeadbeefdeadbeef; theme=dark");
+        assert!(!s.contains("deadbeef"), "cookie leaked: {s}");
+
+        let s = scrub("bearer eyJhbGciOiJIUzI1NiJ9.payloadpart.signaturepart");
+        assert!(!s.contains("eyJhbGci"), "standalone bearer leaked: {s}");
+    }
+
+    #[test]
+    fn scrub_redacts_credentials_and_emails() {
+        let s = scrub("login with password=hunter2secret and user");
+        assert!(!s.contains("hunter2secret"), "password leaked: {s}");
+
+        let s = scrub("contact user@example.com for details");
+        assert!(!s.contains("user@example.com"), "email leaked: {s}");
+        assert!(s.contains("[REDACTED_EMAIL]"));
+    }
+
+    #[test]
+    fn scrub_redacts_url_query_strings_but_keeps_path() {
+        let s = scrub("GET https://host.tld/dl/file.zip?token=abcSECRETdef&e=1 failed");
+        assert!(!s.contains("abcSECRETdef"), "query token leaked: {s}");
+        assert!(
+            s.contains("https://host.tld/dl/file.zip"),
+            "URL path should be preserved: {s}"
+        );
+    }
+
+    #[test]
+    fn scrub_redacts_long_base64_blobs() {
+        let blob = "QUJDREVGR0hJSktMTU5PUFFSU1RVVldYWVowMTIzNDU2Nzg5";
+        let s = scrub(&format!("dump: {blob} end"));
+        assert!(!s.contains(blob), "base64 blob leaked: {s}");
+    }
+
+    #[test]
+    fn scrub_preserves_benign_text() {
+        let msg = "Connection timed out after 30s while downloading part 3 of 8";
+        assert_eq!(scrub(msg), msg, "benign error text must not be altered");
+    }
 
     #[test]
     fn test_rate_limiter_allows_within_limit() {

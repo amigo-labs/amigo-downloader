@@ -50,8 +50,9 @@ RUN cargo build --release --bin amigo-server --bin amigo-dl
 # the tag for a dated one (e.g. debian:bookworm-20250908-slim).
 FROM debian:bookworm-slim
 
-# Install runtime dependencies (ca-certificates for TLS, wget for healthcheck)
-RUN apt-get update && apt-get install -y ca-certificates wget && rm -rf /var/lib/apt/lists/*
+# Install runtime dependencies (ca-certificates for TLS, wget for healthcheck,
+# gosu for privilege drop in the entrypoint)
+RUN apt-get update && apt-get install -y ca-certificates wget gosu && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with explicit UID/GID 1000 for predictable volume permissions
 RUN groupadd -r -g 1000 amigo && useradd -r -u 1000 -g amigo -d /config -s /sbin/nologin amigo
@@ -60,6 +61,8 @@ COPY --from=rust-builder /app/target/release/amigo-server /usr/local/bin/
 COPY --from=rust-builder /app/target/release/amigo-dl /usr/local/bin/
 COPY plugins/ /etc/amigo/plugins/
 COPY locales/ /etc/amigo/locales/
+COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Create directories and set ownership
 RUN mkdir -p /config /downloads && \
@@ -77,8 +80,9 @@ ENV AMIGO_LOCALES_DIR=/etc/amigo/locales
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
     CMD wget --no-verbose --tries=1 --spider http://localhost:1516/api/v1/status || exit 1
 
-# Run as non-root user (UID 1000)
-# Note: Host-mounted volumes (/config, /downloads) must be writable by UID 1000
-USER amigo
-
-ENTRYPOINT ["amigo-server"]
+# The container starts as root so the entrypoint can align the amigo user with
+# PUID/PGID and take ownership of host-mounted volumes, then drops privileges
+# to the amigo user (UID 1000 by default) via gosu before exec'ing the server.
+# Override PUID/PGID to match your host volume owner if it isn't 1000.
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+CMD ["amigo-server"]
