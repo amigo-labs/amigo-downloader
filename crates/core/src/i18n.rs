@@ -174,4 +174,29 @@ mod tests {
         let lang = detect_system_lang();
         assert!(!lang.is_empty());
     }
+
+    /// Guard against i18n key drift (#40): a PR that adds a string to one
+    /// locale but not the other would otherwise ship a half-translated UI.
+    /// The files are pulled in at compile time so this runs under `cargo test`
+    /// regardless of the working directory.
+    #[test]
+    fn en_and_de_locales_have_identical_keysets() {
+        let en = parse_locale(include_str!("../../../locales/en.json"));
+        let de = parse_locale(include_str!("../../../locales/de.json"));
+        assert!(!en.is_empty(), "en.json failed to parse or is empty");
+        assert!(!de.is_empty(), "de.json failed to parse or is empty");
+
+        let mut only_in_en: Vec<&str> =
+            en.keys().filter(|k| !de.contains_key(*k)).map(String::as_str).collect();
+        let mut only_in_de: Vec<&str> =
+            de.keys().filter(|k| !en.contains_key(*k)).map(String::as_str).collect();
+        only_in_en.sort_unstable();
+        only_in_de.sort_unstable();
+
+        assert!(
+            only_in_en.is_empty() && only_in_de.is_empty(),
+            "locale key drift between en.json and de.json:\n  \
+             missing in de.json: {only_in_en:?}\n  missing in en.json: {only_in_de:?}"
+        );
+    }
 }
