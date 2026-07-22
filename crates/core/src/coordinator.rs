@@ -925,4 +925,68 @@ mod tests {
         assert!(cache.contains("d"));
         assert!(!cache.contains("b"), "LRU entry must be evicted");
     }
+
+    /// Regression test for #52: a cancel issued *after* the first attempt must
+    /// still abort the download. This reproduces `start_download`'s wiring — a
+    /// single `watch::<bool>` cancel channel whose receiver is cloned per
+    /// attempt and selected on inside each attempt (as `backend.download` does
+    /// via `wait_for_cancel`). With the old `oneshot` receiver, `take()`
+    /// consumed it on attempt 0 and every later attempt got a dead placeholder,
+    /// so a mid-retry cancel was silently a no-op.
+    #[tokio::test(start_paused = true)]
+    async fn cancel_is_honored_after_the_first_retry_attempt() {
+        use std::sync::atomic::{AtomicU32, Ordering};
+        use std::time::Duration;
+        use tokio::sync::watch;
+
+        let (cancel_tx, cancel_rx) = watch::channel(false);
+        let policy = RetryPolicy {
+            max_retries: 10,
+            base_delay: Duration::from_millis(100),
+            max_delay: Duration::from_secs(1),
+        };
+        let attempts = Arc::new(AtomicU32::new(0));
+
+        // Flip the cancel flag well after attempt 0 has failed and the loop has
+        // moved on to a later attempt.
+        let ctx = cancel_tx.clone();
+        tokio::spawn(async move {
+            tokio::time::sleep(Duration::from_millis(150)).await;
+            ctx.send_replace(true);
+        });
+
+        let a = attempts.clone();
+        let result: Result<(), _> = retry_with_policy(&policy, move |attempt| {
+            let mut crx = cancel_rx.clone();
+            let a = a.clone();
+            async move {
+                a.fetch_add(1, Ordering::SeqCst);
+                if attempt == 0 {
+                    // First attempt fails fast, forcing the loop to retry.
+                    return RetryOutcome::Retry(crate::Error::Other("boom".into()));
+                }
+                // Later attempts run until cancelled — the exact pattern used by
+                // `HttpDownloader::download`. Without observing the cancel, this
+                // would keep "failing" until the retry policy is exhausted.
+                tokio::select! {
+                    _ = crate::protocol::wait_for_cancel(&mut crx) => {
+                        RetryOutcome::Abort(crate::Error::Cancelled)
+                    }
+                    _ = tokio::time::sleep(Duration::from_secs(30)) => {
+                        RetryOutcome::Retry(crate::Error::Other("still failing".into()))
+                    }
+                }
+            }
+        })
+        .await;
+
+        assert!(
+            matches!(result, Err(crate::Error::Cancelled)),
+            "cancel must abort the retry chain, got {result:?}"
+        );
+        assert!(
+            attempts.load(Ordering::SeqCst) >= 2,
+            "cancel must have been observed on an attempt after the first"
+        );
+    }
 }
