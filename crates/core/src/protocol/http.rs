@@ -284,49 +284,22 @@ impl HttpDownloader {
         drop(progress_reporter);
         chunk_result?;
 
-        // Reassemble chunks into final file (use temp name, rename on success)
-        let dest_tmp = dest.with_extension("part");
-        debug!("Reassembling {} chunks into {:?}", num_chunks, dest_tmp);
-        let reassemble_result: Result<(), crate::Error> = async {
-            let dest_file = tokio::fs::File::create(&dest_tmp).await?;
-            let mut dest_writer = tokio::io::BufWriter::with_capacity(WRITE_BUFFER_SIZE, dest_file);
-            for i in 0..num_chunks {
-                let chunk_path = temp_dir.join(format!("chunk_{i}"));
-                // Stream each chunk through the buffered writer instead of
-                // loading the whole chunk into a Vec — keeps peak RAM bounded
-                // by the buffer size regardless of chunk size.
-                let mut chunk_file = tokio::fs::File::open(&chunk_path).await?;
-                tokio::io::copy(&mut chunk_file, &mut dest_writer).await?;
-                drop(chunk_file);
-                tokio::fs::remove_file(&chunk_path).await?;
-            }
-            dest_writer.flush().await?;
-            fsync_file(dest_writer.get_mut()).await?;
-            Ok(())
-        }
-        .await;
-
-        if let Err(e) = reassemble_result {
-            let _ = tokio::fs::remove_file(&dest_tmp).await;
-            return Err(e);
-        }
-        tokio::fs::rename(&dest_tmp, dest).await?;
-        // Make the directory entry update durable. On POSIX an unflushed
-        // rename can vanish on crash even though the target file was
-        // sync_all'd before the rename; Windows treats this as a no-op.
-        fsync_parent(dest).await;
+        // Reassemble chunks into final file (use temp name, rename on success).
+        // reassemble_chunks verifies the concatenated size equals total_size
+        // and renames atomically, guarding against silent truncation.
+        let written = reassemble_chunks(temp_dir, num_chunks, dest, total_size).await?;
 
         let _ = progress_tx.send(DownloadProgress {
-            bytes_downloaded: total_size,
+            bytes_downloaded: written,
             total_bytes: Some(total_size),
             speed_bytes_per_sec: 0,
         });
 
         info!(
             "Chunked download complete: {} bytes in {} chunks",
-            total_size, num_chunks
+            written, num_chunks
         );
-        Ok(total_size)
+        Ok(written)
     }
 
     /// Resume a download from where it left off.
@@ -422,6 +395,68 @@ impl HttpDownloader {
         info!("Resume download complete: {} bytes total", downloaded);
         Ok(downloaded)
     }
+}
+
+/// Reassemble `num_chunks` chunk files (`chunk_0`..`chunk_{n-1}` under
+/// `temp_dir`) into `dest`, verifying the concatenated size equals
+/// `total_size` before the atomic rename.
+///
+/// Writing to a `.part` temp file and renaming on success means a failed or
+/// short reassembly never leaves a partial file at `dest`. The size check
+/// guards against silent truncation: a chunk task that lost bytes without
+/// returning an error would otherwise produce a short but "completed" file.
+/// Returns the number of bytes written.
+async fn reassemble_chunks(
+    temp_dir: &Path,
+    num_chunks: u32,
+    dest: &Path,
+    total_size: u64,
+) -> Result<u64, crate::Error> {
+    let dest_tmp = dest.with_extension("part");
+    debug!("Reassembling {} chunks into {:?}", num_chunks, dest_tmp);
+
+    let reassemble_result: Result<u64, crate::Error> = async {
+        let dest_file = tokio::fs::File::create(&dest_tmp).await?;
+        let mut dest_writer = tokio::io::BufWriter::with_capacity(WRITE_BUFFER_SIZE, dest_file);
+        let mut written: u64 = 0;
+        for i in 0..num_chunks {
+            let chunk_path = temp_dir.join(format!("chunk_{i}"));
+            // Stream each chunk through the buffered writer instead of
+            // loading the whole chunk into a Vec — keeps peak RAM bounded
+            // by the buffer size regardless of chunk size.
+            let mut chunk_file = tokio::fs::File::open(&chunk_path).await?;
+            written += tokio::io::copy(&mut chunk_file, &mut dest_writer).await?;
+            drop(chunk_file);
+            tokio::fs::remove_file(&chunk_path).await?;
+        }
+        dest_writer.flush().await?;
+        fsync_file(dest_writer.get_mut()).await?;
+        Ok(written)
+    }
+    .await;
+
+    let written = match reassemble_result {
+        Ok(written) => written,
+        Err(e) => {
+            let _ = tokio::fs::remove_file(&dest_tmp).await;
+            return Err(e);
+        }
+    };
+
+    if written != total_size {
+        let _ = tokio::fs::remove_file(&dest_tmp).await;
+        return Err(crate::Error::Other(format!(
+            "reassembled size mismatch: expected {total_size} bytes, got {written}"
+        )));
+    }
+
+    tokio::fs::rename(&dest_tmp, dest).await?;
+    // Make the directory entry update durable. On POSIX an unflushed rename
+    // can vanish on crash even though the target file was sync_all'd before
+    // the rename; Windows treats this as a no-op.
+    fsync_parent(dest).await;
+
+    Ok(written)
 }
 
 /// Download a single chunk (byte range) to a temp file.
@@ -925,6 +960,48 @@ mod tests {
         // where the directory fd cannot be opened, so callers can use it
         // unconditionally after a rename without sprinkling cfg(unix).
         fsync_parent(std::path::Path::new("/nonexistent/never-created")).await;
+    }
+
+    async fn write_chunk(dir: &Path, i: u32, bytes: &[u8]) {
+        tokio::fs::write(dir.join(format!("chunk_{i}")), bytes)
+            .await
+            .unwrap();
+    }
+
+    #[tokio::test]
+    async fn reassemble_chunks_concatenates_and_verifies_size() {
+        let dir = tempfile::tempdir().unwrap();
+        write_chunk(dir.path(), 0, b"hello ").await;
+        write_chunk(dir.path(), 1, b"world").await;
+        let dest = dir.path().join("out.bin");
+
+        let written = reassemble_chunks(dir.path(), 2, &dest, 11).await.unwrap();
+        assert_eq!(written, 11);
+        assert_eq!(tokio::fs::read(&dest).await.unwrap(), b"hello world");
+        // Chunk temp files must be cleaned up.
+        assert!(!dir.path().join("chunk_0").exists());
+        assert!(!dir.path().join("chunk_1").exists());
+    }
+
+    #[tokio::test]
+    async fn reassemble_chunks_rejects_short_total() {
+        // A chunk that silently lost bytes: concatenation is shorter than the
+        // advertised total_size. Reassembly must error and leave no dest file.
+        let dir = tempfile::tempdir().unwrap();
+        write_chunk(dir.path(), 0, b"hello ").await;
+        write_chunk(dir.path(), 1, b"wor").await; // 3 bytes instead of 5
+        let dest = dir.path().join("out.bin");
+
+        let result = reassemble_chunks(dir.path(), 2, &dest, 11).await;
+        assert!(result.is_err(), "short reassembly must be rejected");
+        assert!(
+            !dest.exists(),
+            "no destination file may be left on size mismatch"
+        );
+        assert!(
+            !dir.path().join("out.part").exists(),
+            "the .part temp file must be removed on size mismatch"
+        );
     }
 
     #[test]
