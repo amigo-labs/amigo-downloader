@@ -33,6 +33,8 @@ sevenz-rust = "0.6"
 zip = "2"
 async-trait = { workspace = true }
 rand = "0.10"
+base64 = "0.22"
+quick-xml = "0.37"
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["full", "test-util"] }

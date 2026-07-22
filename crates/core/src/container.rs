@@ -18,7 +18,10 @@
 //! - `<package>` elements with `<file>` children
 //! - Each `<file>` has a Base64-encoded `<url>`, optional `<filename>`/`<size>`
 
+use base64::Engine;
+use base64::engine::general_purpose::STANDARD;
 use serde::{Deserialize, Serialize};
+use tracing::warn;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ContainerLink {
@@ -33,182 +36,179 @@ pub struct ContainerPackage {
     pub links: Vec<ContainerLink>,
 }
 
-/// Decode Base64 (standard alphabet, may have padding).
+/// Decode standard-alphabet Base64 (with padding), tolerating embedded
+/// whitespace (DLC producers sometimes wrap the payload across lines).
 fn b64_decode(input: &str) -> Result<Vec<u8>, crate::Error> {
-    // Simple Base64 decoder — avoids pulling in an extra crate
-    let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut table = [255u8; 256];
-    for (i, &c) in alphabet.iter().enumerate() {
-        table[c as usize] = i as u8;
-    }
-
-    let mut buf = Vec::new();
-
-    let filtered: Vec<u8> = input
-        .bytes()
-        .filter(|&c| c != b'=' && c != b'\n' && c != b'\r' && c != b' ')
-        .collect();
-
-    for chunk in filtered.chunks(4) {
-        let mut vals = [0u8; 4];
-        for (i, &c) in chunk.iter().enumerate() {
-            let v = table[c as usize];
-            if v == 255 {
-                return Err(crate::Error::Other(format!(
-                    "Invalid Base64 character: 0x{c:02x}"
-                )));
-            }
-            vals[i] = v;
-        }
-
-        if chunk.len() >= 2 {
-            buf.push((vals[0] << 2) | (vals[1] >> 4));
-        }
-        if chunk.len() >= 3 {
-            buf.push((vals[1] << 4) | (vals[2] >> 2));
-        }
-        if chunk.len() >= 4 {
-            buf.push((vals[2] << 6) | vals[3]);
-        }
-    }
-
-    Ok(buf)
+    let filtered: String = input.chars().filter(|c| !c.is_ascii_whitespace()).collect();
+    STANDARD
+        .decode(filtered.as_bytes())
+        .map_err(|e| crate::Error::Other(format!("Invalid Base64: {e}")))
 }
 
-/// Encode bytes to Base64.
+/// Encode bytes to standard-alphabet Base64 (with padding).
 fn b64_encode(input: &[u8]) -> String {
-    let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let mut result = String::new();
+    STANDARD.encode(input)
+}
 
-    for chunk in input.chunks(3) {
-        let b0 = chunk[0] as u32;
-        let b1 = if chunk.len() > 1 { chunk[1] as u32 } else { 0 };
-        let b2 = if chunk.len() > 2 { chunk[2] as u32 } else { 0 };
-
-        let triple = (b0 << 16) | (b1 << 8) | b2;
-
-        result.push(alphabet[((triple >> 18) & 0x3F) as usize] as char);
-        result.push(alphabet[((triple >> 12) & 0x3F) as usize] as char);
-
-        if chunk.len() > 1 {
-            result.push(alphabet[((triple >> 6) & 0x3F) as usize] as char);
-        } else {
-            result.push('=');
-        }
-
-        if chunk.len() > 2 {
-            result.push(alphabet[(triple & 0x3F) as usize] as char);
-        } else {
-            result.push('=');
-        }
-    }
-
-    result
+/// Which text-bearing `<file>` child we are currently reading.
+enum FileField {
+    Url,
+    Filename,
+    Size,
 }
 
 /// Parse the decrypted DLC XML and extract packages/links.
+///
+/// DLC XML format:
+/// `<dlc><content><package name="..."><file><url>BASE64</url>
+/// <filename>BASE64</filename><size>N</size></file></package></content></dlc>`
+///
+/// Uses a real streaming XML reader so element names match exactly — a
+/// `<packages>` wrapper is no longer mistaken for a `<package>` element (#39),
+/// and a `<filename>` decode failure is surfaced as a warning instead of being
+/// silently dropped (#35). Files that appear outside any `<package>` are
+/// collected into a synthesized "Default" package.
 fn parse_dlc_xml(xml: &str) -> Result<Vec<ContainerPackage>, crate::Error> {
-    let mut packages = Vec::new();
+    use quick_xml::events::Event;
+    use quick_xml::reader::Reader;
 
-    // Simple XML parsing without pulling in a full XML crate
-    // DLC XML format: <dlc><content><package name="..."><file><url>BASE64</url><filename>BASE64</filename><size>N</size></file></package></content></dlc>
-    let xml = xml.trim();
+    let mut reader = Reader::from_str(xml);
 
-    // Extract packages
-    let mut pos = 0;
-    while let Some(pkg_start) = xml[pos..].find("<package") {
-        let abs_start = pos + pkg_start;
+    let mut packages: Vec<ContainerPackage> = Vec::new();
+    let mut flat_links: Vec<ContainerLink> = Vec::new();
+    let mut current_pkg: Option<ContainerPackage> = None;
 
-        // Extract package name
-        let name = extract_attr(&xml[abs_start..], "name").unwrap_or_else(|| "Default".to_string());
+    let mut in_file = false;
+    let mut file_url: Option<String> = None;
+    let mut file_name: Option<String> = None;
+    let mut file_size: Option<u64> = None;
+    let mut field: Option<FileField> = None;
+    let mut text_buf = String::new();
 
-        let pkg_end = match xml[abs_start..].find("</package>") {
-            Some(p) => abs_start + p,
-            None => break,
-        };
-
-        let pkg_content = &xml[abs_start..pkg_end];
-
-        let mut links = Vec::new();
-        let mut fpos = 0;
-        while let Some(file_start) = pkg_content[fpos..].find("<file") {
-            let abs_fstart = fpos + file_start;
-            let file_end = match pkg_content[abs_fstart..].find("</file>") {
-                Some(p) => abs_fstart + p,
-                None => break,
-            };
-
-            let file_content = &pkg_content[abs_fstart..file_end];
-
-            if let Some(url_b64) = extract_tag(file_content, "url") {
-                let url = String::from_utf8(b64_decode(&url_b64)?)
-                    .map_err(|e| crate::Error::Other(e.to_string()))?;
-
-                let filename = extract_tag(file_content, "filename")
-                    .and_then(|f| String::from_utf8(b64_decode(&f).ok()?).ok())
-                    .map(|f| crate::sanitize_filename(&f));
-
-                let filesize =
-                    extract_tag(file_content, "size").and_then(|s| s.parse::<u64>().ok());
-
-                links.push(ContainerLink {
-                    url,
-                    filename,
-                    filesize,
-                });
+    loop {
+        match reader
+            .read_event()
+            .map_err(|e| crate::Error::Other(format!("Malformed DLC XML: {e}")))?
+        {
+            Event::Eof => break,
+            Event::Start(e) => match e.local_name().as_ref() {
+                b"package" => {
+                    let name = e
+                        .try_get_attribute("name")
+                        .ok()
+                        .flatten()
+                        .and_then(|a| a.unescape_value().ok().map(|v| v.into_owned()))
+                        .unwrap_or_else(|| "Default".to_string());
+                    current_pkg = Some(ContainerPackage {
+                        name,
+                        links: Vec::new(),
+                    });
+                }
+                b"file" => {
+                    in_file = true;
+                    file_url = None;
+                    file_name = None;
+                    file_size = None;
+                }
+                b"url" if in_file => {
+                    field = Some(FileField::Url);
+                    text_buf.clear();
+                }
+                b"filename" if in_file => {
+                    field = Some(FileField::Filename);
+                    text_buf.clear();
+                }
+                b"size" if in_file => {
+                    field = Some(FileField::Size);
+                    text_buf.clear();
+                }
+                _ => {}
+            },
+            Event::Text(e) if field.is_some() => {
+                let t = e
+                    .unescape()
+                    .map_err(|err| crate::Error::Other(format!("Malformed DLC XML text: {err}")))?;
+                text_buf.push_str(&t);
             }
-
-            fpos = file_end + 7; // skip </file>
+            Event::End(e) => match e.local_name().as_ref() {
+                b"url" => {
+                    if matches!(field, Some(FileField::Url)) {
+                        file_url = Some(text_buf.trim().to_string());
+                        field = None;
+                    }
+                }
+                b"filename" => {
+                    if matches!(field, Some(FileField::Filename)) {
+                        file_name = Some(text_buf.trim().to_string());
+                        field = None;
+                    }
+                }
+                b"size" => {
+                    if matches!(field, Some(FileField::Size)) {
+                        file_size = text_buf.trim().parse::<u64>().ok();
+                        field = None;
+                    }
+                }
+                b"file" => {
+                    in_file = false;
+                    if let Some(url_b64) = file_url.take() {
+                        // The URL is required; a decode error here is fatal.
+                        let url = String::from_utf8(b64_decode(&url_b64)?)
+                            .map_err(|e| crate::Error::Other(e.to_string()))?;
+                        // A filename decode failure is non-fatal — warn and drop
+                        // the name rather than failing the whole import.
+                        let filename = file_name.take().and_then(decode_filename);
+                        let link = ContainerLink {
+                            url,
+                            filename,
+                            filesize: file_size.take(),
+                        };
+                        match current_pkg.as_mut() {
+                            Some(pkg) => pkg.links.push(link),
+                            None => flat_links.push(link),
+                        }
+                    }
+                }
+                b"package" => {
+                    if let Some(pkg) = current_pkg.take()
+                        && !pkg.links.is_empty()
+                    {
+                        packages.push(pkg);
+                    }
+                }
+                _ => {}
+            },
+            _ => {}
         }
-
-        if !links.is_empty() {
-            packages.push(ContainerPackage { name, links });
-        }
-
-        pos = pkg_end + 10; // skip </package>
     }
 
-    // If no packages found, try flat file list (some DLCs don't use packages)
-    if packages.is_empty() {
-        let mut links = Vec::new();
-        let mut fpos = 0;
-        while let Some(file_start) = xml[fpos..].find("<file") {
-            let abs_fstart = fpos + file_start;
-            let file_end = match xml[abs_fstart..].find("</file>") {
-                Some(p) => abs_fstart + p,
-                None => break,
-            };
-
-            let file_content = &xml[abs_fstart..file_end];
-
-            if let Some(url_b64) = extract_tag(file_content, "url")
-                && let Ok(url_bytes) = b64_decode(&url_b64)
-                && let Ok(url) = String::from_utf8(url_bytes)
-            {
-                let filename = extract_tag(file_content, "filename")
-                    .and_then(|f| String::from_utf8(b64_decode(&f).ok()?).ok())
-                    .map(|f| crate::sanitize_filename(&f));
-                let filesize =
-                    extract_tag(file_content, "size").and_then(|s| s.parse::<u64>().ok());
-                links.push(ContainerLink {
-                    url,
-                    filename,
-                    filesize,
-                });
-            }
-
-            fpos = file_end + 7;
-        }
-
-        if !links.is_empty() {
-            packages.push(ContainerPackage {
-                name: "Default".to_string(),
-                links,
-            });
-        }
+    if !flat_links.is_empty() {
+        packages.push(ContainerPackage {
+            name: "Default".to_string(),
+            links: flat_links,
+        });
     }
 
     Ok(packages)
+}
+
+/// Decode a Base64 `<filename>` value, sanitizing the result. Returns `None`
+/// (with a warning) on invalid Base64 or non-UTF-8 rather than dropping it
+/// silently, so a bad filename doesn't quietly leave a file unnamed.
+fn decode_filename(b64: String) -> Option<String> {
+    match b64_decode(&b64) {
+        Ok(bytes) => match String::from_utf8(bytes) {
+            Ok(s) => Some(crate::sanitize_filename(&s)),
+            Err(e) => {
+                warn!("Ignoring DLC filename with invalid UTF-8: {e}");
+                None
+            }
+        },
+        Err(e) => {
+            warn!("Ignoring DLC filename with invalid Base64: {e}");
+            None
+        }
+    }
 }
 
 /// Generate DLC XML from packages.
@@ -285,21 +285,6 @@ pub fn import_rsdf(_data: &[u8]) -> Result<Vec<ContainerPackage>, crate::Error> 
 
 // --- Helpers ---
 
-fn extract_tag(xml: &str, tag: &str) -> Option<String> {
-    let open = format!("<{tag}>");
-    let close = format!("</{tag}>");
-    let start = xml.find(&open)? + open.len();
-    let end = xml[start..].find(&close)? + start;
-    Some(xml[start..end].trim().to_string())
-}
-
-fn extract_attr(xml: &str, attr: &str) -> Option<String> {
-    let pattern = format!("{attr}=\"");
-    let start = xml.find(&pattern)? + pattern.len();
-    let end = xml[start..].find('"')? + start;
-    Some(xml[start..end].to_string())
-}
-
 fn escape_xml(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
@@ -357,5 +342,54 @@ mod tests {
         assert_eq!(result[0].links[0].url, "https://example.com/test.zip");
         assert_eq!(result[0].links[0].filename.as_deref(), Some("test.zip"));
         assert_eq!(result[0].links[0].filesize, Some(2048));
+    }
+
+    // Regression for #39: a `<packages>` wrapper element (as produced by some
+    // JDownloader exports) must not be mistaken for a `<package>` element. The
+    // inner package's name and links must parse correctly.
+    #[test]
+    fn test_packages_wrapper_is_not_mistaken_for_a_package() {
+        let url = b64_encode(b"https://example.com/a.bin");
+        let name = b64_encode(b"a.bin");
+        let xml = format!(
+            "<dlc><content><packages><package name=\"Wrapped\">\
+             <file><url>{url}</url><filename>{name}</filename><size>10</size></file>\
+             </package></packages></content></dlc>"
+        );
+        let result = import_dlc(xml.as_bytes()).unwrap();
+        assert_eq!(result.len(), 1, "only the real <package> must be emitted");
+        assert_eq!(result[0].name, "Wrapped");
+        assert_eq!(result[0].links.len(), 1);
+        assert_eq!(result[0].links[0].url, "https://example.com/a.bin");
+        assert_eq!(result[0].links[0].filename.as_deref(), Some("a.bin"));
+    }
+
+    // Regression for #35: a filename that fails Base64 decoding must be dropped
+    // (with a warning) while the link's URL is still imported — not silently
+    // discarding the whole file.
+    #[test]
+    fn test_bad_filename_is_dropped_but_url_kept() {
+        let url = b64_encode(b"https://example.com/b.bin");
+        let xml = format!(
+            "<dlc><content><package name=\"P\">\
+             <file><url>{url}</url><filename>!!!not-base64!!!</filename></file>\
+             </package></content></dlc>"
+        );
+        let result = import_dlc(xml.as_bytes()).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].links.len(), 1);
+        assert_eq!(result[0].links[0].url, "https://example.com/b.bin");
+        assert_eq!(result[0].links[0].filename, None);
+    }
+
+    // Files outside any <package> are collected into a synthesized "Default".
+    #[test]
+    fn test_flat_file_list_without_package() {
+        let url = b64_encode(b"https://example.com/flat.bin");
+        let xml = format!("<dlc><content><file><url>{url}</url></file></content></dlc>");
+        let result = import_dlc(xml.as_bytes()).unwrap();
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].name, "Default");
+        assert_eq!(result[0].links[0].url, "https://example.com/flat.bin");
     }
 }
