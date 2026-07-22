@@ -473,15 +473,29 @@ fn scrub(input: &str) -> String {
         let r = |p: &str| Regex::new(p).expect("valid scrubber regex");
         vec![
             // Whole Authorization / Cookie / Set-Cookie header lines.
-            (r(r"(?i)\b(authorization|cookie|set-cookie|x-api-key|api[-_]?key)\s*[:=]\s*[^\r\n]+"), "$1: [REDACTED]"),
+            (
+                r(
+                    r"(?i)\b(authorization|cookie|set-cookie|x-api-key|api[-_]?key)\s*[:=]\s*[^\r\n]+",
+                ),
+                "$1: [REDACTED]",
+            ),
             // Standalone bearer tokens not preceded by the header above.
-            (r(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+"), "Bearer [REDACTED]"),
+            (
+                r(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+"),
+                "Bearer [REDACTED]",
+            ),
             // password / passwd / pwd / token / secret assignments.
-            (r(r#"(?i)\b(password|passwd|pwd|token|secret)\s*[=:]\s*[^\s&"']+"#), "$1=[REDACTED]"),
+            (
+                r(r#"(?i)\b(password|passwd|pwd|token|secret)\s*[=:]\s*[^\s&"']+"#),
+                "$1=[REDACTED]",
+            ),
             // Query strings on http(s) URLs (paths often carry signed tokens).
             (r(r"(https?://[^\s?#]+)\?[^\s]*"), "$1?[REDACTED]"),
             // Email addresses.
-            (r(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"), "[REDACTED_EMAIL]"),
+            (
+                r(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}"),
+                "[REDACTED_EMAIL]",
+            ),
             // Long opaque base64/token blobs (keys, JWTs, signed params).
             (r(r"[A-Za-z0-9+/_-]{40,}={0,2}"), "[REDACTED]"),
         ]

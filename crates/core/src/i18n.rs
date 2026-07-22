@@ -186,10 +186,16 @@ mod tests {
         assert!(!en.is_empty(), "en.json failed to parse or is empty");
         assert!(!de.is_empty(), "de.json failed to parse or is empty");
 
-        let mut only_in_en: Vec<&str> =
-            en.keys().filter(|k| !de.contains_key(*k)).map(String::as_str).collect();
-        let mut only_in_de: Vec<&str> =
-            de.keys().filter(|k| !en.contains_key(*k)).map(String::as_str).collect();
+        let mut only_in_en: Vec<&str> = en
+            .keys()
+            .filter(|k| !de.contains_key(*k))
+            .map(String::as_str)
+            .collect();
+        let mut only_in_de: Vec<&str> = de
+            .keys()
+            .filter(|k| !en.contains_key(*k))
+            .map(String::as_str)
+            .collect();
         only_in_en.sort_unstable();
         only_in_de.sort_unstable();
 
