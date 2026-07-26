@@ -111,7 +111,7 @@
                 disabled={toggling.has(plugin.id)}
                 class="px-2 py-0.5 rounded-full text-[10px] font-semibold cursor-pointer disabled:opacity-50"
                 style={plugin.enabled
-                  ? "background: color-mix(in srgb, var(--neon-success) 10%, transparent); color: var(--neon-success)"
+                  ? "background: color-mix(in srgb, var(--neon-success) 10%, transparent); color: var(--success-ink)"
                   : "background: var(--bg-surface-2); color: var(--text-secondary)"}
                 aria-pressed={plugin.enabled}
                 aria-label="{plugin.name}: {plugin.enabled ? tr($locale, 'plugins.active') : tr($locale, 'plugins.disabled')}"

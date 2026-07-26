@@ -33,7 +33,7 @@
           aria-pressed={$theme === mode.id}
           class="flex-1 py-3 rounded-xl text-sm font-medium transition-colors"
           style={$theme === mode.id
-            ? "background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--neon-primary); border: 1px solid color-mix(in srgb, var(--neon-primary) 20%, transparent)"
+            ? "background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--accent-ink); border: 1px solid color-mix(in srgb, var(--neon-primary) 20%, transparent)"
             : "background: var(--bg-surface-2); color: var(--text-secondary); border: 1px solid transparent"}
         >
           {tr($locale, mode.key)}

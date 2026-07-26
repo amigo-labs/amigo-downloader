@@ -217,7 +217,7 @@
               onmousemove={() => (selected = idx)}
               class="w-full flex items-center gap-3 px-3 py-2 mx-1 rounded-lg text-left text-sm"
               style={selected === idx
-                ? "background: color-mix(in srgb, var(--neon-primary) 14%, transparent); color: var(--neon-primary)"
+                ? "background: color-mix(in srgb, var(--neon-primary) 14%, transparent); color: var(--accent-ink)"
                 : "color: var(--text-primary)"}
             >
               {#if cmd.swatch}

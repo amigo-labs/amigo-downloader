@@ -1,44 +1,43 @@
 <script lang="ts">
   import type { AppConfig } from "../../lib/api";
+  import { locale, tr } from "../../lib/i18n";
+  import Card from "@amigo/ui/components/Card.svelte";
+  import Toggle from "@amigo/ui/components/Toggle.svelte";
 
   let { config, onsave }: { config: AppConfig; onsave: () => void } = $props();
 
-  function toggle(key: string) {
-    (config.usenet as any)[key] = !(config.usenet as any)[key];
+  const KEYS = [
+    "par2_repair",
+    "selective_par2",
+    "auto_unrar",
+    "sequential_postprocess",
+    "delete_archives_after_extract",
+    "delete_par2_after_repair",
+  ] as const;
+
+  type UsenetFlags = Record<(typeof KEYS)[number], boolean>;
+  let flags = $derived(config.usenet as unknown as UsenetFlags);
+
+  function toggle(key: (typeof KEYS)[number]) {
+    flags[key] = !flags[key];
     onsave();
   }
 </script>
 
 <section>
-  <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">Usenet Post-Processing</h3>
-  <div class="rounded-xl p-5 space-y-4" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
-    {#each [
-      { key: "par2_repair", label: "PAR2 Verify & Repair", desc: "Check file integrity and repair damaged files using PAR2 recovery data" },
-      { key: "selective_par2", label: "Selective PAR2", desc: "Only download recovery volumes when repair is needed. Saves bandwidth." },
-      { key: "auto_unrar", label: "Auto-Extract Archives", desc: "Automatically extract RAR, ZIP, and 7z archives after download" },
-      { key: "sequential_postprocess", label: "Sequential Mode (low-power)", desc: "Run PAR2 and extraction one after another. Recommended for Raspberry Pi." },
-      { key: "delete_archives_after_extract", label: "Delete Archives After Extract", desc: "Remove archive files after successful extraction" },
-      { key: "delete_par2_after_repair", label: "Delete PAR2 After Repair", desc: "Remove PAR2 files after successful verification or repair" },
-    ] as opt (opt.key)}
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm font-semibold" style="color: var(--text-primary)">{opt.label}</p>
-          <p class="text-xs" style="color: var(--text-secondary)">{opt.desc}</p>
-        </div>
-        <button
-          role="switch"
-          aria-checked={(config.usenet as any)[opt.key]}
-          aria-label={opt.label}
-          onclick={() => toggle(opt.key)}
-          class="w-12 h-6 rounded-full relative transition-colors shrink-0 ml-4"
-          style="background: {(config.usenet as any)[opt.key] ? 'var(--neon-primary)' : 'var(--bg-surface-2)'}"
-        >
-          <span
-            class="absolute top-0.5 w-5 h-5 rounded-full transition-all shadow"
-            style="background: var(--bg-deep); left: {(config.usenet as any)[opt.key] ? '1.625rem' : '0.125rem'}"
-          ></span>
-        </button>
-      </div>
-    {/each}
-  </div>
+  <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">
+    {tr($locale, "postprocess.title")}
+  </h3>
+  <Card padding="lg">
+    <div class="grid gap-4">
+      {#each KEYS as key (key)}
+        <Toggle
+          checked={flags[key]}
+          label={tr($locale, `postprocess.${key}`)}
+          description={tr($locale, `postprocess.${key}_desc`)}
+          onchange={() => toggle(key)}
+        />
+      {/each}
+    </div>
+  </Card>
 </section>

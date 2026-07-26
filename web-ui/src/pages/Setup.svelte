@@ -2,20 +2,30 @@
   import { onMount } from "svelte";
   import { completeSetup, getSetupStatus } from "../lib/api";
   import { setupRequired } from "../lib/stores";
+  import { locale, tr } from "../lib/i18n";
+  import Card from "@amigo/ui/components/Card.svelte";
+  import Button from "@amigo/ui/components/Button.svelte";
+  import Field from "@amigo/ui/components/Field.svelte";
+  import Banner from "@amigo/ui/components/Banner.svelte";
+  import ProgressBar from "@amigo/ui/components/ProgressBar.svelte";
 
-  let step: "checking" | "pin" | "credentials" | "submitting" = "checking";
-  let needsPin = false;
-  let pin = "";
-  let username = "";
-  let password = "";
-  let passwordConfirm = "";
-  let error = "";
+  // Like Login, this screen was outside the design system: Svelte 4 syntax,
+  // undefined CSS variables falling through to hardcoded hexes, no i18n and
+  // lowercase English validation strings with no aria-live.
+  let step = $state<"checking" | "pin" | "credentials" | "submitting">("checking");
+  let needsPin = $state(false);
+  let pin = $state("");
+  let username = $state("");
+  let password = $state("");
+  let passwordConfirm = $state("");
+  let error = $state("");
+
+  const MIN_PASSWORD = 8;
 
   onMount(async () => {
     try {
       const s = await getSetupStatus();
       if (!s.needs_setup) {
-        // Setup already done — bounce back to the app.
         setupRequired.set(false);
         location.hash = "#downloads";
         location.reload();
@@ -23,32 +33,60 @@
       }
       needsPin = s.needs_pin;
       step = needsPin ? "pin" : "credentials";
-    } catch (e: any) {
-      error = `Could not reach the server: ${e.message}`;
+    } catch (e) {
+      error = tr($locale, "setup.unreachable", { message: (e as Error).message });
     }
   });
 
-  function advanceFromPin() {
+  // Total steps and the current one, so the wizard says where the user is.
+  let totalSteps = $derived(needsPin ? 2 : 1);
+  let currentStep = $derived(step === "pin" ? 1 : totalSteps);
+
+  // Simple, honest strength signal: length plus character-class variety.
+  let strength = $derived.by(() => {
+    if (!password) return 0;
+    let score = Math.min(60, (password.length / 16) * 60);
+    if (/[a-z]/.test(password) && /[A-Z]/.test(password)) score += 15;
+    if (/\d/.test(password)) score += 12;
+    if (/[^\w\s]/.test(password)) score += 13;
+    return Math.min(100, Math.round(score));
+  });
+  let strengthKey = $derived(
+    strength < 40 ? "setup.strength_weak" : strength < 70 ? "setup.strength_fair" : "setup.strength_strong",
+  );
+
+  let passwordError = $derived(
+    password && password.length < MIN_PASSWORD
+      ? tr($locale, "setup.password_too_short", { min: MIN_PASSWORD })
+      : "",
+  );
+  let confirmError = $derived(
+    passwordConfirm && password !== passwordConfirm ? tr($locale, "setup.password_mismatch") : "",
+  );
+
+  function advanceFromPin(e: SubmitEvent) {
+    e.preventDefault();
     error = "";
     if (!pin.trim()) {
-      error = "PIN required";
+      error = tr($locale, "setup.pin_required");
       return;
     }
     step = "credentials";
   }
 
-  async function submit() {
+  async function submit(e: SubmitEvent) {
+    e.preventDefault();
     error = "";
-    if (username.trim().length < 1) {
-      error = "username required";
+    if (!username.trim()) {
+      error = tr($locale, "setup.username_required");
       return;
     }
-    if (password.length < 8) {
-      error = "password must be at least 8 characters";
+    if (password.length < MIN_PASSWORD) {
+      error = tr($locale, "setup.password_too_short", { min: MIN_PASSWORD });
       return;
     }
     if (password !== passwordConfirm) {
-      error = "passwords do not match";
+      error = tr($locale, "setup.password_mismatch");
       return;
     }
     step = "submitting";
@@ -57,109 +95,121 @@
       setupRequired.set(false);
       location.hash = "#downloads";
       location.reload();
-    } catch (e: any) {
-      error = e.message || "setup failed";
+    } catch (e) {
+      error = (e as Error).message || tr($locale, "setup.failed");
       step = "credentials";
     }
   }
 </script>
 
 <div class="setup-wrap">
-  <div class="card">
-    <h1>Welcome to amigo</h1>
-    <p class="lead">Let's create the admin account for this server.</p>
-
-    {#if step === "checking"}
-      <p>Checking server state…</p>
-    {:else if step === "pin"}
-      <label>
-        Setup PIN
-        <input type="text" bind:value={pin} autocomplete="off" />
-      </label>
-      <p class="hint">Provided by whoever started the server (look for <code>AMIGO_SETUP_PIN</code> in the container logs).</p>
-      <button type="button" on:click={advanceFromPin}>Continue</button>
-    {:else}
-      <label>
-        Admin username
-        <input type="text" bind:value={username} autocomplete="username" />
-      </label>
-      <label>
-        Password (min 8 chars)
-        <input type="password" bind:value={password} autocomplete="new-password" />
-      </label>
-      <label>
-        Confirm password
-        <input type="password" bind:value={passwordConfirm} autocomplete="new-password" />
-      </label>
-      <button type="button" disabled={step === "submitting"} on:click={submit}>
-        {step === "submitting" ? "Creating…" : "Create admin account"}
-      </button>
-    {/if}
+  <Card padding="lg" elevation={3} class="setup-card">
+    <div class="text-center mb-4">
+      <img src="/amigo-logo.png" alt="" width="48" height="48" class="mx-auto rounded-full" />
+      <h1 class="mt-3 text-lg font-bold" style="color: var(--text-primary)">
+        {tr($locale, "setup.title")}
+      </h1>
+      <p class="text-xs mt-1" style="color: var(--text-secondary)">{tr($locale, "setup.lead")}</p>
+      {#if step !== "checking" && totalSteps > 1}
+        <p class="text-xs mt-2 font-semibold" style="color: var(--accent-ink)">
+          {tr($locale, "setup.step_of", { current: currentStep, total: totalSteps })}
+        </p>
+      {/if}
+    </div>
 
     {#if error}
-      <p class="error">{error}</p>
+      <div class="mb-4">
+        <Banner tone="danger" role="alert">{error}</Banner>
+      </div>
     {/if}
-  </div>
+
+    {#if step === "checking"}
+      <p class="text-sm text-center" style="color: var(--text-secondary)">
+        {tr($locale, "setup.checking")}
+      </p>
+    {:else if step === "pin"}
+      <form onsubmit={advanceFromPin} class="grid gap-4">
+        <Field
+          label={tr($locale, "setup.pin")}
+          bind:value={pin}
+          autocomplete="off"
+          mono
+          required
+          hint={tr($locale, "setup.pin_hint")}
+          data-autofocus
+        />
+        <Button type="submit" variant="solid" size="lg" full>
+          {tr($locale, "setup.continue")}
+        </Button>
+      </form>
+    {:else}
+      <form onsubmit={submit} class="grid gap-4">
+        <Field
+          label={tr($locale, "setup.username")}
+          bind:value={username}
+          autocomplete="username"
+          required
+          data-autofocus
+        />
+        <div class="grid gap-1">
+          <Field
+            label={tr($locale, "setup.password")}
+            type="password"
+            bind:value={password}
+            autocomplete="new-password"
+            required
+            error={passwordError}
+            hint={tr($locale, "setup.password_hint", { min: MIN_PASSWORD })}
+          />
+          {#if password}
+            <div class="flex items-center gap-2">
+              <ProgressBar
+                value={strength}
+                size="xs"
+                tone={strength < 40 ? "danger" : strength < 70 ? "warning" : "success"}
+                label={tr($locale, "setup.strength")}
+                valueText={tr($locale, strengthKey)}
+              />
+              <span class="text-xs shrink-0" style="color: var(--text-secondary)">
+                {tr($locale, strengthKey)}
+              </span>
+            </div>
+          {/if}
+        </div>
+        <Field
+          label={tr($locale, "setup.password_confirm")}
+          type="password"
+          bind:value={passwordConfirm}
+          autocomplete="new-password"
+          required
+          error={confirmError}
+        />
+        <Button
+          type="submit"
+          variant="solid"
+          size="lg"
+          full
+          loading={step === "submitting"}
+        >
+          {tr($locale, "setup.submit")}
+        </Button>
+      </form>
+    {/if}
+  </Card>
 </div>
 
 <style>
   .setup-wrap {
     display: flex;
-    min-height: 100vh;
+    min-height: 100dvh;
     align-items: center;
     justify-content: center;
-    padding: 1rem;
+    padding: var(--space-4);
+    background: var(--bg-deep);
   }
-  .card {
-    max-width: 420px;
+
+  :global(.setup-card) {
     width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 0.75rem;
-    padding: 1.5rem;
-    border-radius: 0.5rem;
-    background: var(--surface, #1e1e24);
-  }
-  h1 {
-    margin: 0;
-  }
-  .lead {
-    margin: 0 0 0.5rem 0;
-    color: var(--muted, #888);
-  }
-  label {
-    display: flex;
-    flex-direction: column;
-    gap: 0.25rem;
-    font-size: 0.9rem;
-  }
-  input {
-    padding: 0.5rem;
-    background: var(--bg, #111);
-    border: 1px solid var(--border, #333);
-    border-radius: 0.25rem;
-    color: inherit;
-  }
-  button {
-    margin-top: 0.5rem;
-    padding: 0.6rem 1rem;
-    border: none;
-    border-radius: 0.25rem;
-    background: var(--accent, #2563eb);
-    color: white;
-    cursor: pointer;
-  }
-  button:disabled {
-    opacity: 0.5;
-    cursor: wait;
-  }
-  .error {
-    color: #ef4444;
-    margin: 0;
-  }
-  .hint {
-    font-size: 0.85rem;
-    color: var(--muted, #888);
-    margin: 0;
+    max-width: 26rem;
   }
 </style>

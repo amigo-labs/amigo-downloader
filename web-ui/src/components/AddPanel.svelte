@@ -80,7 +80,7 @@
       onclick={() => (activeTab = "url")}
       class="flex-1 py-2 rounded-md text-sm font-medium transition-colors"
       style={activeTab === "url"
-        ? "background: var(--bg-surface); color: var(--neon-primary)"
+        ? "background: var(--bg-surface); color: var(--accent-ink)"
         : "color: var(--text-secondary)"}
     >
       {tr($locale, "add.tab_url")}
@@ -93,7 +93,7 @@
       onclick={() => (activeTab = "file")}
       class="flex-1 py-2 rounded-md text-sm font-medium transition-colors"
       style={activeTab === "file"
-        ? "background: var(--bg-surface); color: var(--neon-primary)"
+        ? "background: var(--bg-surface); color: var(--accent-ink)"
         : "color: var(--text-secondary)"}
     >
       {tr($locale, "add.tab_file")}
@@ -115,7 +115,7 @@
     <div class="flex items-center justify-between text-xs min-h-[1rem]">
       <span style="color: var(--text-secondary)">{tr($locale, "add.hint")}</span>
       {#if validLinks.length > 0}
-        <span class="font-semibold tabular-nums" style="color: var(--neon-primary)">
+        <span class="font-semibold tabular-nums" style="color: var(--accent-ink)">
           {validLinks.length === 1
             ? tr($locale, "add.links_one")
             : tr($locale, "add.links_many", { count: validLinks.length })}
@@ -123,7 +123,7 @@
       {/if}
     </div>
     {#if invalidCount > 0}
-      <p class="text-xs" style="color: var(--neon-warning)">
+      <p class="text-xs" style="color: var(--warning-ink)">
         {tr($locale, "add.links_invalid", { count: invalidCount })}
       </p>
     {/if}

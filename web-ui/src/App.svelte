@@ -393,7 +393,7 @@
   <!-- Sidebar -->
   <aside
     aria-label="Navigation"
-    class="hidden md:flex flex-col shrink-0 relative neon-top-line transition-all duration-200"
+    class="hidden lg:flex flex-col shrink-0 relative neon-top-line transition-all duration-200"
     style="width: {$sidebarCollapsed ? '56px' : '256px'}; background: var(--bg-surface); border-right: 1px solid var(--border-color)"
   >
     <!-- Logo -->
@@ -410,7 +410,7 @@
       />
       {#if !$sidebarCollapsed}
         <div class="min-w-0">
-          <h1 class="font-bold text-base leading-tight" style="color: var(--neon-primary)">AMIGO</h1>
+          <h1 class="font-bold text-base leading-tight" style="color: var(--accent-ink)">AMIGO</h1>
           <p class="text-xs" style="color: var(--text-secondary)">Download Manager</p>
         </div>
       {/if}
@@ -476,7 +476,7 @@
       >
         <div class="flex items-center justify-between">
           <span class="stat-label">{tr($locale, "sidebar.speed")}</span>
-          <span style="color: var(--neon-primary); font-family: var(--font-mono); font-size: var(--font-xs, 0.75rem)">
+          <span style="color: var(--accent-ink); font-family: var(--font-mono); font-size: var(--font-xs, 0.75rem)">
             {formatSpeed($stats.speed_bytes_per_sec)}
           </span>
         </div>
@@ -491,7 +491,7 @@
             onclick={() => { limitEnabled = !limitEnabled; saveBandwidthLimit(); }}
             class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
             style={limitEnabled
-              ? "background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--neon-primary)"
+              ? "background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--accent-ink)"
               : "background: var(--bg-surface-2); color: var(--text-secondary)"}
           >
             {limitEnabled ? "On" : "Off"}
@@ -596,7 +596,7 @@
     >
       <div class="flex items-center gap-3 min-w-0">
         <!-- Mobile brand (no sidebar on small screens) -->
-        <img src="/amigo-logo.png" alt="" width="28" height="28" class="md:hidden shrink-0 rounded-full" />
+        <img src="/amigo-logo.png" alt="" width="28" height="28" class="lg:hidden shrink-0 rounded-full" />
         <h2
           class="text-lg md:text-xl font-semibold neon-flicker-text truncate"
           style="color: var(--text-primary)"
@@ -609,7 +609,7 @@
           <div
             role="radiogroup"
             aria-label="Protocol filter"
-            class="hidden sm:flex rounded-lg ml-1 overflow-hidden shrink-0"
+            class="hidden lg:flex rounded-lg ml-1 overflow-hidden shrink-0"
             style="background: var(--bg-surface-2); border: 1px solid var(--border-color)"
           >
             {#each protocolOptions as opt}
@@ -619,7 +619,7 @@
                 onclick={() => protocolFilter.set(opt.value)}
                 class="px-3 py-1 text-xs font-semibold transition-colors"
                 style={$protocolFilter === opt.value
-                  ? `background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--neon-primary)`
+                  ? `background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--accent-ink)`
                   : `color: var(--text-secondary)`}
                 style:font-family="var(--font-mono)"
               >
@@ -632,28 +632,28 @@
 
       <!-- Global status bar — status at a glance from any page -->
       <div class="flex items-center gap-3 md:gap-5 shrink-0">
-        <div class="hidden md:flex items-center gap-5" aria-label="Download status">
+        <div class="hidden sm:flex items-center gap-3 lg:gap-5" aria-label="Download status">
           <div class="flex items-center gap-2">
             <span class="stat-label">{tr($locale, "sidebar.speed")}</span>
-            <span class="text-xs tabular-nums" style="color: var(--neon-primary); font-family: var(--font-mono)">
+            <span class="text-xs tabular-nums" style="color: var(--accent-ink); font-family: var(--font-mono)">
               {formatSpeed($stats.speed_bytes_per_sec)}
             </span>
             {#if $speedHistory.length > 1}
               <span class="hidden xl:block"><Sparkline values={$speedHistory} width={72} height={20} /></span>
             {/if}
           </div>
-          <div class="flex items-center gap-1.5" title={tr($locale, "sidebar.active")}>
+          <div class="hidden lg:flex items-center gap-1.5" title={tr($locale, "sidebar.active")}>
             {#if $stats.active_downloads > 0}
               <ProgressRing progress={overallProgress()} size={18} stroke={2} active={true} />
             {/if}
             <span class="text-xs tabular-nums" style="color: var(--text-primary); font-family: var(--font-mono)">{$stats.active_downloads}</span>
             <span class="stat-label">{tr($locale, "sidebar.active")}</span>
           </div>
-          <div class="hidden lg:flex items-center gap-1.5" title={tr($locale, "sidebar.queued")}>
+          <div class="hidden xl:flex items-center gap-1.5" title={tr($locale, "sidebar.queued")}>
             <span class="text-xs tabular-nums" style="color: var(--text-primary); font-family: var(--font-mono)">{$stats.queued}</span>
             <span class="stat-label">{tr($locale, "sidebar.queued")}</span>
           </div>
-          <div class="hidden lg:flex items-center gap-1.5" title={tr($locale, "sidebar.done")}>
+          <div class="hidden xl:flex items-center gap-1.5" title={tr($locale, "sidebar.done")}>
             <span class="text-xs tabular-nums" style="color: var(--status-online); font-family: var(--font-mono)">{$stats.completed}</span>
             <span class="stat-label">{tr($locale, "sidebar.done")}</span>
           </div>
@@ -662,7 +662,7 @@
         <!-- Command palette trigger -->
         <button
           onclick={() => (showCommandPalette = true)}
-          class="hidden sm:flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs"
+          class="hidden lg:flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs"
           style="background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-secondary)"
           aria-label={tr($locale, "cmd.hint_open")}
         >
@@ -672,7 +672,7 @@
 
         <button
           onclick={() => openAddPanel()}
-          class="hidden md:flex icon-btn p-2 rounded-lg min-w-[44px] min-h-[44px] items-center justify-center"
+          class="hidden lg:flex icon-btn p-2 rounded-lg min-w-[44px] min-h-[44px] items-center justify-center"
           style="color: var(--text-secondary)"
           aria-label={tr($locale, "cmd.add_download")}
         >
@@ -683,7 +683,7 @@
 
     <!-- Page content -->
     <div class="flex flex-1 min-h-0">
-      <div class="flex-1 overflow-y-auto p-8 md:p-8 max-md:p-4 max-md:pb-28">
+      <div class="flex-1 overflow-y-auto p-4 lg:p-8 max-lg:pb-28">
         {#key pageKey}
           <div class="page-enter">
             <svelte:boundary onerror={(e) => console.error("Page error:", e)}>

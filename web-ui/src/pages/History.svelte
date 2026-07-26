@@ -24,7 +24,7 @@
     <SkeletonCard count={3} />
   {:else if error}
     <div class="rounded-xl p-4" style="background: color-mix(in srgb, var(--neon-accent) 8%, transparent); border: 1px solid color-mix(in srgb, var(--neon-accent) 20%, transparent)">
-      <p class="text-sm" style="color: var(--neon-accent)">{tr($locale, "history.load_failed")}</p>
+      <p class="text-sm" style="color: var(--danger-ink)">{tr($locale, "history.load_failed")}</p>
     </div>
   {:else if history.length === 0}
     <div class="flex flex-col items-center justify-center py-20">
@@ -46,7 +46,7 @@
             </p>
           </div>
           <!-- Fix M9: use neon-success instead of hardcoded text-green-500 -->
-          <span class="text-xs font-semibold" style="color: var(--neon-success)">{tr($locale, "history.completed")}</span>
+          <span class="text-xs font-semibold" style="color: var(--success-ink)">{tr($locale, "history.completed")}</span>
         </div>
       {/each}
     </div>

@@ -117,7 +117,7 @@
               style="border-color: var(--border-color); color: var(--text-secondary)">{tr($locale, "common.test")}</button>
             <button onclick={() => handleDelete(wh.id)}
               class="px-2.5 py-1.5 rounded-lg text-xs"
-              style="color: var(--neon-accent); border: 1px solid color-mix(in srgb, var(--neon-accent) 20%, transparent)">{tr($locale, "common.delete")}</button>
+              style="color: var(--danger-ink); border: 1px solid color-mix(in srgb, var(--neon-accent) 20%, transparent)">{tr($locale, "common.delete")}</button>
           </div>
         </div>
       {/each}
