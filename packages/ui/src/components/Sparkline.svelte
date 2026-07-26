@@ -1,8 +1,16 @@
 <script lang="ts">
   // Mini speed graph — last 30 data points
   // Fix H8: unique gradient ID per instance
-  let { values = [], width = 120, height = 32, color = "var(--neon-primary)" }:
-    { values?: number[]; width?: number; height?: number; color?: string } = $props();
+  let { values = [], width = 120, height = 32, color = "var(--accent-solid)", label }:
+    {
+      values?: number[];
+      width?: number;
+      height?: number;
+      color?: string;
+      /** Optional summary for AT. Omitted -> the graph is hidden, which is
+          right when the current value is already rendered as text beside it. */
+      label?: string;
+    } = $props();
 
   const gradientId = `spark-fill-${crypto.randomUUID().slice(0, 8)}`;
 
@@ -26,7 +34,14 @@
   });
 </script>
 
-<svg {width} {height} class="overflow-visible">
+<svg
+  {width}
+  {height}
+  class="overflow-visible"
+  role={label ? "img" : "presentation"}
+  aria-label={label}
+  aria-hidden={label ? undefined : "true"}
+>
   <defs>
     <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
       <stop offset="0%" stop-color={color} stop-opacity="0.2" />
