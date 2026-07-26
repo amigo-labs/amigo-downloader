@@ -11,6 +11,7 @@
   import Toasts from "./components/Toasts.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import MobileNav from "./components/MobileNav.svelte";
+  import SegmentedControl from "@amigo/ui/components/SegmentedControl.svelte";
   import {
     addDownload,
     connectWebSocket,
@@ -604,28 +605,18 @@
           {pageTitle}
         </h2>
 
-        <!-- Protocol segmented control (downloads page only, when usenet enabled) -->
+        <!-- Desktop-only: below lg the same control lives in the Downloads
+             toolbar, so it exists at every width. -->
         {#if $currentPage === "downloads" && $features.usenet}
-          <div
-            role="radiogroup"
-            aria-label="Protocol filter"
-            class="hidden lg:flex rounded-lg ml-1 overflow-hidden shrink-0"
-            style="background: var(--bg-surface-2); border: 1px solid var(--border-color)"
-          >
-            {#each protocolOptions as opt}
-              <button
-                role="radio"
-                aria-checked={$protocolFilter === opt.value}
-                onclick={() => protocolFilter.set(opt.value)}
-                class="px-3 py-1 text-xs font-semibold transition-colors"
-                style={$protocolFilter === opt.value
-                  ? `background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--accent-ink)`
-                  : `color: var(--text-secondary)`}
-                style:font-family="var(--font-mono)"
-              >
-                {opt.label}
-              </button>
-            {/each}
+          <div class="hidden lg:block ml-1 shrink-0">
+            <SegmentedControl
+              size="sm"
+              mono
+              options={protocolOptions}
+              value={$protocolFilter}
+              ariaLabel={tr($locale, "downloads.protocol_filter")}
+              onchange={(v) => protocolFilter.set(v as ProtocolFilter)}
+            />
           </div>
         {/if}
       </div>

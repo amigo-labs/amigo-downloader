@@ -143,9 +143,12 @@
 
   <div class="flex flex-col items-center gap-4" {onkeydown} role="none">
     <!-- The captcha art is generally dark-on-white, so the plate stays white
-         in both themes; that is the image's background, not the app's. -->
+         in both themes; that is the image's background, not the app's, and
+         the text on it must be dark regardless of the active theme. -->
+    <!-- ui-lint-disable-next-line no-raw-hex -->
     <div class="w-full rounded-lg p-2 flex items-center justify-center min-h-[120px]" style="background: #ffffff">
       {#if imageFailed}
+        <!-- ui-lint-disable-next-line no-raw-hex -->
         <p class="text-sm" style="color: #b91c1c">{tr($locale, "captcha.image_failed")}</p>
       {:else}
         <img

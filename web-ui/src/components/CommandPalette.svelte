@@ -156,7 +156,7 @@
   }
 </script>
 
-<div class="fixed inset-0 z-[110] flex items-start justify-center p-4 pt-[12vh]">
+<div class="cmd-root fixed inset-0 flex items-start justify-center p-4">
   <button
     class="fixed inset-0 bg-black/60"
     style="backdrop-filter: blur(2px)"
@@ -171,7 +171,7 @@
     aria-modal="true"
     aria-label={tr($locale, "cmd.hint_open")}
     tabindex="-1"
-    class="relative z-10 w-full max-w-xl rounded-2xl overflow-hidden neon-card"
+    class="cmd-panel relative w-full max-w-xl rounded-xl overflow-hidden neon-card"
     style="background: var(--bg-surface)"
     transition:scaleFade={{ duration: dur(180), y: 8 }}
     onkeydown={onKeydown}
@@ -197,7 +197,7 @@
     </div>
 
     <!-- Results -->
-    <div id="cmd-list" role="listbox" class="max-h-[50vh] overflow-y-auto py-2">
+    <div id="cmd-list" role="listbox" class="cmd-list overflow-y-auto py-2">
       {#if flat.length === 0}
         <p class="px-4 py-8 text-center text-sm" style="color: var(--text-secondary)">
           {tr($locale, "cmd.no_results")}
@@ -236,3 +236,24 @@
     </div>
   </div>
 </div>
+
+<style>
+  .cmd-root {
+    z-index: var(--z-command);
+    /* dvh + a smaller top offset: with a software keyboard open, 12vh plus a
+       50vh list pushed the palette off a 640px-tall phone screen. */
+    padding-top: 8dvh;
+  }
+
+  .cmd-panel {
+    max-height: calc(100dvh - 10dvh - 2rem);
+    display: flex;
+    flex-direction: column;
+  }
+
+  .cmd-list {
+    flex: 1;
+    min-height: 0;
+    max-height: 50dvh;
+  }
+</style>
