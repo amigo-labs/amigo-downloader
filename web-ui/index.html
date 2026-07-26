@@ -13,9 +13,9 @@
     <link rel="apple-touch-icon" href="/amigo-logo.png" />
     <meta name="description" content="Fast, modular download manager" />
 
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <!-- Inter is self-hosted via @amigo/ui tokens.css. Loading it from Google
+         Fonts was blocked by the server's own CSP (style-src/font-src 'self'),
+         so the shipped UI fell back to system-ui while dev looked fine. -->
   </head>
   <body>
     <div id="app"></div>

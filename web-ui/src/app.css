@@ -19,7 +19,7 @@
 
 .clickable-row:hover {
   background: var(--hover-bg);
-  box-shadow: inset 3px 0 0 var(--neon-primary);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 /* ========================================
@@ -30,12 +30,12 @@
   width: 2.5rem;
   height: 2.5rem;
   border-radius: 50%;
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--neon-primary) 20%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 20%, transparent);
   transition: box-shadow 0.3s ease;
 }
 
 .sidebar-logo:hover img {
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--neon-primary) 40%, transparent),
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 40%, transparent),
               var(--neon-glow-md);
 }
 
@@ -79,7 +79,7 @@
 
 .search-trigger:hover kbd {
   border-color: var(--neon-border-hover);
-  color: var(--neon-primary);
+  color: var(--accent-ink);
   text-shadow: var(--neon-text-glow);
 }
 
@@ -87,7 +87,7 @@
   padding: 1rem 1rem 0.5rem;
   font-size: 0.75rem;
   font-weight: 600;
-  color: var(--neon-primary);
+  color: var(--accent-ink);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   text-shadow: var(--neon-text-glow);
@@ -113,9 +113,9 @@
 }
 
 .nav-link.active {
-  background: color-mix(in srgb, var(--neon-primary) 15%, transparent);
-  color: var(--neon-primary);
-  box-shadow: inset 3px 0 0 var(--neon-primary),
+  background: var(--accent-subtle);
+  color: var(--accent-ink);
+  box-shadow: inset 3px 0 0 var(--accent),
               var(--neon-glow-sm);
 }
 
@@ -169,7 +169,11 @@
   appearance: none;
   background: var(--border-color);
   border-radius: 2px;
-  outline: none;
+}
+
+.neon-slider input[type="range"]:focus-visible {
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 4px;
 }
 
 .neon-slider input[type="range"]::-webkit-slider-thumb {
@@ -177,16 +181,16 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--neon-primary);
+  background: var(--accent-solid);
   border: 2px solid var(--bg-surface);
   cursor: pointer;
-  box-shadow: 0 0 8px var(--neon-primary),
+  box-shadow: 0 0 8px var(--accent),
               var(--neon-glow-sm);
   transition: box-shadow 0.15s ease;
 }
 
 .neon-slider input[type="range"]::-webkit-slider-thumb:hover {
-  box-shadow: 0 0 14px var(--neon-primary),
+  box-shadow: 0 0 14px var(--accent),
               var(--neon-glow-md);
 }
 
@@ -194,16 +198,16 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  background: var(--neon-primary);
+  background: var(--accent-solid);
   border: 2px solid var(--bg-surface);
   cursor: pointer;
-  box-shadow: 0 0 8px var(--neon-primary);
+  box-shadow: 0 0 8px var(--accent);
 }
 
 .neon-slider-label {
   font-size: 0.6875rem;
   font-weight: 600;
-  color: var(--neon-primary);
+  color: var(--accent-ink);
   text-shadow: var(--neon-text-glow);
   min-width: 2.5rem;
   text-align: right;
@@ -250,19 +254,19 @@
   filter: brightness(1.2);
 }
 
-/* Input / textarea focus ring */
-input:not([type="range"]):not([type="checkbox"]):focus,
-textarea:focus,
-select:focus {
-  border-color: var(--neon-primary) !important;
-  outline: none;
-  box-shadow: 0 0 0 1px var(--neon-primary);
+/* Input / textarea focus ring — matches the global *:focus-visible weight */
+input:not([type="range"]):not([type="checkbox"]):focus-visible,
+textarea:focus-visible,
+select:focus-visible {
+  border-color: var(--accent-ink);
+  outline: 2px solid var(--accent-ink);
+  outline-offset: 1px;
 }
 
 /* Placeholder */
 ::placeholder {
   color: var(--text-secondary);
-  opacity: 0.6;
+  opacity: 1;
 }
 
 /* Disabled buttons */
