@@ -53,6 +53,7 @@
   import { locale, tr } from "./lib/i18n";
   import { addToast } from "./lib/toast";
   import { registerBindings, startKeymap, type Binding } from "./lib/keymap";
+  import { pruneSelection } from "./lib/selection";
   import PairingModal from "./components/PairingModal.svelte";
 
   // Pages are code-split: each is fetched on first navigation rather than
@@ -267,6 +268,10 @@
         getConfig(),
       ]);
       downloads.set(dl);
+      // Drop selected ids the server no longer knows about. Without this a
+      // download deleted in another tab leaves a phantom count in the batch
+      // bar and batch actions fire against ids that are already gone.
+      pruneSelection(dl.map((d) => d.id));
       stats.set(st);
       pushSpeedSample(st.speed_bytes_per_sec ?? 0);
       if (cfg) {
