@@ -493,9 +493,11 @@ GET    /system-info
 POST   /downloads                         # single URL
 GET    /downloads
 GET    /downloads/{id}
-PATCH  /downloads/{id}                    # pause / resume
+PATCH  /downloads/{id}                    # pause / resume / retry
 DELETE /downloads/{id}                    # cancel + remove
-POST   /downloads/batch                   # multiple URLs
+POST   /downloads/batch                   # add multiple URLs
+PATCH  /downloads/batch                   # bulk pause / resume / retry
+DELETE /downloads/batch                   # bulk cancel + remove
 POST   /downloads/nzb                     # upload NZB
 POST   /downloads/container               # import DLC (multipart, field "file")
 GET    /downloads/usenet                  # list usenet downloads only

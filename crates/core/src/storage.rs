@@ -496,6 +496,16 @@ impl Storage {
         Ok(())
     }
 
+    /// Clear the recorded error for a download, used when retrying.
+    pub async fn clear_download_error(&self, id: &str) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "UPDATE downloads SET error_message = NULL, retry_count = retry_count + 1 WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+        Ok(())
+    }
+
     pub async fn update_download_progress(
         &self,
         id: &str,

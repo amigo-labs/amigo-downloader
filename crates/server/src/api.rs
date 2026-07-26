@@ -38,6 +38,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/downloads", get(list_downloads))
         // Specific download routes MUST come before {id} routes
         .route("/api/v1/downloads/batch", post(add_batch))
+        .route("/api/v1/downloads/batch", patch(batch_update_downloads))
+        .route("/api/v1/downloads/batch", delete(batch_delete_downloads))
         // NZB JSON bodies can be a few MiB for large releases; cap at 64 MiB
         // so a malicious client can't exhaust memory by uploading a multi-GiB
         // body. DLC containers are tiny (tens of KiB at most), so cap them
@@ -104,7 +106,30 @@ struct BatchRequest {
 
 #[derive(Deserialize)]
 struct UpdateDownloadRequest {
-    action: String, // "pause", "resume"
+    action: String, // "pause", "resume", "retry"
+}
+
+#[derive(Deserialize)]
+struct BatchUpdateRequest {
+    ids: Vec<String>,
+    action: String, // "pause", "resume", "retry"
+}
+
+#[derive(Deserialize)]
+struct BatchDeleteRequest {
+    ids: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct BatchOutcomeResponse {
+    ok: Vec<String>,
+    failed: Vec<BatchFailure>,
+}
+
+#[derive(Serialize)]
+struct BatchFailure {
+    id: String,
+    error: String,
 }
 
 #[derive(Deserialize)]
@@ -299,17 +324,13 @@ async fn update_download(
     Path(id): Path<String>,
     Json(req): Json<UpdateDownloadRequest>,
 ) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    let result = match req.action.as_str() {
-        "pause" => state.coordinator.pause(&id).await,
-        "resume" => state.coordinator.resume(&id).await,
-        _ => {
-            return Err((
-                StatusCode::BAD_REQUEST,
-                Json(ErrorResponse {
-                    error: "Invalid action. Use 'pause' or 'resume'.".into(),
-                }),
-            ));
-        }
+    let Some(result) = apply_action(&state, &id, &req.action).await else {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(ErrorResponse {
+                error: "Invalid action. Use 'pause', 'resume' or 'retry'.".into(),
+            }),
+        ));
     };
 
     match result {
@@ -321,6 +342,79 @@ async fn update_download(
             }),
         )),
     }
+}
+
+/// Apply a download action by name. `None` means the name is not recognised.
+///
+/// Shared by the single-id and batch endpoints so the set of valid actions
+/// cannot drift between them -- the web UI has been sending "retry" since the
+/// retry button was added, and the single-id handler rejected it with a 400.
+async fn apply_action(
+    state: &AppState,
+    id: &str,
+    action: &str,
+) -> Option<Result<(), amigo_core::Error>> {
+    Some(match action {
+        "pause" => state.coordinator.pause(id).await,
+        "resume" => state.coordinator.resume(id).await,
+        "retry" => state.coordinator.retry(id).await,
+        _ => return None,
+    })
+}
+
+/// Apply one action to many downloads in a single request.
+///
+/// Doing this per id from the browser meant N round-trips, N WebSocket events
+/// and N triggered refetches -- deleting 100 finished downloads was visibly
+/// slow and hammered the server. Partial failure is reported per id rather
+/// than failing the whole call, so the client can keep exactly the failures
+/// selected for a retry.
+async fn batch_update_downloads(
+    State(state): State<AppState>,
+    Json(req): Json<BatchUpdateRequest>,
+) -> Result<Json<BatchOutcomeResponse>, (StatusCode, Json<ErrorResponse>)> {
+    let mut ok = Vec::new();
+    let mut failed = Vec::new();
+
+    for id in &req.ids {
+        match apply_action(&state, id, &req.action).await {
+            None => {
+                return Err((
+                    StatusCode::BAD_REQUEST,
+                    Json(ErrorResponse {
+                        error: "Invalid action. Use 'pause', 'resume' or 'retry'.".into(),
+                    }),
+                ));
+            }
+            Some(Ok(())) => ok.push(id.clone()),
+            Some(Err(e)) => failed.push(BatchFailure {
+                id: id.clone(),
+                error: e.to_string(),
+            }),
+        }
+    }
+
+    Ok(Json(BatchOutcomeResponse { ok, failed }))
+}
+
+async fn batch_delete_downloads(
+    State(state): State<AppState>,
+    Json(req): Json<BatchDeleteRequest>,
+) -> Json<BatchOutcomeResponse> {
+    let mut ok = Vec::new();
+    let mut failed = Vec::new();
+
+    for id in &req.ids {
+        match state.coordinator.cancel(id).await {
+            Ok(()) => ok.push(id.clone()),
+            Err(e) => failed.push(BatchFailure {
+                id: id.clone(),
+                error: e.to_string(),
+            }),
+        }
+    }
+
+    Json(BatchOutcomeResponse { ok, failed })
 }
 
 async fn delete_download(

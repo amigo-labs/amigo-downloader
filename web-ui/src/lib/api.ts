@@ -53,6 +53,18 @@ export const pauseDownload = (id: string) => api<void>("PATCH", `/downloads/${id
 export const resumeDownload = (id: string) => api<void>("PATCH", `/downloads/${id}`, { action: "resume" });
 export const retryDownload = (id: string) => api<void>("PATCH", `/downloads/${id}`, { action: "retry" });
 export const deleteDownload = (id: string) => api<void>("DELETE", `/downloads/${id}`);
+
+export interface BatchOutcome {
+  ok: string[];
+  failed: { id: string; error: string }[];
+}
+
+/** Apply one action to many downloads in a single request. */
+export const batchUpdateDownloads = (ids: string[], action: "pause" | "resume" | "retry") =>
+  api<BatchOutcome>("PATCH", "/downloads/batch", { ids, action });
+
+export const batchDeleteDownloads = (ids: string[]) =>
+  api<BatchOutcome>("DELETE", "/downloads/batch", { ids });
 export const getQueue = () => api<Download[]>("GET", "/queue");
 export const reorderQueue = (ids: string[]) => api<void>("PATCH", "/queue/reorder", { ids });
 export const getHistory = () => api<Download[]>("GET", "/history");

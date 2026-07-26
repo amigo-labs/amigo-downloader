@@ -11,7 +11,7 @@
   import { statusCounts } from "../lib/download";
   import { clear as clearSelection, toggleAll, clearIfAny } from "../lib/selection";
   import { registerBindings, registerEscapeFallback, type Binding } from "../lib/keymap";
-  import { runBatch, batchProgress } from "../lib/batch";
+  import { batchProgress, bulkUpdate, bulkDelete } from "../lib/batch";
   import { moveById } from "../lib/dnd";
   import DownloadList from "../components/download/DownloadList.svelte";
   import SkeletonCard from "../components/SkeletonCard.svelte";
@@ -101,17 +101,15 @@
   }
 
   async function runBatchAction(
-    fn: (id: string) => Promise<unknown>,
+    action: "pause" | "resume" | "retry",
+    perId: (id: string) => Promise<unknown>,
     okKey: string,
     partialKey: string,
   ) {
     if ($batchProgress?.running) return;
     const ids = [...$selectedIds];
     batchAbort = new AbortController();
-    const { ok, failed, cancelled } = await runBatch(ids, fn, {
-      concurrency: 4,
-      signal: batchAbort.signal,
-    });
+    const { ok, failed, cancelled } = await bulkUpdate(ids, action, perId, batchAbort.signal);
     batchAbort = null;
 
     if (failed.length) {
@@ -128,9 +126,9 @@
   }
 
   const batchPause = () =>
-    runBatchAction(pauseDownload, "batch.paused", "batch.paused_partial");
+    runBatchAction("pause", pauseDownload, "batch.paused", "batch.paused_partial");
   const batchResume = () =>
-    runBatchAction(resumeDownload, "batch.resumed", "batch.resumed_partial");
+    runBatchAction("resume", resumeDownload, "batch.resumed", "batch.resumed_partial");
 
   async function batchDelete() {
     if (!confirmingBatchDelete) {
@@ -146,10 +144,7 @@
     const urls = ids.map((id) => byId.get(id)).filter((u): u is string => !!u);
 
     batchAbort = new AbortController();
-    const { ok, failed } = await runBatch(ids, deleteDownload, {
-      concurrency: 4,
-      signal: batchAbort.signal,
-    });
+    const { ok, failed } = await bulkDelete(ids, deleteDownload, batchAbort.signal);
     batchAbort = null;
 
     if (failed.length) {

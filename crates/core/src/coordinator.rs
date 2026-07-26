@@ -689,6 +689,24 @@ impl Coordinator {
         Ok(())
     }
 
+    /// Re-queue a failed download.
+    ///
+    /// Distinct from `resume`: a retry also clears the recorded error, so the
+    /// UI stops offering "report this failure" for an attempt that is being
+    /// made again.
+    pub async fn retry(&self, id: &str) -> Result<(), crate::Error> {
+        self.storage.clear_download_error(id).await?;
+        self.storage
+            .update_download_status(id, QueueStatus::Queued)
+            .await?;
+        let _ = self.event_tx.send(DownloadEvent::StatusChanged {
+            id: id.to_string(),
+            status: "queued".to_string(),
+        });
+        self.try_start_next().await?;
+        Ok(())
+    }
+
     /// Cancel and remove a download.
     pub async fn cancel(&self, id: &str) -> Result<(), crate::Error> {
         let mut active = self.active.lock().await;
