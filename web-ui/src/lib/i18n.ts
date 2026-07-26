@@ -341,6 +341,13 @@ const translations: Record<Locale, Record<string, string>> = {
 
     // History
     "history.empty": "No download history yet",
+    "history.search": "Search history",
+    "history.clear": "Clear history",
+    "history.cleared": "History cleared",
+    "history.clear_failed": "Could not clear the history",
+    "history.requeue_named": "Download {name} again",
+    "history.requeued": "Queued again",
+    "history.requeue_failed": "Could not queue this download again",
     "history.empty_hint": "Completed downloads will appear here",
 
     // Connection
@@ -726,6 +733,13 @@ const translations: Record<Locale, Record<string, string>> = {
     "feedback.crash_reported_as": "Absturz gemeldet als #{number}",
 
     "history.empty": "Noch kein Download-Verlauf",
+    "history.search": "Verlauf durchsuchen",
+    "history.clear": "Verlauf leeren",
+    "history.cleared": "Verlauf geleert",
+    "history.clear_failed": "Verlauf konnte nicht geleert werden",
+    "history.requeue_named": "{name} erneut herunterladen",
+    "history.requeued": "Erneut eingereiht",
+    "history.requeue_failed": "Download konnte nicht erneut eingereiht werden",
     "history.empty_hint": "Abgeschlossene Downloads erscheinen hier",
 
     "connection.online": "Verbunden",
