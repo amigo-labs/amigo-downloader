@@ -136,7 +136,7 @@
 
   function getContextMenuItems() {
     const lang = $locale;
-    const items: { label: string; icon: string; action: () => void; color?: string }[] = [
+    const items: { label: string; icon: string; action: () => void; tone?: "default" | "danger" }[] = [
       { label: tr(lang, "action.copy"), icon: "copy", action: () => navigator.clipboard.writeText(download.url) },
       { label: tr(lang, "action.open_browser"), icon: "globe", action: () => window.open(download.url, "_blank") },
     ];
@@ -149,7 +149,7 @@
     }
     // Same delete flow as the card button: errors surface as a toast and the
     // success toast offers Undo (the menu can't host a two-step confirm).
-    items.push({ label: tr(lang, "action.delete"), icon: "trash", action: performDelete, color: "var(--neon-accent)" });
+    items.push({ label: tr(lang, "action.delete"), icon: "trash", action: performDelete, tone: "danger" });
     return items;
   }
 

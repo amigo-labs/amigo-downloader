@@ -52,6 +52,7 @@
   } from "./lib/stores";
   import { locale, tr } from "./lib/i18n";
   import { addToast } from "./lib/toast";
+  import { registerBindings, startKeymap, type Binding } from "./lib/keymap";
   import PairingModal from "./components/PairingModal.svelte";
 
   // Pages are code-split: each is fetched on first navigation rather than
@@ -211,10 +212,23 @@
     // registered once at module-init time with no removal path.
     const detachPopstate = attachRouterPopstateListener();
 
+    // One window listener for every shortcut, plus the Escape chain.
+    const stopKeymap = startKeymap();
+    const unregister = registerBindings(shortcutBindings);
+
+    // Keep <html lang> in step with the UI language so screen readers use the
+    // right pronunciation and hyphenation rules.
+    const unsubLocale = locale.subscribe((l) => {
+      document.documentElement.lang = l;
+    });
+
     return () => {
       clearInterval(interval);
       ws.close();
       detachPopstate();
+      stopKeymap();
+      unregister();
+      unsubLocale();
     };
   });
 
@@ -309,80 +323,48 @@
     pageKey++;
   }
 
-  // True when the keystroke is going into a text field, so single-key
-  // shortcuts (digits, "?") must not steal it.
-  function isEditableTarget(e: KeyboardEvent): boolean {
-    const el = e.target as HTMLElement | null;
-    if (!el) return false;
-    const tag = el.tagName;
-    return (
-      tag === "INPUT" ||
-      tag === "TEXTAREA" ||
-      tag === "SELECT" ||
-      el.isContentEditable
-    );
-  }
-
-  // Single global keyboard handler
-  function handleKeydown(e: KeyboardEvent) {
-    const editable = isEditableTarget(e);
-    // Command palette — the power-user entry point.
-    if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
-      e.preventDefault();
-      showCommandPalette = !showCommandPalette;
-      return;
-    }
-    if ((e.ctrlKey || e.metaKey) && e.key === "n") {
-      e.preventDefault();
-      openAddPanel();
-    }
-    if (e.key === "Escape") {
-      if (showCommandPalette) {
-        showCommandPalette = false;
-        return;
-      }
-      if ($sidePanelMode) {
-        closeSidePanel();
-        return;
-      }
-      if (showShortcuts) {
-        showShortcuts = false;
-        return;
-      }
-      if (showFeedback) {
-        showFeedbackDialog.set(false);
-        return;
-      }
-    }
-    // Bare single-key shortcuts below must not fire while typing in a field.
-    if (editable) return;
-    if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      e.preventDefault();
-      showShortcuts = !showShortcuts;
-      return;
-    }
-    const allNav = [...mainNavItems, ...mgmtNavItems];
-    if (
-      !$sidePanelMode &&
-      !showFeedback &&
-      !showShortcuts &&
-      !showCommandPalette &&
-      !e.ctrlKey &&
-      !e.metaKey &&
-      !e.altKey
-    ) {
-      const num = parseInt(e.key);
-      if (num >= 1 && num <= allNav.length) {
-        e.preventDefault();
-        navigate(allNav[num - 1].id);
-      }
-    }
-  }
+  // Keyboard shortcuts live in a registry (lib/keymap.ts) rather than one
+  // hand-written handler. The registry enforces two rules centrally that the
+  // old handler got wrong per-shortcut: Escape always dismisses the topmost
+  // layer first, and no binding fires while a blocking overlay is open unless
+  // it belongs to that overlay's scope. Ctrl+N used to open the Add panel
+  // behind any modal, and the digit shortcuts enumerated four overlay flags
+  // but missed the captcha dialog.
+  const shortcutBindings: Binding[] = [
+    {
+      chord: { key: "k", mod: true },
+      descKey: "shortcuts.command_palette",
+      allowInEditable: true,
+      run: () => (showCommandPalette = !showCommandPalette),
+    },
+    {
+      chord: { key: "n", mod: true },
+      descKey: "shortcuts.add",
+      allowInEditable: true,
+      run: () => openAddPanel(),
+    },
+    {
+      chord: { key: "?" },
+      descKey: "shortcuts.help",
+      run: () => (showShortcuts = !showShortcuts),
+    },
+    ...[1, 2, 3, 4].map((n) => ({
+      chord: { key: String(n) },
+      descKey: "shortcuts.navigate",
+      // Blocking overlays are handled centrally by the registry; the side
+      // panel is a non-blocking layer, so it needs an explicit guard.
+      when: () => !$sidePanelMode,
+      run: () => {
+        const allNav = [...mainNavItems, ...mgmtNavItems];
+        if (allNav[n - 1]) navigate(allNav[n - 1].id);
+      },
+    })),
+  ];
 
   let pageTitle = $derived(tr($locale, `nav.${$currentPage}`));
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+
 
 {#if bootState === "loading"}
   <div class="flex h-screen items-center justify-center" style="background: var(--bg-deep)">
