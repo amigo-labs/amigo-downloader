@@ -238,6 +238,54 @@ async fn test_pause_and_resume() {
 }
 
 #[tokio::test]
+async fn test_retry_clears_error_and_requeues() {
+    let coord = test_coordinator();
+    let id = coord
+        .add_download("https://example.com/file.zip", None)
+        .await
+        .unwrap();
+
+    coord
+        .storage()
+        .update_download_status(&id, QueueStatus::Failed)
+        .await
+        .unwrap();
+    coord
+        .storage()
+        .update_download_error(&id, "connection reset", 0)
+        .await
+        .unwrap();
+
+    coord.retry(&id).await.unwrap();
+
+    let row = coord.storage().get_download(&id).await.unwrap().unwrap();
+    assert_eq!(row.status, "queued");
+    // The error must be cleared: the UI keys its "report this failure" button
+    // off it, and the attempt is being made again.
+    assert_eq!(row.error_message, None);
+    assert_eq!(row.retry_count, 1);
+}
+
+#[tokio::test]
+async fn test_retry_is_safe_on_a_download_that_is_not_failed() {
+    // `retry` is reachable for any id through the API and the bulk endpoint,
+    // so it must not corrupt state when applied to a queued or paused row.
+    let coord = test_coordinator();
+    let id = coord
+        .add_download("https://example.com/file.zip", None)
+        .await
+        .unwrap();
+
+    coord.pause(&id).await.unwrap();
+    coord.retry(&id).await.unwrap();
+
+    let row = coord.storage().get_download(&id).await.unwrap().unwrap();
+    assert_eq!(row.status, "queued");
+    assert_eq!(row.error_message, None);
+    assert_eq!(coord.active_count().await, 0);
+}
+
+#[tokio::test]
 async fn test_event_subscription() {
     let coord = test_coordinator();
     let mut rx = coord.subscribe();

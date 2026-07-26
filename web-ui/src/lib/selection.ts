@@ -84,7 +84,15 @@ export function toggleAll(orderedIds: string[]): void {
   else setSelection(orderedIds);
 }
 
-/** Dispatch a click on a row checkbox, honouring Shift / Ctrl / Cmd. */
+/**
+ * Dispatch a click on a row checkbox: Shift extends the range from the
+ * anchor, anything else toggles.
+ *
+ * Ctrl/Cmd is deliberately not special-cased here. On a checkbox a plain
+ * click already toggles without clearing the rest of the selection, which is
+ * exactly what Ctrl+click means elsewhere — so handling it separately would
+ * only duplicate the default.
+ */
 export function handleCheckboxClick(
   id: string,
   event: MouseEvent | KeyboardEvent,

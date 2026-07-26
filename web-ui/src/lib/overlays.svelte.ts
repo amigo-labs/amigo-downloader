@@ -62,8 +62,12 @@ export const topScope: Readable<string | undefined> = derived(
 
 /**
  * Register a layer. Returns a close function; calling it twice is a no-op.
- * Registering an id that is already open replaces it in place, which keeps
- * hot-reload and re-entrant opens from stacking duplicates.
+ *
+ * Re-registering an id that is already open removes the old entry and appends
+ * the new one, so the layer moves to the *top* of the stack rather than
+ * keeping its position. That is intentional — a re-open should take focus and
+ * Escape priority — and it also keeps hot-reload from stacking duplicates.
+ * Anything that depends on stable ordering must not re-register.
  */
 export function openLayer(options: LayerOptions): () => void {
   const layer: Layer = {

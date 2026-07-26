@@ -689,12 +689,23 @@ impl Coordinator {
         Ok(())
     }
 
-    /// Re-queue a failed download.
+    /// Re-queue a download, cancelling any attempt already in flight.
     ///
-    /// Distinct from `resume`: a retry also clears the recorded error, so the
-    /// UI stops offering "report this failure" for an attempt that is being
-    /// made again.
+    /// Distinct from `resume` in two ways. It clears the recorded error, so
+    /// the UI stops offering "report this failure" for an attempt that is
+    /// being made again. And it cancels an active task first: `resume` is only
+    /// ever reached from a paused download, which by definition is not active,
+    /// but `retry` is exposed on the API and reachable for any id — including
+    /// via the bulk endpoint over a mixed selection. Without the cancel, the
+    /// old task would keep writing while the row flipped back to queued and
+    /// `try_start_next` started a second task for the same download.
     pub async fn retry(&self, id: &str) -> Result<(), crate::Error> {
+        let mut active = self.active.lock().await;
+        if let Some(dl) = active.remove(id) {
+            dl.cancel_tx.send_replace(true);
+        }
+        drop(active);
+
         self.storage.clear_download_error(id).await?;
         self.storage
             .update_download_status(id, QueueStatus::Queued)
