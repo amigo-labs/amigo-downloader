@@ -8,13 +8,34 @@
   ],
   "exports": {
     "./tokens.css": "./src/tokens.css",
+    "./actions/focusTrap": "./src/actions/focusTrap.ts",
+    "./components/Banner.svelte": "./src/components/Banner.svelte",
+    "./components/Button.svelte": "./src/components/Button.svelte",
+    "./components/Card.svelte": "./src/components/Card.svelte",
+    "./components/Chip.svelte": "./src/components/Chip.svelte",
     "./components/ChunkViz.svelte": "./src/components/ChunkViz.svelte",
-    "./components/Sparkline.svelte": "./src/components/Sparkline.svelte",
+    "./components/Dialog.svelte": "./src/components/Dialog.svelte",
+    "./components/EmptyState.svelte": "./src/components/EmptyState.svelte",
+    "./components/Field.svelte": "./src/components/Field.svelte",
+    "./components/Icon.svelte": "./src/components/Icon.svelte",
+    "./components/IconButton.svelte": "./src/components/IconButton.svelte",
+    "./components/ProgressBar.svelte": "./src/components/ProgressBar.svelte",
     "./components/ProgressRing.svelte": "./src/components/ProgressRing.svelte",
-    "./components/Mascot.svelte": "./src/components/Mascot.svelte",
-    "./components/Icon.svelte": "./src/components/Icon.svelte"
+    "./components/SegmentedControl.svelte": "./src/components/SegmentedControl.svelte",
+    "./components/Sparkline.svelte": "./src/components/Sparkline.svelte",
+    "./components/StatusDot.svelte": "./src/components/StatusDot.svelte",
+    "./components/Toggle.svelte": "./src/components/Toggle.svelte"
   },
   "peerDependencies": {
+    "svelte": "^5.0.0"
+  },
+  "scripts": {
+    "check": "node scripts/check-contrast.mjs && node scripts/check-components.mjs"
+  },
+  "dependencies": {
+    "@fontsource-variable/inter": "^5.2.5"
+  },
+  "devDependencies": {
     "svelte": "^5.0.0"
   }
 }

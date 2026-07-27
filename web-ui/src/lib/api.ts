@@ -53,13 +53,50 @@ export const pauseDownload = (id: string) => api<void>("PATCH", `/downloads/${id
 export const resumeDownload = (id: string) => api<void>("PATCH", `/downloads/${id}`, { action: "resume" });
 export const retryDownload = (id: string) => api<void>("PATCH", `/downloads/${id}`, { action: "retry" });
 export const deleteDownload = (id: string) => api<void>("DELETE", `/downloads/${id}`);
+
+export interface BatchOutcome {
+  ok: string[];
+  failed: { id: string; error: string }[];
+}
+
+/** Apply one action to many downloads in a single request. */
+export const batchUpdateDownloads = (ids: string[], action: "pause" | "resume" | "retry") =>
+  api<BatchOutcome>("PATCH", "/downloads/batch", { ids, action });
+
+export const batchDeleteDownloads = (ids: string[]) =>
+  api<BatchOutcome>("DELETE", "/downloads/batch", { ids });
 export const getQueue = () => api<Download[]>("GET", "/queue");
 export const reorderQueue = (ids: string[]) => api<void>("PATCH", "/queue/reorder", { ids });
 export const getHistory = () => api<Download[]>("GET", "/history");
+export const clearHistory = () => api<void>("DELETE", "/history");
 export const getPlugins = () => api<Plugin[]>("GET", "/plugins");
 export const setPluginEnabled = (id: string, enabled: boolean) =>
   api<void>("PATCH", `/plugins/${encodeURIComponent(id)}`, { enabled });
-export const checkUpdates = () => api<unknown>("GET", "/updates/check");
+export interface MarketplaceEntry {
+  id: string;
+  name: string;
+  version: string;
+  description: string;
+  author: string;
+  tags: string[];
+  installed: boolean;
+}
+
+export interface CoreUpdateInfo {
+  current_version: string;
+  latest_version: string | null;
+  update_available: boolean;
+  release_notes: string | null;
+}
+
+export interface UpdateCheck {
+  core: CoreUpdateInfo;
+  plugins: { id: string; current_version: string; latest_version: string }[];
+}
+
+export const checkUpdates = () => api<UpdateCheck>("GET", "/updates/check");
+export const listAvailablePlugins = () =>
+  api<MarketplaceEntry[]>("GET", "/updates/plugins/available");
 export const applyCoreUpdate = () => api<unknown>("POST", "/updates/core");
 export const getSystemInfo = () => api<unknown>("GET", "/system-info");
 
@@ -69,7 +106,7 @@ export const getSystemInfo = () => api<unknown>("GET", "/system-info");
 export const updatePlugin = (id: string) =>
   api<unknown>("POST", `/updates/plugins/${encodeURIComponent(id)}`);
 export const installPlugin = (id: string) =>
-  api<unknown>("POST", `/updates/plugins/${encodeURIComponent(id)}/install`);
+  api<{ id: string; version: string }>("POST", `/updates/plugins/${encodeURIComponent(id)}/install`);
 
 // ========================================
 // SETUP / LOGIN / PAIRING
@@ -124,7 +161,7 @@ export const denyPairing = (id: string) =>
 // Re-export Download from stores (single source of truth — audit M6)
 export type { Download } from "./stores";
 
-interface Plugin {
+export interface Plugin {
   id: string;
   name: string;
   version: string;

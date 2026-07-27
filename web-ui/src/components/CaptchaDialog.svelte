@@ -2,8 +2,10 @@
   import { onMount } from "svelte";
   import { addToast } from "../lib/toast";
   import { locale, tr } from "../lib/i18n";
-  import { focusTrap } from "../lib/focusTrap";
-  import { scaleFade, dur } from "../lib/motion";
+  import { openLayer, layerState } from "../lib/overlays.svelte";
+  import Dialog from "@amigo/ui/components/Dialog.svelte";
+  import Button from "@amigo/ui/components/Button.svelte";
+  import ProgressBar from "@amigo/ui/components/ProgressBar.svelte";
 
   let { captcha, onclose }: {
     captcha: {
@@ -19,10 +21,25 @@
   let answer = $state("");
   let submitting = $state(false);
   let elapsed = $state(0);
+  let imageFailed = $state(false);
   let timerRef: ReturnType<typeof setInterval> | undefined;
   const TIMEOUT = 300;
 
-  // Fix H7: move setInterval into onMount with cleanup
+  // Registered as "critical" but still dismissible: this dialog used to have
+  // no Escape, no backdrop click and no entry in the global Escape chain, so
+  // together with its focus trap it was a genuine keyboard trap. Dismissing
+  // it now cancels the captcha server-side, which is what Skip already did.
+  const layer = layerState("captcha");
+  $effect(() =>
+    openLayer({
+      id: "captcha",
+      kind: "critical",
+      label: "Captcha",
+      dismissible: true,
+      onDismiss: () => void skip(),
+    }),
+  );
+
   onMount(() => {
     timerRef = setInterval(() => {
       elapsed++;
@@ -45,7 +62,7 @@
     return `${m}:${s.toString().padStart(2, "0")}`;
   }
 
-  // Fix M3: defer AudioContext to user gesture
+  // Deferred to a user gesture so the AudioContext isn't blocked by autoplay.
   let soundPlayed = false;
   function playNotificationSound() {
     if (soundPlayed) return;
@@ -71,13 +88,13 @@
       const res = await fetch(`/api/v1/captcha/${captcha.id}/solve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({ answer: answer.trim() }),
       });
-      if (res.ok) {
-        addToast("success", tr($locale, "captcha.solved"));
-      } else {
-        addToast("error", tr($locale, "captcha.failed"));
-      }
+      addToast(
+        res.ok ? "success" : "error",
+        tr($locale, res.ok ? "captcha.solved" : "captcha.failed"),
+      );
     } catch {
       addToast("error", tr($locale, "captcha.failed"));
     }
@@ -87,13 +104,16 @@
 
   async function skip() {
     try {
-      await fetch(`/api/v1/captcha/${captcha.id}/cancel`, { method: "POST" });
+      await fetch(`/api/v1/captcha/${captcha.id}/cancel`, {
+        method: "POST",
+        credentials: "same-origin",
+      });
     } catch { /* ignore */ }
     if (timerRef) clearInterval(timerRef);
     onclose();
   }
 
-  function handleKeydown(e: KeyboardEvent) {
+  function onkeydown(e: KeyboardEvent) {
     if (e.key === "Enter" && answer.trim()) {
       e.preventDefault();
       submitAnswer();
@@ -101,85 +121,78 @@
   }
 </script>
 
-<div
-  class="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4"
+<Dialog
+  title={tr($locale, "captcha.title")}
+  description="{captcha.plugin_id} · {captcha.captcha_type}"
+  size="sm"
+  layer="modal"
+  isTop={$layer.isTop}
+  closeLabel={tr($locale, "captcha.skip")}
+  onclose={skip}
 >
-  <!-- Dialog (audit C2) -->
-  <div
-    use:focusTrap
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="captcha-title"
-    class="w-full max-w-md rounded-2xl shadow-2xl overflow-hidden neon-card"
-    style="background: var(--bg-surface)"
-    onkeydown={handleKeydown}
-    transition:scaleFade={{ duration: dur(180), y: 8 }}
-  >
-    <!-- Header -->
-    <div class="flex items-center justify-between px-5 py-3 border-b" style="border-color: var(--border-color)">
-      <div>
-        <h3 id="captcha-title" class="font-bold text-base" style="color: var(--text-primary)">{tr($locale, "captcha.title")}</h3>
-        <p class="text-xs mt-0.5" style="color: var(--text-secondary)">
-          {captcha.plugin_id} &middot; {captcha.captcha_type}
-        </p>
-      </div>
-      <span
-        class="text-xs px-2 py-0.5 rounded"
-        class:neon-text-accent={TIMEOUT - elapsed < 60}
-        style="font-family: var(--font-mono);background: var(--bg-surface-2); color: var(--text-secondary)"
-      >
-        {remaining()}
-      </span>
-    </div>
+  {#snippet header()}
+    <span
+      class="shrink-0 text-xs px-2 py-0.5 rounded"
+      style="font-family: var(--font-mono); background: var(--bg-surface-2);
+             color: {TIMEOUT - elapsed < 60 ? 'var(--danger-ink)' : 'var(--text-secondary)'}"
+      aria-live="off"
+    >
+      {remaining()}
+    </span>
+  {/snippet}
 
-    <div class="p-5 flex flex-col items-center gap-4">
-      <!-- Captcha Image -->
-      <div class="w-full bg-white rounded-lg p-2 flex items-center justify-center min-h-[120px]">
+  <div class="flex flex-col items-center gap-4" {onkeydown} role="none">
+    <!-- The captcha art is generally dark-on-white, so the plate stays white
+         in both themes; that is the image's background, not the app's, and
+         the text on it must be dark regardless of the active theme. -->
+    <!-- ui-lint-disable-next-line no-raw-hex -->
+    <div class="w-full rounded-lg p-2 flex items-center justify-center min-h-[120px]" style="background: #ffffff">
+      {#if imageFailed}
+        <!-- ui-lint-disable-next-line no-raw-hex -->
+        <p class="text-sm" style="color: #b91c1c">{tr($locale, "captcha.image_failed")}</p>
+      {:else}
         <img
           src={captcha.image_url}
-          alt="Captcha"
+          alt={tr($locale, "captcha.image_alt")}
           class="max-w-full max-h-48 object-contain"
           crossorigin="anonymous"
+          onerror={() => (imageFailed = true)}
         />
-      </div>
-
-      <!-- Progress bar -->
-      <div class="w-full h-1 rounded-full overflow-hidden" style="background: var(--border-color)">
-        <div
-          class="h-full rounded-full transition-all duration-1000"
-          style="width: {((TIMEOUT - elapsed) / TIMEOUT) * 100}%; background: var(--neon-primary)"
-        ></div>
-      </div>
-
-      <!-- Input -->
-      <input
-        type="text"
-        bind:value={answer}
-        placeholder={tr($locale, "captcha.enter")}
-        class="w-full px-4 py-3 rounded-lg text-center text-lg tracking-wider border"
-        style="font-family: var(--font-mono);background: var(--bg-surface-2); border-color: var(--border-color); color: var(--text-primary)"
-        disabled={submitting}
-      />
-
-      <!-- Buttons -->
-      <div class="flex gap-3 w-full">
-        <button
-          onclick={skip}
-          class="flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors min-h-[44px]"
-          style="border-color: var(--border-color); color: var(--text-secondary)"
-          disabled={submitting}
-        >
-          {tr($locale, "captcha.skip")}
-        </button>
-        <button
-          onclick={submitAnswer}
-          class="flex-1 py-2.5 rounded-lg text-sm font-semibold transition-colors disabled:opacity-40 min-h-[44px]"
-          style="background: var(--neon-primary); color: var(--bg-deep)"
-          disabled={!answer.trim() || submitting}
-        >
-          {submitting ? "…" : tr($locale, "captcha.solve")}
-        </button>
-      </div>
+      {/if}
     </div>
+
+    <ProgressBar
+      value={TIMEOUT - elapsed}
+      max={TIMEOUT}
+      tone={TIMEOUT - elapsed < 60 ? "danger" : "accent"}
+      label={tr($locale, "captcha.time_left")}
+      valueText={remaining()}
+    />
+
+    <input
+      type="text"
+      bind:value={answer}
+      placeholder={tr($locale, "captcha.enter")}
+      aria-label={tr($locale, "captcha.enter")}
+      class="w-full px-4 py-3 rounded-lg text-center text-lg tracking-wider border"
+      style="font-family: var(--font-mono); background: var(--bg-surface-2);
+             border-color: var(--border-color); color: var(--text-primary)"
+      disabled={submitting}
+      data-autofocus
+    />
   </div>
-</div>
+
+  {#snippet footer()}
+    <Button variant="outline" tone="accent" onclick={skip} disabled={submitting}>
+      {tr($locale, "captcha.skip")}
+    </Button>
+    <Button
+      variant="solid"
+      onclick={submitAnswer}
+      loading={submitting}
+      disabled={!answer.trim()}
+    >
+      {tr($locale, "captcha.solve")}
+    </Button>
+  {/snippet}
+</Dialog>

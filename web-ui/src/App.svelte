@@ -11,6 +11,7 @@
   import Toasts from "./components/Toasts.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import MobileNav from "./components/MobileNav.svelte";
+  import SegmentedControl from "@amigo/ui/components/SegmentedControl.svelte";
   import {
     addDownload,
     connectWebSocket,
@@ -52,6 +53,8 @@
   } from "./lib/stores";
   import { locale, tr } from "./lib/i18n";
   import { addToast } from "./lib/toast";
+  import { registerBindings, startKeymap, type Binding } from "./lib/keymap";
+  import { pruneSelection } from "./lib/selection";
   import PairingModal from "./components/PairingModal.svelte";
 
   // Pages are code-split: each is fetched on first navigation rather than
@@ -211,10 +214,23 @@
     // registered once at module-init time with no removal path.
     const detachPopstate = attachRouterPopstateListener();
 
+    // One window listener for every shortcut, plus the Escape chain.
+    const stopKeymap = startKeymap();
+    const unregister = registerBindings(shortcutBindings);
+
+    // Keep <html lang> in step with the UI language so screen readers use the
+    // right pronunciation and hyphenation rules.
+    const unsubLocale = locale.subscribe((l) => {
+      document.documentElement.lang = l;
+    });
+
     return () => {
       clearInterval(interval);
       ws.close();
       detachPopstate();
+      stopKeymap();
+      unregister();
+      unsubLocale();
     };
   });
 
@@ -253,6 +269,10 @@
         getConfig(),
       ]);
       downloads.set(dl);
+      // Drop selected ids the server no longer knows about. Without this a
+      // download deleted in another tab leaves a phantom count in the batch
+      // bar and batch actions fire against ids that are already gone.
+      pruneSelection(dl.map((d) => d.id));
       stats.set(st);
       pushSpeedSample(st.speed_bytes_per_sec ?? 0);
       if (cfg) {
@@ -309,80 +329,48 @@
     pageKey++;
   }
 
-  // True when the keystroke is going into a text field, so single-key
-  // shortcuts (digits, "?") must not steal it.
-  function isEditableTarget(e: KeyboardEvent): boolean {
-    const el = e.target as HTMLElement | null;
-    if (!el) return false;
-    const tag = el.tagName;
-    return (
-      tag === "INPUT" ||
-      tag === "TEXTAREA" ||
-      tag === "SELECT" ||
-      el.isContentEditable
-    );
-  }
-
-  // Single global keyboard handler
-  function handleKeydown(e: KeyboardEvent) {
-    const editable = isEditableTarget(e);
-    // Command palette — the power-user entry point.
-    if ((e.ctrlKey || e.metaKey) && (e.key === "k" || e.key === "K")) {
-      e.preventDefault();
-      showCommandPalette = !showCommandPalette;
-      return;
-    }
-    if ((e.ctrlKey || e.metaKey) && e.key === "n") {
-      e.preventDefault();
-      openAddPanel();
-    }
-    if (e.key === "Escape") {
-      if (showCommandPalette) {
-        showCommandPalette = false;
-        return;
-      }
-      if ($sidePanelMode) {
-        closeSidePanel();
-        return;
-      }
-      if (showShortcuts) {
-        showShortcuts = false;
-        return;
-      }
-      if (showFeedback) {
-        showFeedbackDialog.set(false);
-        return;
-      }
-    }
-    // Bare single-key shortcuts below must not fire while typing in a field.
-    if (editable) return;
-    if (e.key === "?" && !e.ctrlKey && !e.metaKey && !e.altKey) {
-      e.preventDefault();
-      showShortcuts = !showShortcuts;
-      return;
-    }
-    const allNav = [...mainNavItems, ...mgmtNavItems];
-    if (
-      !$sidePanelMode &&
-      !showFeedback &&
-      !showShortcuts &&
-      !showCommandPalette &&
-      !e.ctrlKey &&
-      !e.metaKey &&
-      !e.altKey
-    ) {
-      const num = parseInt(e.key);
-      if (num >= 1 && num <= allNav.length) {
-        e.preventDefault();
-        navigate(allNav[num - 1].id);
-      }
-    }
-  }
+  // Keyboard shortcuts live in a registry (lib/keymap.ts) rather than one
+  // hand-written handler. The registry enforces two rules centrally that the
+  // old handler got wrong per-shortcut: Escape always dismisses the topmost
+  // layer first, and no binding fires while a blocking overlay is open unless
+  // it belongs to that overlay's scope. Ctrl+N used to open the Add panel
+  // behind any modal, and the digit shortcuts enumerated four overlay flags
+  // but missed the captcha dialog.
+  const shortcutBindings: Binding[] = [
+    {
+      chord: { key: "k", mod: true },
+      descKey: "shortcuts.command_palette",
+      allowInEditable: true,
+      run: () => (showCommandPalette = !showCommandPalette),
+    },
+    {
+      chord: { key: "n", mod: true },
+      descKey: "shortcuts.add",
+      allowInEditable: true,
+      run: () => openAddPanel(),
+    },
+    {
+      chord: { key: "?" },
+      descKey: "shortcuts.help",
+      run: () => (showShortcuts = !showShortcuts),
+    },
+    ...[1, 2, 3, 4].map((n) => ({
+      chord: { key: String(n) },
+      descKey: "shortcuts.navigate",
+      // Blocking overlays are handled centrally by the registry; the side
+      // panel is a non-blocking layer, so it needs an explicit guard.
+      when: () => !$sidePanelMode,
+      run: () => {
+        const allNav = [...mainNavItems, ...mgmtNavItems];
+        if (allNav[n - 1]) navigate(allNav[n - 1].id);
+      },
+    })),
+  ];
 
   let pageTitle = $derived(tr($locale, `nav.${$currentPage}`));
 </script>
 
-<svelte:window onkeydown={handleKeydown} />
+
 
 {#if bootState === "loading"}
   <div class="flex h-screen items-center justify-center" style="background: var(--bg-deep)">
@@ -406,7 +394,7 @@
   <!-- Sidebar -->
   <aside
     aria-label="Navigation"
-    class="hidden md:flex flex-col shrink-0 relative neon-top-line transition-all duration-200"
+    class="hidden lg:flex flex-col shrink-0 relative neon-top-line transition-all duration-200"
     style="width: {$sidebarCollapsed ? '56px' : '256px'}; background: var(--bg-surface); border-right: 1px solid var(--border-color)"
   >
     <!-- Logo -->
@@ -423,7 +411,7 @@
       />
       {#if !$sidebarCollapsed}
         <div class="min-w-0">
-          <h1 class="font-bold text-base leading-tight" style="color: var(--neon-primary)">AMIGO</h1>
+          <h1 class="font-bold text-base leading-tight" style="color: var(--accent-ink)">AMIGO</h1>
           <p class="text-xs" style="color: var(--text-secondary)">Download Manager</p>
         </div>
       {/if}
@@ -489,7 +477,7 @@
       >
         <div class="flex items-center justify-between">
           <span class="stat-label">{tr($locale, "sidebar.speed")}</span>
-          <span style="color: var(--neon-primary); font-family: var(--font-mono); font-size: var(--font-xs, 0.75rem)">
+          <span style="color: var(--accent-ink); font-family: var(--font-mono); font-size: var(--font-xs, 0.75rem)">
             {formatSpeed($stats.speed_bytes_per_sec)}
           </span>
         </div>
@@ -504,7 +492,7 @@
             onclick={() => { limitEnabled = !limitEnabled; saveBandwidthLimit(); }}
             class="text-[10px] font-semibold px-1.5 py-0.5 rounded"
             style={limitEnabled
-              ? "background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--neon-primary)"
+              ? "background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--accent-ink)"
               : "background: var(--bg-surface-2); color: var(--text-secondary)"}
           >
             {limitEnabled ? "On" : "Off"}
@@ -609,7 +597,7 @@
     >
       <div class="flex items-center gap-3 min-w-0">
         <!-- Mobile brand (no sidebar on small screens) -->
-        <img src="/amigo-logo.png" alt="" width="28" height="28" class="md:hidden shrink-0 rounded-full" />
+        <img src="/amigo-logo.png" alt="" width="28" height="28" class="lg:hidden shrink-0 rounded-full" />
         <h2
           class="text-lg md:text-xl font-semibold neon-flicker-text truncate"
           style="color: var(--text-primary)"
@@ -617,56 +605,46 @@
           {pageTitle}
         </h2>
 
-        <!-- Protocol segmented control (downloads page only, when usenet enabled) -->
+        <!-- Desktop-only: below lg the same control lives in the Downloads
+             toolbar, so it exists at every width. -->
         {#if $currentPage === "downloads" && $features.usenet}
-          <div
-            role="radiogroup"
-            aria-label="Protocol filter"
-            class="hidden sm:flex rounded-lg ml-1 overflow-hidden shrink-0"
-            style="background: var(--bg-surface-2); border: 1px solid var(--border-color)"
-          >
-            {#each protocolOptions as opt}
-              <button
-                role="radio"
-                aria-checked={$protocolFilter === opt.value}
-                onclick={() => protocolFilter.set(opt.value)}
-                class="px-3 py-1 text-xs font-semibold transition-colors"
-                style={$protocolFilter === opt.value
-                  ? `background: color-mix(in srgb, var(--neon-primary) 15%, transparent); color: var(--neon-primary)`
-                  : `color: var(--text-secondary)`}
-                style:font-family="var(--font-mono)"
-              >
-                {opt.label}
-              </button>
-            {/each}
+          <div class="hidden lg:block ml-1 shrink-0">
+            <SegmentedControl
+              size="sm"
+              mono
+              options={protocolOptions}
+              value={$protocolFilter}
+              ariaLabel={tr($locale, "downloads.protocol_filter")}
+              onchange={(v) => protocolFilter.set(v as ProtocolFilter)}
+            />
           </div>
         {/if}
       </div>
 
       <!-- Global status bar — status at a glance from any page -->
       <div class="flex items-center gap-3 md:gap-5 shrink-0">
-        <div class="hidden md:flex items-center gap-5" aria-label="Download status">
+        <div class="hidden sm:flex items-center gap-3 lg:gap-5" aria-label="Download status">
           <div class="flex items-center gap-2">
             <span class="stat-label">{tr($locale, "sidebar.speed")}</span>
-            <span class="text-xs tabular-nums" style="color: var(--neon-primary); font-family: var(--font-mono)">
+            <span class="text-xs tabular-nums" style="color: var(--accent-ink); font-family: var(--font-mono)">
               {formatSpeed($stats.speed_bytes_per_sec)}
             </span>
             {#if $speedHistory.length > 1}
               <span class="hidden xl:block"><Sparkline values={$speedHistory} width={72} height={20} /></span>
             {/if}
           </div>
-          <div class="flex items-center gap-1.5" title={tr($locale, "sidebar.active")}>
+          <div class="hidden lg:flex items-center gap-1.5" title={tr($locale, "sidebar.active")}>
             {#if $stats.active_downloads > 0}
               <ProgressRing progress={overallProgress()} size={18} stroke={2} active={true} />
             {/if}
             <span class="text-xs tabular-nums" style="color: var(--text-primary); font-family: var(--font-mono)">{$stats.active_downloads}</span>
             <span class="stat-label">{tr($locale, "sidebar.active")}</span>
           </div>
-          <div class="hidden lg:flex items-center gap-1.5" title={tr($locale, "sidebar.queued")}>
+          <div class="hidden xl:flex items-center gap-1.5" title={tr($locale, "sidebar.queued")}>
             <span class="text-xs tabular-nums" style="color: var(--text-primary); font-family: var(--font-mono)">{$stats.queued}</span>
             <span class="stat-label">{tr($locale, "sidebar.queued")}</span>
           </div>
-          <div class="hidden lg:flex items-center gap-1.5" title={tr($locale, "sidebar.done")}>
+          <div class="hidden xl:flex items-center gap-1.5" title={tr($locale, "sidebar.done")}>
             <span class="text-xs tabular-nums" style="color: var(--status-online); font-family: var(--font-mono)">{$stats.completed}</span>
             <span class="stat-label">{tr($locale, "sidebar.done")}</span>
           </div>
@@ -675,7 +653,7 @@
         <!-- Command palette trigger -->
         <button
           onclick={() => (showCommandPalette = true)}
-          class="hidden sm:flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs"
+          class="hidden lg:flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-xs"
           style="background: var(--bg-surface-2); border: 1px solid var(--border-color); color: var(--text-secondary)"
           aria-label={tr($locale, "cmd.hint_open")}
         >
@@ -685,7 +663,7 @@
 
         <button
           onclick={() => openAddPanel()}
-          class="hidden md:flex icon-btn p-2 rounded-lg min-w-[44px] min-h-[44px] items-center justify-center"
+          class="hidden lg:flex icon-btn p-2 rounded-lg min-w-[44px] min-h-[44px] items-center justify-center"
           style="color: var(--text-secondary)"
           aria-label={tr($locale, "cmd.add_download")}
         >
@@ -696,7 +674,7 @@
 
     <!-- Page content -->
     <div class="flex flex-1 min-h-0">
-      <div class="flex-1 overflow-y-auto p-8 md:p-8 max-md:p-4 max-md:pb-28">
+      <div class="flex-1 overflow-y-auto p-4 lg:p-8 max-lg:pb-28">
         {#key pageKey}
           <div class="page-enter">
             <svelte:boundary onerror={(e) => console.error("Page error:", e)}>

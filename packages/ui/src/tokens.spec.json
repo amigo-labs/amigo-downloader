@@ -1,0 +1,117 @@
+[
+  {
+    "fg": "--text-primary",
+    "bg": [
+      "--bg-deep",
+      "--bg-surface",
+      "--bg-surface-2"
+    ],
+    "min": 4.5,
+    "note": "body copy"
+  },
+  {
+    "fg": "--text-secondary",
+    "bg": [
+      "--bg-deep",
+      "--bg-surface",
+      "--bg-surface-2"
+    ],
+    "min": 4.5,
+    "note": "meta text: file size, timestamps, hostnames"
+  },
+  {
+    "fg": "--text-muted",
+    "bg": [
+      "--bg-surface-2"
+    ],
+    "min": 3.0,
+    "note": "decorative captions only, never body copy"
+  },
+  {
+    "fg": "--accent-ink",
+    "bg": [
+      "--bg-deep",
+      "--bg-surface",
+      "--bg-surface-2",
+      "--accent-subtle"
+    ],
+    "min": 4.5,
+    "note": "the accent used as text or icon"
+  },
+  {
+    "fg": "--success-ink",
+    "bg": [
+      "--bg-deep",
+      "--bg-surface",
+      "--bg-surface-2"
+    ],
+    "min": 4.5
+  },
+  {
+    "fg": "--warning-ink",
+    "bg": [
+      "--bg-deep",
+      "--bg-surface",
+      "--bg-surface-2"
+    ],
+    "min": 4.5
+  },
+  {
+    "fg": "--danger-ink",
+    "bg": [
+      "--bg-deep",
+      "--bg-surface",
+      "--bg-surface-2"
+    ],
+    "min": 4.5
+  },
+  {
+    "fg": "--on-accent",
+    "bg": [
+      "--accent-solid"
+    ],
+    "min": 4.5,
+    "note": "label on a filled primary control"
+  },
+  {
+    "fg": "--accent",
+    "bg": [
+      "--bg-deep",
+      "--bg-surface"
+    ],
+    "min": 1.5,
+    "note": "decorative only: glows, gradients, scanlines. Solid fills use --accent-solid, which the 4.5 check above already covers. This guard only asserts the hue stays perceptible against the page."
+  },
+  {
+    "fg": "--status-online",
+    "bg": [
+      "--bg-surface"
+    ],
+    "min": 3.0,
+    "note": "status dot fill, non-text"
+  },
+  {
+    "fg": "--status-degraded",
+    "bg": [
+      "--bg-surface"
+    ],
+    "min": 3.0,
+    "note": "status dot fill, non-text"
+  },
+  {
+    "fg": "--status-error",
+    "bg": [
+      "--bg-surface"
+    ],
+    "min": 3.0,
+    "note": "status dot fill, non-text"
+  },
+  {
+    "fg": "--border-color",
+    "bg": [
+      "--bg-surface"
+    ],
+    "min": 1.4,
+    "note": "separator must stay visible"
+  }
+]

@@ -1,42 +1,35 @@
 <script lang="ts">
   import type { AppConfig } from "../../lib/api";
+  import { locale, tr } from "../../lib/i18n";
+  import Card from "@amigo/ui/components/Card.svelte";
+  import Toggle from "@amigo/ui/components/Toggle.svelte";
 
+  // Was one of two settings sections with no i18n at all: switching the app
+  // to German left these strings in English.
   let { config, onsave }: { config: AppConfig; onsave: () => void } = $props();
 
-  function toggle(key: "usenet" | "rss_feeds" | "server_stats") {
+  const KEYS = ["usenet", "rss_feeds", "server_stats"] as const;
+
+  function toggle(key: (typeof KEYS)[number]) {
     config.features[key] = !config.features[key];
     onsave();
   }
 </script>
 
 <section>
-  <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">Features</h3>
-  <div class="rounded-xl p-5 space-y-4" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
-    {#each [
-      { key: "usenet" as const, label: "Usenet", desc: "Enable Usenet mode (NZB import, NNTP servers, watch folder)" },
-      { key: "rss_feeds" as const, label: "RSS Feeds", desc: "Monitor RSS/Atom feeds for automatic NZB import" },
-      { key: "server_stats" as const, label: "Server Statistics", desc: "Show per-server connection stats in Usenet UI" },
-    ] as opt (opt.key)}
-      <div class="flex items-center justify-between">
-        <div>
-          <p class="text-sm font-semibold" style="color: var(--text-primary)">{opt.label}</p>
-          <p class="text-xs" style="color: var(--text-secondary)">{opt.desc}</p>
-        </div>
-        <!-- Toggle switch with a11y (audit H4) -->
-        <button
-          role="switch"
-          aria-checked={config.features[opt.key]}
-          aria-label={opt.label}
-          onclick={() => toggle(opt.key)}
-          class="w-12 h-6 rounded-full relative transition-colors shrink-0 ml-4"
-          style="background: {config.features[opt.key] ? 'var(--neon-primary)' : 'var(--bg-surface-2)'}"
-        >
-          <span
-            class="absolute top-0.5 w-5 h-5 rounded-full transition-all shadow"
-            style="background: var(--bg-deep); left: {config.features[opt.key] ? '1.625rem' : '0.125rem'}"
-          ></span>
-        </button>
-      </div>
-    {/each}
-  </div>
+  <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">
+    {tr($locale, "features.title")}
+  </h3>
+  <Card padding="lg">
+    <div class="grid gap-4">
+      {#each KEYS as key (key)}
+        <Toggle
+          checked={config.features[key]}
+          label={tr($locale, `features.${key}`)}
+          description={tr($locale, `features.${key}_desc`)}
+          onchange={() => toggle(key)}
+        />
+      {/each}
+    </div>
+  </Card>
 </section>

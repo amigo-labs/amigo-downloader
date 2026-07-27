@@ -2,25 +2,52 @@
   import { onMount } from "svelte";
   import { addToast } from "../lib/toast";
   import { crashReport } from "../lib/stores";
-  import { focusTrap } from "../lib/focusTrap";
   import { locale, tr } from "../lib/i18n";
+  import { openLayer, layerState } from "../lib/overlays.svelte";
+  import Dialog from "@amigo/ui/components/Dialog.svelte";
+  import Banner from "@amigo/ui/components/Banner.svelte";
   import Icon from "@amigo/ui/components/Icon.svelte";
 
   let { onclose }: { onclose: () => void } = $props();
 
-  let systemInfo = $state<any>(null);
+  interface SystemInfo {
+    version: string;
+    os: string;
+    arch: string;
+    plugins_loaded: number;
+    feedback_enabled: boolean;
+  }
+
+  let systemInfo = $state<SystemInfo | null>(null);
+  // Tri-state: the footer must not claim auto-reporting is off while the
+  // system-info request is still in flight.
+  let infoState = $state<"loading" | "ready" | "failed">("loading");
   let autoReported = $state(false);
+  let reporting = $state(false);
+  let reportFailed = $state(false);
   let resultUrl = $state("");
+
+  const layer = layerState("feedback");
+  $effect(() =>
+    openLayer({ id: "feedback", kind: "modal", label: "Feedback", onDismiss: onclose }),
+  );
 
   const repo = "amigo-labs/amigo-downloader";
 
   onMount(async () => {
     try {
-      const res = await fetch("/api/v1/system-info");
-      if (res.ok) systemInfo = await res.json();
-    } catch (e) { console.error("Failed to fetch system info:", e); }
+      const res = await fetch("/api/v1/system-info", { credentials: "same-origin" });
+      if (res.ok) {
+        systemInfo = await res.json();
+        infoState = "ready";
+      } else {
+        infoState = "failed";
+      }
+    } catch (e) {
+      console.error("Failed to fetch system info:", e);
+      infoState = "failed";
+    }
 
-    // Auto-report crash if error_context provided via store (audit M5)
     if ($crashReport && systemInfo?.feedback_enabled) {
       autoReportCrash();
     }
@@ -28,10 +55,13 @@
 
   async function autoReportCrash() {
     if (!$crashReport) return;
+    reporting = true;
+    reportFailed = false;
     try {
       const res = await fetch("/api/v1/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "same-origin",
         body: JSON.stringify({
           type: "crash",
           title: $crashReport.error_message || "Download failed",
@@ -57,7 +87,13 @@
           );
         }
       }
-    } catch (e) { console.error("Auto crash report failed:", e); }
+      else reportFailed = true;
+    } catch (e) {
+      console.error("Auto crash report failed:", e);
+      reportFailed = true;
+    } finally {
+      reporting = false;
+    }
   }
 
   function bugUrl() {
@@ -77,78 +113,97 @@
   }
 </script>
 
-<div class="fixed inset-0 z-50 flex items-center justify-center p-4">
-  <button class="fixed inset-0 bg-black/70" onclick={onclose} aria-label={tr($locale, "common.close")}></button>
-
-  <div
-    use:focusTrap
-    role="dialog"
-    aria-modal="true"
-    aria-labelledby="feedback-title"
-    class="relative z-10 w-full max-w-sm rounded-2xl shadow-2xl p-6 neon-card"
-    style="background: var(--bg-surface)"
-  >
-    <div class="flex items-center justify-between mb-5">
-      <h2 id="feedback-title" class="text-lg font-bold" style="color: var(--text-primary)">{tr($locale, "feedback.title")}</h2>
-      <button
-        onclick={onclose}
-        class="p-1.5 rounded-lg min-w-[44px] min-h-[44px] flex items-center justify-center"
-        style="color: var(--text-secondary)"
-        aria-label={tr($locale, "common.close")}
-      >
-        <Icon name="x" size={18} />
-      </button>
+<Dialog
+  title={tr($locale, "feedback.title")}
+  size="sm"
+  isTop={$layer.isTop}
+  closeLabel={tr($locale, "common.close")}
+  {onclose}
+>
+  {#if reporting}
+    <div class="mb-4">
+      <Banner tone="info" role="status">{tr($locale, "feedback.reporting")}</Banner>
     </div>
-
-    {#if autoReported}
-      <div class="rounded-xl p-3 mb-4 text-center" style="background: color-mix(in srgb, var(--neon-warning) 8%, transparent)">
-        <p class="text-xs font-semibold" style="color: var(--neon-warning)">{tr($locale, "feedback.crash_reported")}</p>
+  {:else if reportFailed}
+    <div class="mb-4">
+      <Banner tone="danger" role="alert">{tr($locale, "feedback.report_failed")}</Banner>
+    </div>
+  {:else if autoReported}
+    <div class="mb-4">
+      <Banner tone="warning" role="status" title={tr($locale, "feedback.crash_reported")}>
         {#if resultUrl}
-          <a href={resultUrl} target="_blank" rel="noopener" class="text-xs underline" style="color: var(--neon-primary)">{tr($locale, "feedback.view_issue")} &rarr;</a>
+          <a href={resultUrl} target="_blank" rel="noopener" class="underline" style="color: var(--accent-ink)">
+            {tr($locale, "feedback.view_issue")} &rarr;
+          </a>
         {/if}
-      </div>
-    {/if}
+      </Banner>
+    </div>
+  {/if}
 
+  <div class="grid gap-3">
     <a
       href={bugUrl()}
       target="_blank"
       rel="noopener"
-      class="flex items-center gap-3 rounded-xl p-4 mb-3 transition-colors"
+      class="link-card flex items-center gap-3 rounded-xl p-4"
       style="background: var(--bg-surface-2); border: 1px solid var(--border-color)"
     >
-      <div class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style="background: color-mix(in srgb, var(--neon-accent) 8%, transparent); color: var(--neon-accent)">
+      <span
+        class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+        style="background: color-mix(in srgb, var(--danger) 10%, transparent); color: var(--danger-ink)"
+      >
         <Icon name="flag" size={20} />
-      </div>
-      <div class="flex-1">
-        <p class="font-semibold text-sm" style="color: var(--text-primary)">{tr($locale, "feedback.report_bug")}</p>
-        <p class="text-xs" style="color: var(--text-secondary)">{tr($locale, "feedback.opens_github")}</p>
-      </div>
-      <Icon name="external" size={14} class="text-[var(--text-secondary)]" />
+      </span>
+      <span class="flex-1">
+        <span class="block font-semibold text-sm" style="color: var(--text-primary)">{tr($locale, "feedback.report_bug")}</span>
+        <span class="block text-xs" style="color: var(--text-secondary)">{tr($locale, "feedback.opens_github")}</span>
+      </span>
+      <Icon name="external" size={14} />
     </a>
 
     <a
       href={featureUrl()}
       target="_blank"
       rel="noopener"
-      class="flex items-center gap-3 rounded-xl p-4 mb-4 transition-colors"
+      class="link-card flex items-center gap-3 rounded-xl p-4"
       style="background: var(--bg-surface-2); border: 1px solid var(--border-color)"
     >
-      <div class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style="background: color-mix(in srgb, var(--neon-success) 8%, transparent); color: var(--neon-success)">
+      <span
+        class="w-10 h-10 rounded-lg flex items-center justify-center shrink-0"
+        style="background: color-mix(in srgb, var(--success) 10%, transparent); color: var(--success-ink)"
+      >
         <Icon name="plus" size={20} />
-      </div>
-      <div class="flex-1">
-        <p class="font-semibold text-sm" style="color: var(--text-primary)">{tr($locale, "feedback.request_feature")}</p>
-        <p class="text-xs" style="color: var(--text-secondary)">{tr($locale, "feedback.opens_github")}</p>
-      </div>
-      <Icon name="external" size={14} class="text-[var(--text-secondary)]" />
+      </span>
+      <span class="flex-1">
+        <span class="block font-semibold text-sm" style="color: var(--text-primary)">{tr($locale, "feedback.request_feature")}</span>
+        <span class="block text-xs" style="color: var(--text-secondary)">{tr($locale, "feedback.opens_github")}</span>
+      </span>
+      <Icon name="external" size={14} />
     </a>
+  </div>
 
-    <p class="text-[10px] text-center" style="color: var(--text-secondary)">
-      {#if systemInfo?.feedback_enabled}
+  {#snippet footer()}
+    <p class="text-xs w-full text-center m-0" style="color: var(--text-secondary)">
+      {#if infoState === "loading"}
+        {tr($locale, "feedback.auto_checking")}
+      {:else if systemInfo?.feedback_enabled}
         {tr($locale, "feedback.auto_on")}
       {:else}
         {tr($locale, "feedback.auto_off")}
       {/if}
     </p>
-  </div>
-</div>
+  {/snippet}
+</Dialog>
+
+<style>
+  .link-card {
+    color: inherit;
+    text-decoration: none;
+    transition: border-color var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
+  }
+
+  .link-card:hover {
+    border-color: var(--neon-border-hover);
+    background: var(--hover-bg);
+  }
+</style>

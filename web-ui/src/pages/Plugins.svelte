@@ -1,17 +1,47 @@
 <script lang="ts">
   import { onMount } from "svelte";
-  import { getPlugins, setPluginEnabled, checkUpdates, applyCoreUpdate } from "../lib/api";
+  import {
+    getPlugins, setPluginEnabled, checkUpdates, applyCoreUpdate,
+    listAvailablePlugins, installPlugin, updatePlugin,
+    type Plugin, type MarketplaceEntry, type UpdateCheck,
+  } from "../lib/api";
   import { addToast } from "../lib/toast";
   import { locale, tr } from "../lib/i18n";
   import SkeletonCard from "../components/SkeletonCard.svelte";
+  import Card from "@amigo/ui/components/Card.svelte";
+  import Button from "@amigo/ui/components/Button.svelte";
+  import Chip from "@amigo/ui/components/Chip.svelte";
+  import Banner from "@amigo/ui/components/Banner.svelte";
+  import EmptyState from "@amigo/ui/components/EmptyState.svelte";
+  import Icon from "@amigo/ui/components/Icon.svelte";
 
-  let plugins = $state<any[]>([]);
-  let updateInfo = $state<any>(null);
+  let plugins = $state<Plugin[]>([]);
+  let updateInfo = $state<UpdateCheck | null>(null);
   let loading = $state(true);
   let error = $state(false);
   let updating = $state(false);
-  // Plugin ids with an in-flight enable/disable request.
-  let toggling = $state<Set<string>>(new Set());
+  let busyId = $state<string | null>(null);
+
+  // The marketplace said "coming soon" while the backend had shipped the
+  // whole thing: GET /updates/plugins/available and
+  // POST /updates/plugins/{id}/install have existed all along.
+  let market = $state<MarketplaceEntry[]>([]);
+  let marketState = $state<"loading" | "ready" | "unavailable">("loading");
+  let marketQuery = $state("");
+
+  let updatableIds = $derived(new Set((updateInfo?.plugins ?? []).map((p) => p.id)));
+
+  let filteredMarket = $derived.by(() => {
+    if (!marketQuery) return market;
+    const q = marketQuery.toLowerCase();
+    return market.filter(
+      (p) =>
+        p.name.toLowerCase().includes(q) ||
+        p.id.toLowerCase().includes(q) ||
+        p.description.toLowerCase().includes(q) ||
+        p.tags.some((t) => t.toLowerCase().includes(q)),
+    );
+  });
 
   onMount(async () => {
     try {
@@ -19,12 +49,22 @@
     } catch {
       error = true;
     }
+    loading = false;
+
     try {
       updateInfo = await checkUpdates();
     } catch {
-      // Update check is optional — don't block UI
+      // Update check is optional — never block the page on it.
     }
-    loading = false;
+
+    try {
+      market = await listAvailablePlugins();
+      marketState = "ready";
+    } catch {
+      // A registry that is unreachable or not configured is normal for an
+      // offline install; say so rather than pretending the feature is absent.
+      marketState = "unavailable";
+    }
   });
 
   async function handleCoreUpdate() {
@@ -39,9 +79,9 @@
     }
   }
 
-  async function handleToggle(plugin: any) {
-    if (toggling.has(plugin.id)) return;
-    toggling = new Set([...toggling, plugin.id]);
+  async function handleToggle(plugin: Plugin) {
+    if (busyId) return;
+    busyId = plugin.id;
     const enabled = !plugin.enabled;
     try {
       await setPluginEnabled(plugin.id, enabled);
@@ -50,95 +90,198 @@
     } catch {
       addToast("error", tr($locale, "plugins.toggle_failed"), plugin.name);
     } finally {
-      toggling = new Set([...toggling].filter((id) => id !== plugin.id));
+      busyId = null;
+    }
+  }
+
+  async function handleInstall(entry: MarketplaceEntry) {
+    if (busyId) return;
+    busyId = entry.id;
+    try {
+      await installPlugin(entry.id);
+      addToast("success", tr($locale, "plugins.installed_toast"), entry.name);
+      plugins = await getPlugins();
+      market = market.map((p) => (p.id === entry.id ? { ...p, installed: true } : p));
+    } catch (e) {
+      addToast("error", tr($locale, "plugins.install_failed"), e instanceof Error ? e.message : entry.name);
+    } finally {
+      busyId = null;
+    }
+  }
+
+  async function handleUpdate(plugin: Plugin) {
+    if (busyId) return;
+    busyId = plugin.id;
+    try {
+      await updatePlugin(plugin.id);
+      addToast("success", tr($locale, "plugins.plugin_updated"), plugin.name);
+      plugins = await getPlugins();
+      updateInfo = await checkUpdates();
+    } catch (e) {
+      addToast("error", tr($locale, "plugins.update_failed"), e instanceof Error ? e.message : plugin.name);
+    } finally {
+      busyId = null;
     }
   }
 </script>
 
 <div class="space-y-6">
-  <!-- Update banner -->
   {#if updateInfo?.core?.update_available}
-    <div
-      class="rounded-xl p-4 flex items-center justify-between"
-      style="background: color-mix(in srgb, var(--neon-primary) 6%, transparent); border: 1px solid color-mix(in srgb, var(--neon-primary) 15%, transparent)"
+    <Banner
+      tone="info"
+      title={tr($locale, "plugins.core_update")}
     >
-      <div>
-        <p class="font-semibold text-sm" style="color: var(--text-primary)">{tr($locale, "plugins.core_update")}</p>
-        <p class="text-xs" style="font-family: var(--font-mono);color: var(--text-secondary)">
-          v{updateInfo.core.current_version} &rarr; v{updateInfo.core.latest_version}
-        </p>
-      </div>
-      <button
-        onclick={handleCoreUpdate}
-        disabled={updating}
-        class="px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50"
-        style="background: var(--neon-primary); color: var(--bg-deep)"
-      >
-        {updating ? tr($locale, "plugins.updating") : tr($locale, "plugins.update")}
-      </button>
-    </div>
+      <span style="font-family: var(--font-mono)">
+        v{updateInfo.core.current_version} &rarr; v{updateInfo.core.latest_version}
+      </span>
+      {#snippet actions()}
+        <Button variant="solid" size="sm" loading={updating} onclick={handleCoreUpdate}>
+          {tr($locale, "plugins.update")}
+        </Button>
+      {/snippet}
+    </Banner>
   {/if}
 
-  <!-- Installed Plugins -->
   <section>
-    <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">{tr($locale, "plugins.installed")}</h3>
+    <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">
+      {tr($locale, "plugins.installed")}
+    </h3>
+
     {#if loading}
-      <div class="grid gap-3 sm:grid-cols-2">
-        <SkeletonCard count={2} />
-      </div>
+      <div class="grid gap-3 sm:grid-cols-2"><SkeletonCard count={2} /></div>
     {:else if error}
-      <div class="rounded-xl p-4" style="background: color-mix(in srgb, var(--status-error, #ef4444) 8%, transparent); border: 1px solid color-mix(in srgb, var(--status-error, #ef4444) 20%, transparent)">
-        <p class="text-sm" style="color: var(--status-error, #ef4444)">{tr($locale, "plugins.load_failed")}</p>
-      </div>
+      <Banner tone="danger" role="alert">{tr($locale, "plugins.load_failed")}</Banner>
     {:else if plugins.length === 0}
-      <p class="text-sm" style="color: var(--text-secondary)">{tr($locale, "plugins.none")}</p>
+      <Card padding="none">
+        <EmptyState size="sm" icon="puzzle" title={tr($locale, "plugins.none")} />
+      </Card>
     {:else}
-      <div class="grid gap-3 sm:grid-cols-2">
-        {#each plugins as plugin}
-          <div
-            class="rounded-xl p-4"
-            style="background: var(--bg-surface); border: 1px solid var(--border-color)"
-          >
-            <div class="flex items-start justify-between">
-              <div>
-                <h4 class="font-semibold text-sm" style="color: var(--text-primary)">{plugin.name}</h4>
-                <p class="text-xs" style="font-family: var(--font-mono);color: var(--text-secondary)">
-                  v{plugin.version}
-                </p>
+      <ul class="grid gap-3 sm:grid-cols-2 m-0 p-0" style="list-style: none">
+        {#each plugins as plugin (plugin.id)}
+          <li>
+            <Card>
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <h4 class="font-semibold text-sm m-0" style="color: var(--text-primary)">{plugin.name}</h4>
+                  <p class="text-xs m-0" style="font-family: var(--font-mono); color: var(--text-secondary)">
+                    v{plugin.version}
+                  </p>
+                </div>
+                <Chip
+                  size="sm"
+                  selected={plugin.enabled}
+                  disabled={busyId === plugin.id}
+                  aria-pressed={plugin.enabled}
+                  aria-label="{plugin.name}: {plugin.enabled ? tr($locale, 'plugins.active') : tr($locale, 'plugins.disabled')}"
+                  onclick={() => handleToggle(plugin)}
+                >
+                  {plugin.enabled ? tr($locale, "plugins.active") : tr($locale, "plugins.disabled")}
+                </Chip>
               </div>
-              <button
-                onclick={() => handleToggle(plugin)}
-                disabled={toggling.has(plugin.id)}
-                class="px-2 py-0.5 rounded-full text-[10px] font-semibold cursor-pointer disabled:opacity-50"
-                style={plugin.enabled
-                  ? "background: color-mix(in srgb, var(--neon-success) 10%, transparent); color: var(--neon-success)"
-                  : "background: var(--bg-surface-2); color: var(--text-secondary)"}
-                aria-pressed={plugin.enabled}
-                aria-label="{plugin.name}: {plugin.enabled ? tr($locale, 'plugins.active') : tr($locale, 'plugins.disabled')}"
-              >
-                {plugin.enabled ? tr($locale, "plugins.active") : tr($locale, "plugins.disabled")}
-              </button>
-            </div>
-            <p class="text-xs mt-2 truncate" style="font-family: var(--font-mono);color: var(--text-secondary)">
-              {plugin.url_pattern}
-            </p>
-          </div>
+              <p class="text-xs mt-2 truncate m-0" style="font-family: var(--font-mono); color: var(--text-secondary)">
+                {plugin.url_pattern}
+              </p>
+              {#if updatableIds.has(plugin.id)}
+                <div class="mt-3">
+                  <Button
+                    variant="soft"
+                    size="sm"
+                    iconLeft="refresh"
+                    loading={busyId === plugin.id}
+                    onclick={() => handleUpdate(plugin)}
+                  >
+                    {tr($locale, "plugins.update_available")}
+                  </Button>
+                </div>
+              {/if}
+            </Card>
+          </li>
         {/each}
-      </div>
+      </ul>
     {/if}
   </section>
 
-  <!-- Marketplace -->
   <section>
-    <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">{tr($locale, "plugins.marketplace")}</h3>
-    <div
-      class="rounded-xl p-8 flex flex-col items-center justify-center"
-      style="background: var(--bg-surface); border: 1px dashed var(--border-color)"
-    >
-      <img src="/amigo-logo.png" alt="" width="40" height="40" class="rounded-lg opacity-30 mb-3" />
-      <p class="text-sm" style="color: var(--text-secondary)">
-        {tr($locale, "plugins.marketplace_soon")}
-      </p>
+    <div class="flex items-center justify-between gap-3 mb-4 flex-wrap">
+      <h3 class="text-lg font-bold m-0" style="color: var(--text-primary)">
+        {tr($locale, "plugins.marketplace")}
+      </h3>
+      {#if marketState === "ready" && market.length > 0}
+        <div
+          class="flex items-center gap-2 rounded-lg px-3 min-w-[12rem]"
+          style="background: var(--bg-surface); border: 1px solid var(--border-color); min-height: 36px"
+        >
+          <Icon name="search" size={14} />
+          <input
+            type="search"
+            bind:value={marketQuery}
+            placeholder={tr($locale, "plugins.search")}
+            aria-label={tr($locale, "plugins.search")}
+            class="flex-1 bg-transparent text-sm outline-none min-w-0"
+            style="color: var(--text-primary)"
+          />
+        </div>
+      {/if}
     </div>
+
+    {#if marketState === "loading"}
+      <div class="grid gap-3 sm:grid-cols-2"><SkeletonCard count={2} /></div>
+    {:else if marketState === "unavailable"}
+      <Card padding="none">
+        <EmptyState
+          size="sm"
+          icon="globe"
+          title={tr($locale, "plugins.registry_unavailable")}
+          description={tr($locale, "plugins.registry_unavailable_hint")}
+        />
+      </Card>
+    {:else if filteredMarket.length === 0}
+      <Card padding="none">
+        <EmptyState size="sm" icon="search" title={tr($locale, "plugins.no_results")} />
+      </Card>
+    {:else}
+      <ul class="grid gap-3 sm:grid-cols-2 m-0 p-0" style="list-style: none">
+        {#each filteredMarket as entry (entry.id)}
+          <li>
+            <Card>
+              <div class="flex items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <h4 class="font-semibold text-sm m-0" style="color: var(--text-primary)">{entry.name}</h4>
+                  <p class="text-xs m-0" style="font-family: var(--font-mono); color: var(--text-secondary)">
+                    v{entry.version} &middot; {entry.author}
+                  </p>
+                </div>
+                {#if entry.installed}
+                  <span class="text-xs font-semibold shrink-0" style="color: var(--success-ink)">
+                    {tr($locale, "plugins.installed_badge")}
+                  </span>
+                {:else}
+                  <Button
+                    variant="soft"
+                    size="sm"
+                    loading={busyId === entry.id}
+                    disabled={busyId !== null}
+                    onclick={() => handleInstall(entry)}
+                  >
+                    {tr($locale, "plugins.install")}
+                  </Button>
+                {/if}
+              </div>
+              <p class="text-xs mt-2 m-0" style="color: var(--text-secondary)">{entry.description}</p>
+              {#if entry.tags.length}
+                <div class="flex gap-1 mt-2 flex-wrap">
+                  {#each entry.tags as tag}
+                    <span
+                      class="text-xs px-1.5 py-0.5 rounded"
+                      style="background: var(--bg-surface-2); color: var(--text-secondary)"
+                    >{tag}</span>
+                  {/each}
+                </div>
+              {/if}
+            </Card>
+          </li>
+        {/each}
+      </ul>
+    {/if}
   </section>
 </div>

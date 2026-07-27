@@ -1,57 +1,152 @@
 /* ========================================
    @amigo/ui — Design tokens (Corporate Neon)
    Shared by web-ui and the marketing site.
+
    60:30:10 Rule:
      60% dark backgrounds (bg-deep, bg-surface)
      30% secondary surfaces, text, borders
      10% neon accents (CTAs, active states, progress)
+
+   ACCENT ROLE SPLIT
+   -----------------
+   A single accent hue cannot be both a convincing neon glow and readable
+   text — the glow wants a saturated mid-tone, WCAG wants distance from the
+   background. So the accent is split into three roles:
+
+     --accent        decorative only: glows, borders, bar/ring/dot fills,
+                     gradients, scanlines. Never carries text.
+     --accent-ink    the accent as text or icon. >= 4.5:1 on every surface.
+     --accent-solid  background of a filled control. Equals --accent-ink,
+                     paired with --on-accent as its foreground.
+     --accent-subtle background of a selected chip / active nav item.
+                     --accent-ink on it is >= 4.5:1.
+
+   The same split applies to success / warning / danger. `packages/ui/scripts/
+   check-contrast.mjs` asserts every pair across 6 palettes x 2 themes.
    ======================================== */
 
-@theme {
-  --color-neon-primary: var(--neon-primary, #3b82f6);
-  --color-neon-success: var(--neon-success, #22c55e);
-  --color-neon-accent: var(--neon-accent, #ef4444);
-  --color-neon-warning: var(--neon-warning, #eab308);
-  --color-neon-border: var(--neon-border);
-  --color-hover-bg: var(--hover-bg);
-  --color-bg-deep: var(--bg-deep, #1e1e1e);
-  --color-bg-surface: var(--bg-surface, #252526);
-  --color-bg-surface-2: var(--bg-surface-2, #2d2d2d);
-  --color-text: var(--text-primary, #cccccc);
-  --color-text-secondary: var(--text-secondary, #858585);
+/* Inter is self-hosted, not fetched from Google Fonts: the server ships a
+   `font-src 'self' data:` CSP, so a remote stylesheet is blocked outright and
+   the UI silently falls back to system-ui. Only the latin subset is declared —
+   the app ships en + de — which is 48 KB instead of the 224 KB all subsets
+   would embed into the server binary via rust-embed. */
+@font-face {
+  font-family: 'Inter Variable';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 100 900;
+  src: url("../node_modules/@fontsource-variable/inter/files/inter-latin-wght-normal.woff2") format('woff2-variations');
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA,
+                 U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+                 U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
 }
 
-/* --- Dark Mode (Default — VS Code Dark) --- */
+@theme {
+  /* Accent roles */
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-solid: var(--accent-solid);
+  --color-accent-subtle: var(--accent-subtle);
+  --color-on-accent: var(--on-accent);
+
+  /* Semantic roles */
+  --color-success: var(--success);
+  --color-success-ink: var(--success-ink);
+  --color-warning: var(--warning);
+  --color-warning-ink: var(--warning-ink);
+  --color-danger: var(--danger);
+  --color-danger-ink: var(--danger-ink);
+
+  /* Surfaces & text */
+  --color-surface-deep: var(--bg-deep);
+  --color-surface: var(--bg-surface);
+  --color-surface-2: var(--bg-surface-2);
+  --color-fg: var(--text-primary);
+  --color-fg-secondary: var(--text-secondary);
+  --color-fg-muted: var(--text-muted);
+  --color-border: var(--border-color);
+  --color-hover-bg: var(--hover-bg);
+
+  /* Radii — see the scale below */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+
+  /* Layering */
+  --z-sticky: 20;
+  --z-nav: 40;
+  --z-panel: 50;
+  --z-menu: 60;
+  --z-modal: 100;
+  --z-command: 110;
+  --z-overlay: 200;
+  --z-toast: 300;
+  --z-skip-link: 400;
+}
+
+/* ========================================
+   DARK MODE (default) — VS Code Dark
+   ======================================== */
 :root {
-  --neon-primary: #3b82f6;
-  --neon-success: #22c55e;
-  --neon-accent: #ef4444;
-  --neon-warning: #eab308;
+  /* Accent — blue palette defaults; overridden by .palette-* below */
+  --accent: #3b82f6;
+  --accent-ink: #60a5fa;
+  --accent-solid: var(--accent-ink);
+  --on-accent: #10131a;
+
+  /* Semantic — decorative fills */
+  --success: #22c55e;
+  --warning: #eab308;
+  --danger: #ef4444;
+  /* Semantic — text/icon variants */
+  --success-ink: #4ade80;
+  --warning-ink: #facc15;
+  --danger-ink: #f87171;
 
   --bg-deep: #1e1e1e;
   --bg-surface: #252526;
   --bg-surface-2: #2d2d2d;
-  --text-primary: #cccccc;
-  --text-secondary: #858585;
-  --border-color: #3c3c3c;
+  --text-primary: #e6e6e6;
+  --text-secondary: #a6a6a6;
+  /* Decorative captions only (>= 3:1). NOT for body copy. */
+  --text-muted: #8f8f8f;
+  --border-color: #3f3f3f;
 
-  /* Neon glow tokens (scaled by intensity system) */
-  --neon-glow-sm: 0 0 6px color-mix(in srgb, var(--neon-primary) 25%, transparent);
-  --neon-glow-md: 0 0 12px color-mix(in srgb, var(--neon-primary) 30%, transparent),
-                  0 0 4px color-mix(in srgb, var(--neon-primary) 15%, transparent);
-  --neon-glow-lg: 0 0 20px color-mix(in srgb, var(--neon-primary) 35%, transparent),
-                  0 0 8px color-mix(in srgb, var(--neon-primary) 20%, transparent),
-                  0 0 2px color-mix(in srgb, var(--neon-primary) 40%, transparent);
-  --neon-text-glow: 0 0 8px color-mix(in srgb, var(--neon-primary) 40%, transparent);
-  --neon-border: color-mix(in srgb, var(--neon-primary) 30%, transparent);
-  --neon-border-hover: color-mix(in srgb, var(--neon-primary) 50%, transparent);
+  --accent-subtle: color-mix(in srgb, var(--accent-ink) 8%, var(--bg-surface));
+
+  /* Neon glow tokens (scaled at runtime by applyIntensity) */
+  --neon-glow-sm: 0 0 6px color-mix(in srgb, var(--accent) 25%, transparent);
+  --neon-glow-md: 0 0 12px color-mix(in srgb, var(--accent) 30%, transparent),
+                  0 0 4px color-mix(in srgb, var(--accent) 15%, transparent);
+  --neon-glow-lg: 0 0 20px color-mix(in srgb, var(--accent) 35%, transparent),
+                  0 0 8px color-mix(in srgb, var(--accent) 20%, transparent),
+                  0 0 2px color-mix(in srgb, var(--accent) 40%, transparent);
+  --neon-text-glow: 0 0 8px color-mix(in srgb, var(--accent) 40%, transparent);
+  --neon-border: color-mix(in srgb, var(--accent) 30%, transparent);
+  --neon-border-hover: color-mix(in srgb, var(--accent) 50%, transparent);
   --neon-drop-blur: 3px;
-  --hover-bg: color-mix(in srgb, var(--neon-primary) 8%, transparent);
+  --hover-bg: color-mix(in srgb, var(--accent) 8%, transparent);
+
+  /* Status dots (decorative fills; the label beside them uses *-ink) */
   --status-online: #22c55e;
   --status-degraded: #eab308;
   --status-error: #ef4444;
 
+  /* ---- Deprecated aliases -------------------------------------------
+     Kept so existing inline styles keep rendering during the migration to
+     primitives. They map to the DECORATIVE tokens — using them as a text
+     colour fails WCAG AA and is rejected by scripts/ui-lint.mjs.
+     -------------------------------------------------------------------- */
+  --neon-primary: var(--accent);
+  --neon-success: var(--success);
+  --neon-warning: var(--warning);
+  --neon-accent: var(--danger);
+
   /* Typography scale (Major Third 1.25) */
+  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   --font-xs: 0.75rem;
   --font-sm: 0.875rem;
   --font-base: 1rem;
@@ -59,7 +154,43 @@
   --font-xl: 1.5rem;
   --font-2xl: 1.875rem;
   --font-display: 2.5rem;
-  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+
+  /* Radii */
+  --radius-xs: 0.25rem;
+  --radius-sm: 0.375rem;
+  --radius-md: 0.5rem;
+  --radius-lg: 0.75rem;
+  --radius-xl: 1rem;
+  --radius-full: 9999px;
+
+  /* Spacing */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+  --space-16: 4rem;
+  --page-pad: 2rem;
+
+  /* Elevation — surface + shadow pairs */
+  --elev-0: none;
+  --elev-1: 0 1px 3px 0 rgb(0 0 0 / 10%), 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --elev-2: 0 4px 12px rgb(0 0 0 / 14%);
+  --elev-3: 0 12px 32px rgb(0 0 0 / 24%);
+
+  /* Layering — z-index is assigned here and nowhere else */
+  --z-sticky: 20;
+  --z-nav: 40;
+  --z-panel: 50;
+  --z-menu: 60;
+  --z-menu-content: 61;
+  --z-modal: 100;
+  --z-command: 110;
+  --z-overlay: 200;
+  --z-toast: 300;
+  --z-skip-link: 400;
 
   /* Motion system (shared) — one set of curves & durations so every
      transition across the app feels like it belongs to the same product. */
@@ -71,33 +202,70 @@
   --dur-slow: 0.4s;
 }
 
-/* --- Light Mode --- */
+@media (max-width: 768px) {
+  :root { --page-pad: 1rem; }
+}
+
+/* ========================================
+   COLOR PALETTES — dark
+   --accent keeps the saturated 500 hue (the glow colour is unchanged);
+   --accent-ink is the 400 tint that clears 4.5:1 on all three surfaces.
+   ======================================== */
+:root.palette-blue   { --accent: #3b82f6; --accent-ink: #60a5fa; }
+:root.palette-teal   { --accent: #14b8a6; --accent-ink: #2dd4bf; }
+:root.palette-indigo { --accent: #6366f1; --accent-ink: #818cf8; }
+:root.palette-amber  { --accent: #f59e0b; --accent-ink: #fbbf24; }
+:root.palette-violet { --accent: #8b5cf6; --accent-ink: #a78bfa; }
+:root.palette-rose   { --accent: #f43f5e; --accent-ink: #fb7185; }
+
+/* ========================================
+   LIGHT MODE
+   ======================================== */
 :root.light {
   --bg-deep: #f4f5f7;
   --bg-surface: #ffffff;
   --bg-surface-2: #ebedf2;
   --text-primary: #1a1d2e;
-  --text-secondary: rgba(26, 29, 46, 0.55);
-  --border-color: rgba(0, 0, 0, 0.1);
-  --hover-bg: color-mix(in srgb, var(--neon-primary) 8%, transparent);
+  --text-secondary: #54586a;
+  --text-muted: #6b6f80;
+  --border-color: rgba(0, 0, 0, 0.15);
+  --hover-bg: color-mix(in srgb, var(--accent) 8%, transparent);
+
+  /* Dark ink on light surfaces; white on the filled control */
+  --accent-ink: #1d4ed8;
+  --on-accent: #ffffff;
+  --accent-subtle: color-mix(in srgb, var(--accent-ink) 12%, var(--bg-surface));
+
+  --success-ink: #127538;
+  --warning-ink: #8f5806;
+  --danger-ink: #b91c1c;
 
   /* Stronger neon borders/glows on light bg for visibility */
-  --neon-border: color-mix(in srgb, var(--neon-primary) 25%, transparent);
-  --neon-border-hover: color-mix(in srgb, var(--neon-primary) 45%, transparent);
+  --neon-border: color-mix(in srgb, var(--accent) 25%, transparent);
+  --neon-border-hover: color-mix(in srgb, var(--accent) 45%, transparent);
 
-  /* Status colors stay the same — they are universal */
+  /* Status dot fills darken so they stay visible on white */
   --status-online: #16a34a;
-  --status-degraded: #ca8a04;
+  --status-degraded: #a16207;
   --status-error: #dc2626;
+
+  /* Softer shadows on light backgrounds */
+  --elev-1: 0 1px 3px 0 rgb(0 0 0 / 6%), 0 1px 2px -1px rgb(0 0 0 / 4%);
+  --elev-2: 0 4px 12px rgb(0 0 0 / 8%);
+  --elev-3: 0 12px 32px rgb(0 0 0 / 14%);
 }
 
-/* --- Color Palettes --- */
-:root.palette-blue   { --neon-primary: #3b82f6; }
-:root.palette-teal   { --neon-primary: #14b8a6; }
-:root.palette-indigo { --neon-primary: #6366f1; }
-:root.palette-amber  { --neon-primary: #f59e0b; }
-:root.palette-violet { --neon-primary: #8b5cf6; }
-:root.palette-rose   { --neon-primary: #f43f5e; }
+/* ========================================
+   COLOR PALETTES — light ink
+   Amber cannot stay amber-looking and clear 4.5:1 on white; --accent stays
+   #f59e0b so the glow is still amber, only the ink goes burnt.
+   ======================================== */
+:root.light.palette-blue   { --accent-ink: #1d4ed8; }
+:root.light.palette-teal   { --accent-ink: #0f766e; }
+:root.light.palette-indigo { --accent-ink: #4f46e5; }
+:root.light.palette-amber  { --accent-ink: #9a4d0a; }
+:root.light.palette-violet { --accent-ink: #7c3aed; }
+:root.light.palette-rose   { --accent-ink: #be123c; }
 
 /* ========================================
    BASE (60% — dark backgrounds)
@@ -105,19 +273,20 @@
 body {
   background: var(--bg-deep);
   color: var(--text-primary);
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  font-family: var(--font-sans);
   font-feature-settings: 'rlig' 1, 'calt' 1;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
 /* ========================================
-   NEON UTILITIES (10% — accent only)
+   ACCENT TEXT UTILITIES (10% — accent only)
+   These use the *-ink roles, never the decorative ones.
    ======================================== */
-.neon-text-primary { color: var(--neon-primary); }
-.neon-text-success { color: var(--neon-success); }
-.neon-text-accent  { color: var(--neon-accent); }
-.neon-text-warning { color: var(--neon-warning); }
+.neon-text-primary { color: var(--accent-ink); }
+.neon-text-success { color: var(--success-ink); }
+.neon-text-accent  { color: var(--danger-ink); }
+.neon-text-warning { color: var(--warning-ink); }
 
 /* ========================================
    NEON CARD
@@ -125,12 +294,8 @@ body {
 .neon-card {
   position: relative;
   border: 1px solid var(--neon-border);
-  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 10%), 0 1px 2px -1px rgb(0 0 0 / 8%);
+  box-shadow: var(--elev-1);
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
-}
-
-:root.light .neon-card {
-  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 6%), 0 1px 2px -1px rgb(0 0 0 / 4%);
 }
 
 .neon-card:hover {
@@ -150,8 +315,8 @@ body {
     to bottom,
     transparent 0px,
     transparent 3px,
-    color-mix(in srgb, var(--neon-primary) 3%, transparent) 3px,
-    color-mix(in srgb, var(--neon-primary) 3%, transparent) 4px
+    color-mix(in srgb, var(--accent) 3%, transparent) 3px,
+    color-mix(in srgb, var(--accent) 3%, transparent) 4px
   );
 }
 
@@ -163,7 +328,7 @@ body {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: color-mix(in srgb, var(--neon-primary) 50%, var(--text-secondary));
+  color: var(--accent-ink);
   text-shadow: var(--neon-text-glow);
 }
 
@@ -174,7 +339,7 @@ body {
   display: inline-block;
   width: 0.5rem;
   height: 0.5rem;
-  border-radius: 50%;
+  border-radius: var(--radius-full);
   transition: transform 0.15s;
 }
 
@@ -210,15 +375,15 @@ body {
 .progress-bar-fill {
   height: 100%;
   border-radius: 2px;
-  background: var(--neon-primary);
+  background: var(--accent-solid);
 }
 
 .progress-bar-fill.active {
   background: linear-gradient(
     90deg,
-    var(--neon-primary) 0%,
-    color-mix(in srgb, var(--neon-primary) 70%, white) 50%,
-    var(--neon-primary) 100%
+    var(--accent-solid) 0%,
+    color-mix(in srgb, var(--accent-solid) 70%, white) 50%,
+    var(--accent-solid) 100%
   );
   background-size: 200% 100%;
   animation: shimmer 2s linear infinite;
@@ -234,7 +399,7 @@ body {
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, transparent, var(--neon-primary), var(--neon-accent), transparent);
+  background: linear-gradient(90deg, transparent, var(--accent), var(--danger), transparent);
 }
 
 /* ========================================
@@ -242,13 +407,13 @@ body {
    ======================================== */
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.12); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.2); }
-
-.light ::-webkit-scrollbar-thumb,
-:root.light ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.12); }
-.light ::-webkit-scrollbar-thumb:hover,
-:root.light ::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.22); }
+::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-primary) 22%, transparent);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--text-primary) 40%, transparent);
+}
 
 /* ========================================
    ANIMATIONS
@@ -259,7 +424,7 @@ body {
 }
 
 .page-enter {
-  animation: page-enter 0.25s cubic-bezier(0.25, 1, 0.5, 1);
+  animation: page-enter var(--dur-base) var(--ease-out);
 }
 
 @keyframes card-enter {
@@ -268,7 +433,7 @@ body {
 }
 
 .card-enter {
-  animation: card-enter 0.35s cubic-bezier(0.25, 1, 0.5, 1) both;
+  animation: card-enter 0.35s var(--ease-out) both;
   animation-delay: calc(var(--i, 0) * 50ms);
 }
 
@@ -278,8 +443,8 @@ body {
 }
 
 @keyframes neon-pulse {
-  0%, 100% { box-shadow: 0 0 4px var(--neon-primary); }
-  50% { box-shadow: 0 0 10px var(--neon-primary); }
+  0%, 100% { box-shadow: 0 0 4px var(--accent); }
+  50% { box-shadow: 0 0 10px var(--accent); }
 }
 
 .status-pulse {
@@ -297,20 +462,20 @@ body {
 
 @keyframes neon-letter-flicker {
   0%, 17.9%, 18.9%, 51.9%, 53.6%, 78.9%, 80.9%, 100% {
-    color: var(--neon-primary);
-    text-shadow: 0 0 7px var(--neon-primary),
-                 0 0 20px color-mix(in srgb, var(--neon-primary) 60%, transparent),
-                 0 0 40px color-mix(in srgb, var(--neon-primary) 30%, transparent);
+    color: var(--accent-ink);
+    text-shadow: 0 0 7px var(--accent),
+                 0 0 20px color-mix(in srgb, var(--accent) 60%, transparent),
+                 0 0 40px color-mix(in srgb, var(--accent) 30%, transparent);
     opacity: 1;
   }
   18% { opacity: 0.15; text-shadow: none; }
   52% { opacity: 0.1; text-shadow: none; }
-  52.8% { opacity: 0.7; text-shadow: 0 0 4px var(--neon-primary); }
+  52.8% { opacity: 0.7; text-shadow: 0 0 4px var(--accent); }
   53.1% { opacity: 0.1; text-shadow: none; }
   79% { opacity: 0.1; text-shadow: none; }
-  79.6% { opacity: 0.5; text-shadow: 0 0 3px var(--neon-primary); }
+  79.6% { opacity: 0.5; text-shadow: 0 0 3px var(--accent); }
   79.9% { opacity: 0.08; text-shadow: none; }
-  80.3% { opacity: 0.6; text-shadow: 0 0 4px var(--neon-primary); }
+  80.3% { opacity: 0.6; text-shadow: 0 0 4px var(--accent); }
   80.6% { opacity: 0.1; text-shadow: none; }
 }
 
@@ -327,7 +492,7 @@ body {
    FOCUS / A11Y
    ======================================== */
 *:focus-visible {
-  outline: 2px solid var(--neon-primary);
+  outline: 2px solid var(--accent-ink);
   outline-offset: 2px;
 }
 
@@ -335,12 +500,12 @@ body {
   position: absolute;
   top: -100%;
   left: 16px;
-  z-index: 1000;
+  z-index: var(--z-skip-link);
   padding: 8px 16px;
-  background: var(--neon-primary);
-  color: var(--bg-deep);
+  background: var(--accent-solid);
+  color: var(--on-accent);
   font-weight: 700;
-  border-radius: 0 0 8px 8px;
+  border-radius: 0 0 var(--radius-md) var(--radius-md);
   text-decoration: none;
 }
 

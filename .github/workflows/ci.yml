@@ -78,7 +78,7 @@ jobs:
         run: pnpm audit --audit-level moderate
 
   web-ui:
-    name: Web UI (build + check)
+    name: Web UI (build + check + test)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -100,6 +100,19 @@ jobs:
 
       - name: Check
         run: pnpm --filter amigo-web-ui check
+
+      - name: Unit tests
+        run: pnpm --filter amigo-web-ui test
+
+      # Contrast assertions across 6 palettes x 2 themes, plus a compile pass
+      # over every primitive in a package nothing else type-checks.
+      - name: Design tokens
+        run: pnpm --filter @amigo/ui check
+
+      # Hard bans (manual z-index, decorative tokens as text, unlabelled
+      # icon buttons) plus the inline-style ratchet.
+      - name: UI lint
+        run: node scripts/ui-lint.mjs
 
   plugin-sdk:
     name: Plugin SDK (typecheck + test)

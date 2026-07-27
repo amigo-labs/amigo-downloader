@@ -18,9 +18,9 @@
 </script>
 
 <nav
-  aria-label={tr($locale, "nav.management")}
-  class="mobile-nav md:hidden fixed bottom-0 inset-x-0 z-40 flex items-stretch justify-around"
-  style="background: color-mix(in srgb, var(--bg-surface) 92%, transparent); border-top: 1px solid var(--border-color); backdrop-filter: blur(12px); padding-bottom: env(safe-area-inset-bottom, 0px)"
+  aria-label={tr($locale, "nav.main")}
+  class="mobile-nav lg:hidden fixed bottom-0 inset-x-0 flex items-stretch justify-around"
+  style="z-index: var(--z-nav); background: color-mix(in srgb, var(--bg-surface) 92%, transparent); border-top: 1px solid var(--border-color); backdrop-filter: blur(12px); padding-bottom: env(safe-area-inset-bottom, 0px)"
 >
   {#each left as item}
     <button
@@ -40,7 +40,7 @@
       onclick={onadd}
       aria-label={tr($locale, "cmd.add_download")}
       class="fab absolute -top-5 w-14 h-14 rounded-full flex items-center justify-center"
-      style="background: var(--neon-primary); color: var(--bg-deep); box-shadow: var(--neon-glow-md), 0 6px 16px rgb(0 0 0 / 30%)"
+      style="background: var(--accent-solid); color: var(--on-accent); box-shadow: var(--neon-glow-md), var(--elev-2)"
     >
       <Icon name="plus" size={24} />
     </button>
@@ -74,7 +74,7 @@
   }
 
   .mobile-tab.active {
-    color: var(--neon-primary);
+    color: var(--accent-ink);
   }
 
   .mobile-tab.active :global(svg) {

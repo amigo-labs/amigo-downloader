@@ -2,30 +2,38 @@
   import { addDownload, addBatch, importDlc, uploadNzb } from "../lib/api";
   import { addToast } from "../lib/toast";
   import { locale, tr } from "../lib/i18n";
+  import { isFileDrag } from "../lib/dnd";
 
   let dragging = $state(false);
   let dragCounter = $state(0);
 
+  // Only external file drags raise the overlay. Without this check an
+  // internal queue-reorder drag put a full-viewport z-index:200 surface over
+  // the list, so the row's own drop target never fired.
   function handleDragEnter(e: DragEvent) {
+    if (!isFileDrag(e)) return;
     e.preventDefault();
     dragCounter++;
     dragging = true;
   }
 
   function handleDragLeave(e: DragEvent) {
+    if (!dragging) return;
+    // `relatedTarget` is null when the pointer leaves the window entirely;
+    // any other value is a move between descendants and must not decrement.
+    if (e.relatedTarget !== null) return;
     e.preventDefault();
-    dragCounter--;
-    if (dragCounter <= 0) {
-      dragging = false;
-      dragCounter = 0;
-    }
+    dragCounter = 0;
+    dragging = false;
   }
 
   function handleDragOver(e: DragEvent) {
+    if (!isFileDrag(e)) return;
     e.preventDefault();
   }
 
   async function handleDrop(e: DragEvent) {
+    if (!isFileDrag(e)) return;
     e.preventDefault();
     dragging = false;
     dragCounter = 0;
@@ -83,35 +91,41 @@
 />
 
 {#if dragging}
-  <div class="fixed inset-0 z-[200] flex items-center justify-center drop-overlay">
+  <div
+    class="fixed inset-0 flex items-center justify-center p-4 drop-overlay"
+    style="z-index: var(--z-overlay)"
+    aria-hidden="true"
+  >
     <div
-      class="rounded-3xl border-2 border-dashed p-16 flex flex-col items-center gap-4 drop-bounce"
-      style="border-color: var(--neon-primary); background: var(--bg-surface)"
+      class="rounded-3xl border-2 border-dashed p-8 sm:p-16 flex flex-col items-center gap-4 drop-bounce text-center"
+      style="border-color: var(--accent); background: var(--bg-surface)"
     >
       <img src="/amigo-logo.png" alt="" width="64" height="64" class="rounded-lg opacity-60" />
-      <p class="text-xl font-bold" style="color: var(--neon-primary)">{tr($locale, "drop.title")}</p>
+      <p class="text-xl font-bold" style="color: var(--accent-ink)">{tr($locale, "drop.title")}</p>
       <p class="text-sm" style="color: var(--text-secondary)">{tr($locale, "drop.hint")}</p>
     </div>
   </div>
 {/if}
 
 <style>
-  @keyframes fade-in {
+  /* Reuses the shared page-enter/card-enter curves and the --ease-out-expo
+     token instead of redeclaring the same cubic-bezier locally. */
+  @keyframes drop-fade-in {
     from { opacity: 0; }
     to { opacity: 1; }
   }
 
-  @keyframes scale-in {
+  @keyframes drop-scale-in {
     from { opacity: 0; transform: scale(0.95); }
     to { opacity: 1; transform: scale(1); }
   }
 
   .drop-overlay {
-    background: rgba(0, 0, 0, 0.6);
-    animation: fade-in 0.2s ease-out;
+    background: rgb(0 0 0 / 60%);
+    animation: drop-fade-in var(--dur-base) var(--ease-out);
   }
 
   .drop-bounce {
-    animation: scale-in 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    animation: drop-scale-in var(--dur-slow) var(--ease-out-expo);
   }
 </style>
