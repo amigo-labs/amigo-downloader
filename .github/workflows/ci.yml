@@ -49,6 +49,28 @@ jobs:
       - name: Test
         run: cargo test --workspace --exclude amigo-desktop --locked
 
+  release-build-guard:
+    # The release profile runs the build.rs key guards (plugin registry and
+    # self-update). `cargo check --release` exercises them without the cost of
+    # a fat-LTO link; release-build.yml must thread the real keys through.
+    name: Release build guard (pinned signing keys)
+    runs-on: ubuntu-latest
+    env:
+      AMIGO_REGISTRY_PUBKEY_HEX: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+      AMIGO_UPDATE_PUBKEY_HEX: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Create web-ui dist stub
+        run: mkdir -p web-ui/dist
+      - name: cargo check --release (server + CLI)
+        run: cargo check --release --locked -p amigo-server -p amigo-cli
+
   cargo-audit:
     name: Cargo audit (known vulnerabilities)
     runs-on: ubuntu-latest
