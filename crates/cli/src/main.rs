@@ -166,8 +166,17 @@ enum PluginAction {
     Login { id: String },
     /// Update plugins (all or specific)
     Update { id: Option<String> },
-    /// Install a plugin from the registry
-    Install { id: String },
+    /// Install a plugin from the registry on the paired server. Shows the
+    /// hosts the plugin may contact and asks for confirmation first.
+    Install {
+        id: String,
+        /// Approve the plugin's requested network access without prompting
+        #[arg(long)]
+        yes: bool,
+        /// Paired server alias (defaults to the default remote)
+        #[arg(long)]
+        remote: Option<String>,
+    },
     /// Search the plugin registry
     Search { query: String },
     /// Test a plugin: run spec file, or resolve a URL
@@ -683,6 +692,109 @@ fn init_tracing(verbose: bool) {
         .init();
 }
 
+/// `amigo-dl plugins install <id>`: install a registry plugin on the paired
+/// server, after showing which hosts it may contact and getting the user's
+/// confirmation (or `--yes`). The server refuses the install (HTTP 428)
+/// unless the approval is sent.
+async fn plugins_install(id: &str, yes: bool, alias: Option<&str>) -> anyhow::Result<()> {
+    let all = remotes::load();
+    let Some((remote_name, remote)) = remotes::resolve(&all, alias) else {
+        anyhow::bail!(
+            "No paired server. Pair with `amigo-dl login <url>` first, or pass --remote <alias>."
+        );
+    };
+    let base = remote.url.trim_end_matches('/');
+    let client = reqwest::Client::builder()
+        .user_agent("amigo-downloader")
+        .build()?;
+
+    let entries: Vec<serde_json::Value> = client
+        .get(format!("{base}/api/v1/updates/plugins/available"))
+        .bearer_auth(&remote.token)
+        .send()
+        .await?
+        .error_for_status()?
+        .json()
+        .await?;
+    let Some(entry) = entries.iter().find(|e| e["id"] == id) else {
+        anyhow::bail!(
+            "Plugin {id} is not in the registry of '{remote_name}' (or needs a newer amigo)"
+        );
+    };
+    if entry["installed"].as_bool() == Some(true) {
+        println!("Plugin {id} is already installed on '{remote_name}'.");
+        return Ok(());
+    }
+
+    println!(
+        "{} v{} by {}",
+        entry["name"].as_str().unwrap_or(id),
+        entry["version"].as_str().unwrap_or("?"),
+        entry["author"].as_str().unwrap_or("unknown")
+    );
+    match entry["domains"].as_array() {
+        None => println!(
+            "Network access: ANY public host — this plugin declares no domain list.\n\
+             Only install it if you trust its author."
+        ),
+        Some(domains) if domains.is_empty() => println!("Network access: none"),
+        Some(domains) => {
+            println!("Network access, limited to:");
+            for d in domains {
+                println!("  - {}", d.as_str().unwrap_or("?"));
+            }
+        }
+    }
+
+    if !yes {
+        use std::io::Write;
+        print!("Allow this access and install on '{remote_name}'? [y/N] ");
+        std::io::stdout().flush()?;
+        let mut answer = String::new();
+        std::io::stdin().read_line(&mut answer)?;
+        if !matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes") {
+            println!("Aborted.");
+            return Ok(());
+        }
+    }
+
+    let resp = client
+        .post(format!(
+            "{base}/api/v1/updates/plugins/{}/install",
+            urlencoding_path(id)
+        ))
+        .bearer_auth(&remote.token)
+        .json(&serde_json::json!({ "approve_permissions": true }))
+        .send()
+        .await?;
+    let status = resp.status();
+    let body: serde_json::Value = resp.json().await.unwrap_or_default();
+    if !status.is_success() {
+        anyhow::bail!(
+            "Install failed (HTTP {status}): {}",
+            body["error"].as_str().unwrap_or("unknown error")
+        );
+    }
+    println!(
+        "Installed {} v{} on '{remote_name}'.",
+        body["id"].as_str().unwrap_or(id),
+        body["version"].as_str().unwrap_or("?")
+    );
+    Ok(())
+}
+
+/// Percent-encode a plugin id for use as a URL path segment.
+fn urlencoding_path(s: &str) -> String {
+    s.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
@@ -1160,9 +1272,10 @@ async fn main() -> anyhow::Result<()> {
                      or pair against a remote with `amigo-dl login <url>`."
                 );
             }
-            PluginAction::Update { .. }
-            | PluginAction::Install { .. }
-            | PluginAction::Search { .. } => {
+            PluginAction::Install { id, yes, remote } => {
+                plugins_install(&id, yes, remote.as_deref()).await?;
+            }
+            PluginAction::Update { .. } | PluginAction::Search { .. } => {
                 println!("Plugin updates require the server. Use the web UI or API.");
             }
         },
