@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createPluginContext } from "../../src/context/index.js";
 import {
+  HOST_API_VERSION,
   defineDecrypter,
   definePlugin,
   matchesAny,
@@ -34,6 +35,35 @@ describe("definePlugin", () => {
     expect(plugin.kind).toBe("hoster");
     expect(plugin.matches("https://example.test/a")).toBe(true);
     expect(plugin.manifest().id).toBe("example-hoster");
+    expect(plugin.manifest().apiVersion).toBe(HOST_API_VERSION);
+    expect(plugin.manifest().permissions).toEqual({});
+  });
+
+  it("carries apiVersion and declared domains into the manifest", () => {
+    const plugin = definePlugin({
+      id: "scoped",
+      version: "1.0.0",
+      apiVersion: 1,
+      permissions: { domains: ["api.example.test", "*.cdn.example.test"] },
+      match: [/example\.test\//],
+      async extract() {
+        return [];
+      },
+    });
+    expect(plugin.apiVersion).toBe(1);
+    expect(plugin.manifest().permissions.domains).toEqual([
+      "api.example.test",
+      "*.cdn.example.test",
+    ]);
+  });
+
+  it("rejects an unsupported apiVersion and malformed domains", () => {
+    const base = { id: "x", version: "1.0.0", match: [/./], async extract() { return []; } };
+    expect(() => definePlugin({ ...base, apiVersion: HOST_API_VERSION + 1 })).toThrow(/host API/);
+    expect(() => definePlugin({ ...base, permissions: { domains: ["*"] } })).toThrow(/permissions/);
+    expect(() =>
+      definePlugin({ ...base, permissions: { domains: ["https://a.test/"] } }),
+    ).toThrow(/permissions/);
   });
 
   it("runs extract() against a PluginContext", async () => {
