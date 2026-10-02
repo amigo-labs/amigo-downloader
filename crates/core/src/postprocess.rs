@@ -304,19 +304,32 @@ fn is_safe_archive_entry(name: &str) -> bool {
 }
 
 fn extract_7z(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
-    // sevenz_rust::decompress_file has no per-entry hook, so it would happily
-    // write a `../` member outside output_dir. Validate each entry name first.
-    sevenz_rust::decompress_file_with_extract_fn(archive, output_dir, |entry, reader, dest| {
-        if !is_safe_archive_entry(entry.name()) {
-            warn!(
-                "7z entry {:?} escapes output directory — skipping (path traversal blocked)",
-                entry.name()
-            );
-            return Ok(true); // skip this entry, keep going
-        }
-        sevenz_rust::default_entry_extract_fn(entry, reader, dest)
-    })
-    .map_err(|e| crate::Error::Other(format!("7z extraction failed: {e}")))?;
+    // Drive the entry loop ourselves instead of relying on the crate's
+    // `decompress_*` helpers: every entry name goes through
+    // `is_safe_archive_entry` before it is joined onto output_dir, so a `../`
+    // or absolute member is skipped (and logged) rather than written outside
+    // the target directory, and the rest of the archive still extracts.
+    let map_err =
+        |e: sevenz_rust2::Error| crate::Error::Other(format!("7z extraction failed: {e}"));
+    std::fs::create_dir_all(output_dir)?;
+    let mut reader = sevenz_rust2::ArchiveReader::open(archive, sevenz_rust2::Password::empty())
+        .map_err(map_err)?;
+    reader
+        .for_each_entries(|entry, data| {
+            if !is_safe_archive_entry(entry.name()) {
+                warn!(
+                    "7z entry {:?} escapes output directory — skipping (path traversal blocked)",
+                    entry.name()
+                );
+                // In a solid block the next entry's data follows this one in
+                // the same stream, so drain the skipped bytes before moving on.
+                std::io::copy(data, &mut std::io::sink())?;
+                return Ok(true); // skip this entry, keep going
+            }
+            let dest = output_dir.join(entry.name().replace('\\', "/"));
+            sevenz_rust2::default_entry_extract_fn(entry, data, &dest)
+        })
+        .map_err(map_err)?;
     Ok(())
 }
 
@@ -750,6 +763,58 @@ mod tests {
             !std::path::Path::new("/tmp/amigo-evil").exists(),
             "traversing member must not be written outside output_dir"
         );
+    }
+
+    /// Build a solid 7z whose entries try to escape the output directory
+    /// (relative `..`, Windows-style `..\`, and absolute), sandwiched between
+    /// legitimate entries. extract_7z must skip the hostile ones, write
+    /// nothing outside output_dir, and still extract the rest intact — the
+    /// trailing entry proves the skipped bytes were drained from the solid
+    /// stream rather than leaking into the next file.
+    #[test]
+    fn test_extract_7z_skips_path_traversal_entries() {
+        use sevenz_rust2::{ArchiveEntry, ArchiveWriter, SourceReader};
+
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("nested").join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let abs_target = dir.path().join("abs-escape.txt");
+
+        let entries = [
+            ("good.txt".to_string(), b"good".to_vec()),
+            ("../escape.txt".to_string(), b"evil-relative".to_vec()),
+            ("..\\win-escape.txt".to_string(), b"evil-backslash".to_vec()),
+            (
+                abs_target.to_string_lossy().into_owned(),
+                b"evil-absolute".to_vec(),
+            ),
+            ("sub/after.txt".to_string(), b"after".to_vec()),
+        ];
+
+        let archive = dir.path().join("evil.7z");
+        let mut writer = ArchiveWriter::create(&archive).unwrap();
+        writer
+            .push_archive_entries(
+                entries
+                    .iter()
+                    .map(|(name, _)| ArchiveEntry::new_file(name))
+                    .collect(),
+                entries
+                    .iter()
+                    .map(|(_, data)| SourceReader::new(std::io::Cursor::new(data.clone())))
+                    .collect(),
+            )
+            .unwrap();
+        writer.finish().unwrap();
+
+        extract_7z(&archive, &out).expect("hostile entries are skipped, not fatal");
+
+        assert_eq!(std::fs::read(out.join("good.txt")).unwrap(), b"good");
+        assert_eq!(std::fs::read(out.join("sub/after.txt")).unwrap(), b"after");
+        assert!(!out.parent().unwrap().join("escape.txt").exists());
+        assert!(!out.parent().unwrap().join("win-escape.txt").exists());
+        assert!(!out.join("..\\win-escape.txt").exists());
+        assert!(!abs_target.exists());
     }
 
     /// A zip whose declared entry size exceeds the cumulative budget must
