@@ -50,7 +50,7 @@ fn cached_dynamic_regex(pattern: &str) -> Option<Regex> {
 /// their CDN. Without a TTL the previous in-memory cache held stale JS
 /// forever, which is what bit n-function extraction whenever YouTube
 /// shipped new obfuscation.
-const PLAYER_JS_CACHE_TTL: Duration = Duration::from_secs(12 * 60 * 60);
+const PLAYER_JS_CACHE_TTL: Duration = Duration::from_hours(12);
 
 /// Hard cap on the in-memory player.js cache. YouTube only has a handful of
 /// player versions live at any time; we don't need more.
