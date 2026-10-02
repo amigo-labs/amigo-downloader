@@ -63,7 +63,8 @@ const MAX_BASE64_INPUT_BYTES: usize = 8 * 1024 * 1024;
 
 /// Maximum wall-clock time a single plugin HTTP request may take before it is
 /// aborted. Matches the plugin execution deadline so a slow-loris endpoint
-/// cannot tie up the (serialized) plugin executor beyond the sandbox budget.
+/// cannot hold a plugin invocation (and its blocking-pool thread) beyond the
+/// sandbox budget.
 const HTTP_TIMEOUT_SECS: u64 = 30;
 
 /// Connect-phase timeout for plugin HTTP requests.
