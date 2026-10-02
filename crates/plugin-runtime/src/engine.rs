@@ -318,6 +318,29 @@ impl PluginContext {
         })
     }
 
+    /// Whether an export is present (not `undefined` / `null`). Reading it may
+    /// run a getter, so this is deadline-bound and a throwing or looping
+    /// getter is an error — not "absent".
+    pub fn has_export(&self, name: &str) -> Result<bool, crate::Error> {
+        let timeout = self.load_timeout;
+        self.with_deadline(timeout, |ctx, deadline| {
+            let exports: Object<'_> = ctx
+                .globals()
+                .get("__plugin_exports")
+                .map_err(|e| crate::Error::Execution(format!("__plugin_exports not found: {e}")))?;
+            let value: Value<'_> = exports.get(name).map_err(|e| {
+                js_error(
+                    &ctx,
+                    e,
+                    deadline,
+                    timeout,
+                    &format!("reading export '{name}'"),
+                )
+            })?;
+            Ok(!(value.is_undefined() || value.is_null()))
+        })
+    }
+
     /// Read an export as JSON (`JSON.stringify`), `None` when it is missing,
     /// `null` or `undefined`. Used for structured manifest fields such as
     /// `permissions`.

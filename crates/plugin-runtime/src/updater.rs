@@ -59,13 +59,17 @@ impl PluginUpdater {
             )));
         }
 
-        let hosters_dir = self.loader.plugin_dir().to_path_buf();
-        let path = registry::download_plugin(&self.client, registry_plugin, &hosters_dir).await?;
+        let artifact = registry::fetch_plugin_artifact(&self.client, registry_plugin).await?;
+        self.validate_candidate(
+            registry_plugin,
+            &artifact,
+            registry_plugin.declared_domains(),
+        )
+        .await?;
 
-        let meta = self.loader.load_plugin(&path).await?;
-        self.enforce_approved_domains(&meta, registry_plugin.declared_domains())
-            .await?;
-        Ok(meta)
+        let plugin_dir = self.loader.plugin_dir().join(&registry_plugin.id);
+        let path = registry::install_artifact(&plugin_dir, &artifact)?;
+        self.loader.load_plugin(&path).await
     }
 
     /// Update an existing plugin to the latest version.
@@ -102,20 +106,25 @@ impl PluginUpdater {
                 added.join(", ")
             )));
         }
-
-        // Download to hosters dir (overwrites existing via atomic rename)
-        let hosters_dir = self.loader.plugin_dir().to_path_buf();
-        registry::download_plugin(&self.client, registry_plugin, &hosters_dir).await?;
-
-        // Hot-reload the plugin
-        let meta = self.loader.reload(plugin_id).await?;
         let approved_domains = if approved {
             registry_plugin.declared_domains()
         } else {
             installed_domains.as_deref()
         };
-        self.enforce_approved_domains(&meta, approved_domains)
+
+        let artifact = registry::fetch_plugin_artifact(&self.client, registry_plugin).await?;
+        self.validate_candidate(registry_plugin, &artifact, approved_domains)
             .await?;
+
+        // Replace the installed file in place (it may live in a category
+        // folder such as plugins/hosters/<id>/), then hot-reload it.
+        let installed_path = std::path::PathBuf::from(&installed.file_path);
+        let plugin_dir = installed_path
+            .parent()
+            .map(std::path::Path::to_path_buf)
+            .unwrap_or_else(|| self.loader.plugin_dir().join(plugin_id));
+        let path = registry::install_artifact(&plugin_dir, &artifact)?;
+        let meta = self.loader.load_plugin(&path).await?;
         info!("Plugin {} updated to v{}", plugin_id, meta.version);
 
         Ok(meta)
@@ -157,25 +166,23 @@ impl PluginUpdater {
         Ok(updated)
     }
 
-    /// After installing/updating, make sure the plugin's *own* manifest does
-    /// not claim more than the user approved (the registry entry is what was
-    /// shown). A mismatch disables the plugin.
-    async fn enforce_approved_domains(
+    /// Evaluate a downloaded artifact in a throw-away context — before
+    /// anything is written into the plugin directory — and check that its own
+    /// manifest matches the signed registry entry it was fetched for (id and
+    /// version) and claims no domains beyond `approved_domains`. A candidate
+    /// that fails never reaches disk, so nothing rejected can come back on
+    /// the next start.
+    async fn validate_candidate(
         &self,
-        meta: &PluginMeta,
-        approved: Option<&[String]>,
+        entry: &RegistryPlugin,
+        artifact: &registry::PluginArtifact,
+        approved_domains: Option<&[String]>,
     ) -> Result<(), crate::Error> {
-        if let Some(extra) =
-            permissions::widened_domains(approved, meta.permissions.domains.as_deref())
-        {
-            self.loader.set_enabled(&meta.id, false).await?;
-            return Err(crate::Error::PermissionApprovalRequired(format!(
-                "plugin {} declares domains beyond what was approved ({}); it has been disabled",
-                meta.id,
-                extra.join(", ")
-            )));
-        }
-        Ok(())
+        let staging = tempfile::tempdir()
+            .map_err(|e| crate::Error::Other(format!("Failed to create staging dir: {e}")))?;
+        let path = registry::install_artifact(staging.path(), artifact)?;
+        let meta = self.loader.inspect_plugin(&path).await?;
+        check_candidate(entry, &meta, approved_domains)
     }
 
     /// List all available plugins from the registry (marketplace). Entries
@@ -188,6 +195,31 @@ impl PluginUpdater {
             .filter(RegistryPlugin::is_compatible)
             .collect())
     }
+}
+
+/// Check a candidate's own manifest against its registry entry and the
+/// approved domains.
+fn check_candidate(
+    entry: &RegistryPlugin,
+    meta: &PluginMeta,
+    approved_domains: Option<&[String]>,
+) -> Result<(), crate::Error> {
+    if meta.id != entry.id || meta.version != entry.version {
+        return Err(crate::Error::SandboxViolation(format!(
+            "artifact for {} v{} declares itself as {} v{}; refusing to install",
+            entry.id, entry.version, meta.id, meta.version
+        )));
+    }
+    if let Some(extra) =
+        permissions::widened_domains(approved_domains, meta.permissions.domains.as_deref())
+    {
+        return Err(crate::Error::PermissionApprovalRequired(format!(
+            "plugin {} declares domains beyond what was approved ({}); not installed",
+            meta.id,
+            extra.join(", ")
+        )));
+    }
+    Ok(())
 }
 
 /// Human-readable domain list for an approval prompt.

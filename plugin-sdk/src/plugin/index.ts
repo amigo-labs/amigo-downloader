@@ -1,6 +1,7 @@
 export {
   HOST_API_VERSION,
   defineDecrypter,
+  domainPatternProblem,
   definePlugin,
   type DecrypterPluginDefinition,
   type HosterPluginDefinition,

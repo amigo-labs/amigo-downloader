@@ -83,6 +83,43 @@ function normaliseDecryptResult(
   });
 }
 
+/** Mirrors `MAX_DOMAIN_ENTRIES` in `crates/plugin-runtime/src/permissions.rs`. */
+const MAX_DOMAIN_ENTRIES = 64;
+
+/**
+ * Validate one `permissions.domains` entry with the same rules the runtime
+ * applies at load (`DomainAllowlist::parse` in
+ * `crates/plugin-runtime/src/permissions.rs`), so a plugin the SDK accepts
+ * also loads. Returns `null` when valid, else the reason.
+ */
+export function domainPatternProblem(raw: string): string | null {
+  const entry = raw.trim();
+  if (entry.length === 0) return "empty";
+  if (entry === "*") return 'a bare "*" is not allowed — list the hosts the plugin needs';
+  if (entry.includes("://") || entry.includes("/")) return "must be a host, without scheme or path";
+  if (entry.includes(":") || entry.includes("@") || entry.includes("[")) {
+    return "must be a host name, without port, user info or IP brackets";
+  }
+  const wildcard = entry.startsWith("*.");
+  const rawHost = wildcard ? entry.slice(2) : entry;
+  if (rawHost.includes("*")) {
+    return '"*" is only allowed as the whole first label ("*.example.com")';
+  }
+  const host = rawHost.replace(/\.+$/, "").toLowerCase();
+  const labels = host.split(".");
+  const labelOk = (label: string): boolean =>
+    label.length > 0 &&
+    label.length <= 63 &&
+    !label.startsWith("-") &&
+    !label.endsWith("-") &&
+    /^[a-z0-9-]+$/.test(label);
+  if (host.length > 253 || !labels.every(labelOk)) return "not a valid host name";
+  if (wildcard && labels.length < 2) {
+    return 'a wildcard must cover at least a registrable domain ("*.example.com")';
+  }
+  return null;
+}
+
 function validateDefinition(def: CommonDefinition): void {
   if (!def.id || def.id.trim().length === 0) {
     throw new Error("Plugin definition missing id");
@@ -96,11 +133,16 @@ function validateDefinition(def: CommonDefinition): void {
       `Plugin ${def.id} targets host API ${apiVersion}; this SDK supports up to ${HOST_API_VERSION}`,
     );
   }
-  for (const domain of def.permissions?.domains ?? []) {
-    if (domain.trim() === "*" || domain.includes("/") || domain.includes(":")) {
-      throw new Error(
-        `Plugin ${def.id} has invalid permissions.domains entry "${domain}" (use a host such as "api.example.com" or "*.example.com")`,
-      );
+  const domains = def.permissions?.domains ?? [];
+  if (domains.length > MAX_DOMAIN_ENTRIES) {
+    throw new Error(
+      `Plugin ${def.id} declares ${domains.length} permissions.domains entries (limit ${MAX_DOMAIN_ENTRIES})`,
+    );
+  }
+  for (const domain of domains) {
+    const problem = domainPatternProblem(domain);
+    if (problem !== null) {
+      throw new Error(`Plugin ${def.id} has invalid permissions.domains entry "${domain}": ${problem}`);
     }
   }
   if (!Array.isArray(def.match) || def.match.length === 0) {

@@ -3,6 +3,7 @@ import { createPluginContext } from "../../src/context/index.js";
 import {
   HOST_API_VERSION,
   defineDecrypter,
+  domainPatternProblem,
   definePlugin,
   matchesAny,
 } from "../../src/plugin/index.js";
@@ -64,6 +65,31 @@ describe("definePlugin", () => {
     expect(() =>
       definePlugin({ ...base, permissions: { domains: ["https://a.test/"] } }),
     ).toThrow(/permissions/);
+  });
+
+  it("validates domains with the same rules as the runtime", () => {
+    for (const ok of ["api.example.test", "*.example.test", "API.Example.test.", "127.0.0.1", "a-b.test"]) {
+      expect(domainPatternProblem(ok)).toBeNull();
+    }
+    // Same rejection set as `rejects_malformed_entries` in permissions.rs.
+    for (const bad of [
+      "*",
+      "",
+      "   ",
+      "https://example.com",
+      "example.com/path",
+      "example.com:443",
+      "user@example.com",
+      "[::1]",
+      "a.*.example.com",
+      "*example.com",
+      "*.com",
+      "exa mple.com",
+      "-bad.com",
+      "a..b.com",
+    ]) {
+      expect(domainPatternProblem(bad), bad).not.toBeNull();
+    }
   });
 
   it("runs extract() against a PluginContext", async () => {

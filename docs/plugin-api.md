@@ -120,8 +120,12 @@ permissions: { domains: ["api.real-debrid.com", "*.rdeb.io"] },
   without `{"approve_permissions": true}` (HTTP 428).
 - **Updates:** an update whose domain set is wider than the installed
   version's is never applied automatically — background auto-update skips it,
-  and a manual update needs the same confirmation. If a plugin's own manifest
-  claims more than what was approved, it is disabled after install/update.
+  and a manual update needs the same confirmation.
+- **Candidate validation:** a downloaded artifact is evaluated in a throw-away
+  context *before* it is written into the plugin directory. Its own `id` and
+  `version` must match the signed registry entry, and its `permissions.domains`
+  must not exceed what was approved — otherwise it is rejected and never
+  reaches disk, so nothing rejected can load on the next start.
 - **No `permissions.domains`** means *unscoped*: the plugin may reach any
   public host (today's behaviour). Such plugins are flagged as "Unscoped" in
   the UI and installing them shows an explicit warning. Generic plugins such as

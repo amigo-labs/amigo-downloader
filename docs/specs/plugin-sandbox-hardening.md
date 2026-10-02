@@ -92,8 +92,13 @@ second, overlapping key is a possible follow-up.
   `approve_permissions`. The Web UI and `amigo-dl plugins install` show the
   domains first, or an explicit "any public host" warning.
 - [x] An update whose domain set grows is never auto-applied. A manual update
-  must be approved. If a plugin's own manifest claims more than was approved,
-  it is disabled.
+  must be approved.
+- [x] Before it is written into the plugin directory, a downloaded candidate is
+  evaluated in a throw-away context. Its own `id` and `version` must match the
+  signed registry entry, and its domains must not exceed what was approved. A
+  rejected candidate never reaches disk, so it cannot reappear after a restart.
+  An update replaces the installed file in place, including in category
+  folders. Tests: `tests/updater_tests.rs`.
 - A plugin without `permissions.domains` is *unscoped*. It keeps today's
   behaviour and is flagged in the UI. The default flips to deny once
   third-party plugins have migrated. `generic-http` and `xfilesharing` are

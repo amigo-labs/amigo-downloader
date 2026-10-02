@@ -139,6 +139,20 @@ impl PluginLoader {
     /// a plugin whose module body never returns fails to load instead of
     /// hanging `discover()`.
     pub async fn load_plugin(&self, path: &Path) -> Result<PluginMeta, crate::Error> {
+        let prepared = self.prepare(path).await?;
+        Ok(self.commit(prepared).await)
+    }
+
+    /// Evaluate a plugin file in a fresh, throw-away context and return its
+    /// manifest **without registering it**. Used to validate a downloaded
+    /// candidate (identity, version, permissions) before it is written into
+    /// the plugin directory.
+    pub async fn inspect_plugin(&self, path: &Path) -> Result<PluginMeta, crate::Error> {
+        Ok(self.prepare(path).await?.meta)
+    }
+
+    /// Evaluate a plugin file into a ready-to-register [`LoadedPlugin`].
+    async fn prepare(&self, path: &Path) -> Result<LoadedPlugin, crate::Error> {
         let source_code = std::fs::read_to_string(path)
             .map_err(|e| crate::Error::Other(format!("Failed to read {}: {e}", path.display())))?;
 
@@ -196,19 +210,23 @@ impl PluginLoader {
         .await
         .map_err(|e| crate::Error::Execution(format!("plugin load task failed: {e}")))??;
 
-        let id = meta.id.clone();
-        let mut plugins = self.plugins.write().await;
-        // Replace if already loaded (hot-reload)
-        plugins.retain(|p| p.meta.id != id);
-        plugins.push(LoadedPlugin {
-            meta: meta.clone(),
+        Ok(LoadedPlugin {
+            meta,
             context: Arc::new(context),
             host,
             exec: Arc::new(Mutex::new(())),
             url_regex,
-        });
+        })
+    }
 
-        Ok(meta)
+    /// Register a prepared plugin, replacing any loaded plugin with the same
+    /// id (hot-reload).
+    async fn commit(&self, plugin: LoadedPlugin) -> PluginMeta {
+        let meta = plugin.meta.clone();
+        let mut plugins = self.plugins.write().await;
+        plugins.retain(|p| p.meta.id != meta.id);
+        plugins.push(plugin);
+        meta
     }
 
     /// Find a plugin that matches the given URL.
@@ -573,20 +591,22 @@ fn read_manifest(
     let version = context.get_export_string("version")?;
     let url_pattern = context.get_export_string("urlPattern")?;
 
-    let api_version = match context.get_export_string("apiVersion") {
-        Ok(v) => v.trim().parse::<u32>().map_err(|_| {
+    // Only a genuinely absent export gets the legacy fallback; a getter that
+    // throws or times out is an error, never "assume v1".
+    let api_version = if context.has_export("apiVersion")? {
+        let v = context.get_export_string("apiVersion")?;
+        v.trim().parse::<u32>().map_err(|_| {
             crate::Error::Execution(format!(
                 "Plugin {id}: apiVersion must be a positive integer major version, got {v:?}"
             ))
-        })?,
-        Err(_) => {
-            warn!(
-                "Plugin {id} does not declare apiVersion; assuming 1. \
+        })?
+    } else {
+        warn!(
+            "Plugin {id} does not declare apiVersion; assuming 1. \
                  Declare `apiVersion: {}` — this fallback will be removed.",
-                crate::HOST_API_VERSION
-            );
-            1
-        }
+            crate::HOST_API_VERSION
+        );
+        1
     };
     if !crate::is_supported_api_version(api_version) {
         return Err(crate::Error::IncompatibleVersion {

@@ -613,6 +613,29 @@ pub async fn download_plugin(
     registry_plugin: &RegistryPlugin,
     dest_dir: &Path,
 ) -> Result<PathBuf, crate::Error> {
+    let artifact = fetch_plugin_artifact(client, registry_plugin).await?;
+    install_artifact(&dest_dir.join(&registry_plugin.id), &artifact)
+}
+
+/// A downloaded, checksum-verified plugin source artifact that has not been
+/// written into the plugin directory yet.
+#[derive(Debug, Clone)]
+pub struct PluginArtifact {
+    /// Registry id the artifact was fetched for (already validated).
+    pub id: String,
+    /// `"ts"` or `"js"`.
+    pub ext: &'static str,
+    /// UTF-8 source bytes.
+    pub bytes: Vec<u8>,
+}
+
+/// Download a plugin artifact and verify it against its signed registry
+/// entry (id format, source-only, host-API compatibility, size cap, SHA-256,
+/// UTF-8) without touching the plugin directory.
+pub async fn fetch_plugin_artifact(
+    client: &reqwest::Client,
+    registry_plugin: &RegistryPlugin,
+) -> Result<PluginArtifact, crate::Error> {
     // The id becomes a directory name — validate before touching the disk.
     validate_plugin_id(&registry_plugin.id)?;
     // The registry serves plugin *source* only. Compiled QuickJS bytecode is
@@ -658,24 +681,40 @@ pub async fn download_plugin(
         )));
     }
 
-    // Install into <dest_dir>/<plugin-id>/plugin.ts
-    let plugin_dir = dest_dir.join(&registry_plugin.id);
-    std::fs::create_dir_all(&plugin_dir)
+    Ok(PluginArtifact {
+        id: registry_plugin.id.clone(),
+        ext,
+        bytes,
+    })
+}
+
+/// Write `artifact` as `<plugin_dir>/plugin.<ext>` (atomic write-then-rename)
+/// and remove a stale entry file with the other extension, so the loader
+/// cannot pick up the previous version next to the new one.
+pub fn install_artifact(
+    plugin_dir: &Path,
+    artifact: &PluginArtifact,
+) -> Result<PathBuf, crate::Error> {
+    std::fs::create_dir_all(plugin_dir)
         .map_err(|e| crate::Error::Other(format!("Failed to create dir: {e}")))?;
 
-    let final_path = plugin_dir.join(format!("plugin.{ext}"));
-    let tmp_path = plugin_dir.join(format!("plugin.{ext}.new"));
+    let final_path = plugin_dir.join(format!("plugin.{}", artifact.ext));
+    let tmp_path = plugin_dir.join(format!("plugin.{}.new", artifact.ext));
 
-    std::fs::write(&tmp_path, &bytes)
+    std::fs::write(&tmp_path, &artifact.bytes)
         .map_err(|e| crate::Error::Other(format!("Failed to write plugin: {e}")))?;
 
     std::fs::rename(&tmp_path, &final_path)
         .map_err(|e| crate::Error::Other(format!("Failed to rename plugin: {e}")))?;
 
-    info!(
-        "Plugin {} installed at {:?}",
-        registry_plugin.id, final_path
-    );
+    let other = if artifact.ext == "ts" { "js" } else { "ts" };
+    let stale = plugin_dir.join(format!("plugin.{other}"));
+    if stale.exists() {
+        std::fs::remove_file(&stale)
+            .map_err(|e| crate::Error::Other(format!("Failed to remove stale plugin: {e}")))?;
+    }
+
+    info!("Plugin {} installed at {:?}", artifact.id, final_path);
     Ok(final_path)
 }
 
