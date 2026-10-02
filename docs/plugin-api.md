@@ -19,12 +19,16 @@ interface AmigoPlugin {
     id: string;                  // Unique ID, e.g. "mega-nz"
     name: string;                // Display name, e.g. "MEGA.nz"
     version: string;             // Semver, e.g. "1.0.0"
+    apiVersion: number;          // Host-API major, currently 1 (see below)
     urlPattern: string;          // Regex matching URLs this plugin handles
     resolve(url: string): DownloadPackage;
 
     // ── Optional ──
     description?: string;
     author?: string;
+    permissions?: {
+        domains?: string[];      // Hosts amigo.http* may reach (see below)
+    };
     checkOnline?(url: string): "online" | "offline" | "unknown";
     login?(username: string, password: string): boolean;
     supportsPremium?(): boolean;
@@ -43,6 +47,8 @@ module.exports = {
     id: "example",
     name: "Example Hoster",
     version: "1.0.0",
+    apiVersion: 1,
+    permissions: { domains: ["example.com"] },
     urlPattern: "https?://example\\.com/.+",
 
     resolve(url: string): DownloadPackage {
@@ -65,6 +71,66 @@ module.exports = {
     },
 } satisfies AmigoPlugin;
 ```
+
+### Host-API version (`apiVersion`)
+
+`apiVersion` is the major version of the `amigo.*` host API the plugin is
+written against. The runtime's single source of truth is `HOST_API_VERSION`
+in `crates/plugin-runtime/src/lib.rs` (currently **1**); the SDK mirrors it as
+`plugin.HOST_API_VERSION`.
+
+Compatibility policy:
+
+- **Within a major** the surface only grows: new functions, new optional
+  arguments, new fields on returned objects. A plugin written for `1` keeps
+  working on every host that implements `1`.
+- **A new major** is required for anything that can break an existing plugin:
+  renaming or removing a function, changing a return shape, tightening an
+  argument.
+- **The previous major stays supported for one release** after a bump
+  (`MIN_SUPPORTED_API_VERSION`), so plugins can migrate.
+- A plugin declaring a major the host does not support is **refused at load**
+  with an error naming both versions. The marketplace hides such plugins and
+  update checks skip them, so the host never offers an install it cannot load.
+- Transition: a plugin without `apiVersion` is loaded as `1` with a warning.
+  This fallback will be removed — declare it.
+
+### Network permissions (`permissions.domains`)
+
+A plugin declares the hosts it may reach through `amigo.http*`:
+
+```typescript
+permissions: { domains: ["api.real-debrid.com", "*.rdeb.io"] },
+```
+
+- Entries are hosts, not URLs: an exact host (`api.real-debrid.com`) or one
+  leading wildcard label (`*.rdeb.io` — subdomains only, not `rdeb.io`
+  itself). Schemes, paths, ports, user info, a bare `*`, and wildcards over a
+  single label (`*.com`) are rejected at load.
+- **Enforcement:** the list is compiled when the plugin loads and bound into
+  that plugin's host functions together with its id — JS cannot see or change
+  it (mutating `module.exports.permissions` later has no effect). Every
+  request **and every redirect hop** is checked; a host outside the list fails
+  the call with `Request blocked: <host> is not in this plugin's
+  permissions.domains`, exactly like an SSRF rejection. The SSRF guard
+  (no private / loopback / link-local / metadata addresses) still applies on
+  top.
+- **Install:** the Web UI and `amigo-dl plugins install <id>` show the
+  requested domains and require confirmation; the server refuses an install
+  without `{"approve_permissions": true}` (HTTP 428).
+- **Updates:** an update whose domain set is wider than the installed
+  version's is never applied automatically — background auto-update skips it,
+  and a manual update needs the same confirmation.
+- **Candidate validation:** a downloaded artifact is evaluated in a throw-away
+  context *before* it is written into the plugin directory. Its own `id` and
+  `version` must match the signed registry entry, and its `permissions.domains`
+  must not exceed what was approved — otherwise it is rejected and never
+  reaches disk, so nothing rejected can load on the next start.
+- **No `permissions.domains`** means *unscoped*: the plugin may reach any
+  public host (today's behaviour). Such plugins are flagged as "Unscoped" in
+  the UI and installing them shows an explicit warning. Generic plugins such as
+  `generic-http` are unscoped by necessity. The default will flip to
+  deny-unless-declared once third-party plugins have migrated.
 
 ## Data Types
 
@@ -306,12 +372,28 @@ Also available as `console.log()`, `console.warn()`, `console.error()`.
 
 ## Sandbox Limits
 
-| Limit | Default |
-|-------|---------|
-| Execution timeout | 30 seconds per `resolve()` call |
-| Memory | 64 MB per plugin |
-| HTTP requests | 20 per invocation |
-| Storage | 1 MB per plugin |
+Each plugin runs in **its own QuickJS runtime**, so memory and the execution
+deadline are per plugin; different plugins execute concurrently on the
+server's blocking thread pool, and one slow plugin never delays another or
+the plugin list.
+
+| Limit | Default | Enforced how |
+|-------|---------|--------------|
+| Execution timeout | 30 s per `resolve()` / `postProcess()` call | Interrupt handler; also polled inside the regex engine, so a catastrophically backtracking native `RegExp` is stopped too |
+| Load timeout | 5 s for evaluating the module body and reading its exports (incl. getters) | Same interrupt handler — a top-level `while (true) {}` fails to load instead of hanging startup |
+| Memory | 64 MB per plugin | QuickJS runtime memory limit (per plugin runtime) |
+| Stack | 1 MB per plugin | QuickJS max stack size |
+| HTTP requests | 20 per invocation | Per-plugin counter in the host API |
+| Network destinations | `permissions.domains`, if declared | Checked on every request and redirect hop |
+| Storage | 1 MB per plugin | Host-side quota |
+
+**What these limits are not:** they bound a *cooperating* interpreter. Plugin
+JS still runs inside the daemon process, so a memory-safety bug in QuickJS
+itself is not contained by any of them. Out-of-process isolation is tracked in
+#79. The execution deadline is wall-clock for the whole invocation: it cannot
+interrupt a pending host call (an HTTP request has its own 30 s timeout;
+`amigo.solveCaptcha` waits for the user), but JS is stopped as soon as it
+resumes past the deadline.
 
 In addition, the Host API caps its inputs *outside* the QuickJS context — the
 64 MB JS memory limit doesn't protect the host heap, so oversized arguments
@@ -326,6 +408,23 @@ are rejected with an error instead of being processed:
 | Base64 input (`base64Decode`) | 8 MiB |
 
 No direct network, filesystem, or process access. Everything is proxied through the Host API.
+
+## Compiled bytecode is local-only
+
+To make restarts cheap, the server caches each plugin's compiled QuickJS
+bytecode on disk (`$AMIGO_CONFIG_DIR/cache/plugin-bytecode`). QuickJS does
+**not** validate bytecode before executing it — malformed or version-mismatched
+bytecode is a memory-safety problem, not a parse error — so:
+
+- bytecode is only ever produced locally, from source that passed the loader's
+  checks; the registry serves `.ts`/`.js` source only and any other artifact is
+  rejected;
+- the cache key includes the QuickJS version and a cache-format version, so an
+  engine upgrade is a cache miss, never a load of stale bytecode;
+- every entry carries a SHA-256 of its payload; a truncated or corrupted entry
+  is deleted and the plugin is recompiled from source;
+- the cache directory must only be writable by the daemon (plugin JS has no
+  filesystem access at all).
 
 ## Reloading Plugins
 

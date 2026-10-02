@@ -46,6 +46,8 @@ module.exports = {
     id: "real-debrid",
     name: "Real-Debrid",
     version: "1.0.0",
+    apiVersion: 1,
+    permissions: { domains: ["api.real-debrid.com"] },
     description: "Premium link generator — unrestricts links from 80+ file hosters",
     author: "amigo-labs",
     urlPattern: buildUrlPattern(),

@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createPluginContext } from "../../src/context/index.js";
 import {
+  HOST_API_VERSION,
   defineDecrypter,
+  domainPatternProblem,
   definePlugin,
   matchesAny,
 } from "../../src/plugin/index.js";
@@ -34,6 +36,60 @@ describe("definePlugin", () => {
     expect(plugin.kind).toBe("hoster");
     expect(plugin.matches("https://example.test/a")).toBe(true);
     expect(plugin.manifest().id).toBe("example-hoster");
+    expect(plugin.manifest().apiVersion).toBe(HOST_API_VERSION);
+    expect(plugin.manifest().permissions).toEqual({});
+  });
+
+  it("carries apiVersion and declared domains into the manifest", () => {
+    const plugin = definePlugin({
+      id: "scoped",
+      version: "1.0.0",
+      apiVersion: 1,
+      permissions: { domains: ["api.example.test", "*.cdn.example.test"] },
+      match: [/example\.test\//],
+      async extract() {
+        return [];
+      },
+    });
+    expect(plugin.apiVersion).toBe(1);
+    expect(plugin.manifest().permissions.domains).toEqual([
+      "api.example.test",
+      "*.cdn.example.test",
+    ]);
+  });
+
+  it("rejects an unsupported apiVersion and malformed domains", () => {
+    const base = { id: "x", version: "1.0.0", match: [/./], async extract() { return []; } };
+    expect(() => definePlugin({ ...base, apiVersion: HOST_API_VERSION + 1 })).toThrow(/host API/);
+    expect(() => definePlugin({ ...base, permissions: { domains: ["*"] } })).toThrow(/permissions/);
+    expect(() =>
+      definePlugin({ ...base, permissions: { domains: ["https://a.test/"] } }),
+    ).toThrow(/permissions/);
+  });
+
+  it("validates domains with the same rules as the runtime", () => {
+    for (const ok of ["api.example.test", "*.example.test", "API.Example.test.", "127.0.0.1", "a-b.test"]) {
+      expect(domainPatternProblem(ok)).toBeNull();
+    }
+    // Same rejection set as `rejects_malformed_entries` in permissions.rs.
+    for (const bad of [
+      "*",
+      "",
+      "   ",
+      "https://example.com",
+      "example.com/path",
+      "example.com:443",
+      "user@example.com",
+      "[::1]",
+      "a.*.example.com",
+      "*example.com",
+      "*.com",
+      "exa mple.com",
+      "-bad.com",
+      "a..b.com",
+    ]) {
+      expect(domainPatternProblem(bad), bad).not.toBeNull();
+    }
   });
 
   it("runs extract() against a PluginContext", async () => {

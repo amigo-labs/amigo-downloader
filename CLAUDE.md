@@ -361,6 +361,7 @@ module.exports = {
     id: "my-hoster",
     name: "My Hoster",
     version: "1.0.0",
+    apiVersion: 1,                        // host-API major (HOST_API_VERSION)
     urlPattern: "https?://my-hoster\\.com/.+",
 
     resolve(url: string): DownloadPackage {
@@ -381,6 +382,7 @@ module.exports = {
     // Optional
     description: "...", author: "...",
     pluginType: "hoster",                 // "multi-hoster" | "hoster" | "generic"
+    permissions: { domains: ["my-hoster.com"] }, // hosts amigo.http* may reach
     checkOnline(url): "online" | "offline" | "unknown" { /* ... */ },
     login(username, password): boolean { /* ... */ },
     supportsPremium(): boolean { /* ... */ },
@@ -474,7 +476,9 @@ Für komplexere Plugins existiert das separate Package `@amigo/plugin-sdk` mit h
 
 ### Sandboxing
 - Kein direkter Netzwerk/Filesystem/Prozess-Zugang
-- Resource Limits: 30s Timeout, 64MB RAM, 20 HTTP-Requests, 1MB Storage
+- Resource Limits: 30s Timeout (5s für Modul-Load), 64MB RAM pro Plugin (eigene QuickJS-Runtime pro Plugin), 20 HTTP-Requests, 1MB Storage
+- Netzwerk: optionale Domain-Allowlist `permissions.domains`, pro Request und Redirect-Hop erzwungen; Install/erweiternde Updates brauchen Bestätigung
+- Kein Sandbox-Boundary gegen QuickJS-Speicherfehler (läuft im Daemon-Prozess) — Prozess-Isolation: #79, siehe `docs/specs/plugin-sandbox-hardening.md`
 - Reload: Laden eines Plugins mit bekannter `id` ersetzt die alte Version (genutzt von Plugin-Updates); kein Filesystem-Watcher — nach manuellen Änderungen Server neu starten oder `amigo-dl plugins test` zum Iterieren nutzen
 
 ---

@@ -150,10 +150,28 @@ async fn main() -> anyhow::Result<()> {
         ));
     }
 
-    let plugin_loader = Arc::new(
+    let mut plugin_loader =
         PluginLoader::new_with_host_api(PathBuf::from("plugins"), sandbox_limits, plugin_host_api)
-            .expect("Failed to initialize plugin runtime — cannot start server"),
-    );
+            .expect("Failed to initialize plugin runtime — cannot start server");
+    // Locally compiled plugin bytecode, so restarts skip transpile + compile.
+    // Lives next to the config (daemon-writable only — plugin JS has no
+    // filesystem access); see `amigo_plugin_runtime::bytecode_cache`.
+    let bytecode_dir = std::env::var_os("AMIGO_CONFIG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("cache")
+        .join("plugin-bytecode");
+    match amigo_plugin_runtime::bytecode_cache::BytecodeCache::open(
+        &bytecode_dir,
+        amigo_plugin_runtime::bytecode_cache::DEFAULT_MAX_ENTRIES,
+    ) {
+        Ok(cache) => plugin_loader = plugin_loader.with_bytecode_cache(cache),
+        Err(e) => tracing::warn!(
+            "Plugin bytecode cache disabled ({}): {e}",
+            bytecode_dir.display()
+        ),
+    }
+    let plugin_loader = Arc::new(plugin_loader);
     let discovered = plugin_loader.discover().await.unwrap_or_default();
     tracing::info!("Loaded {} plugins", discovered.len());
 
@@ -184,15 +202,10 @@ async fn main() -> anyhow::Result<()> {
             "AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED is set — plugin registry signatures will NOT be verified. DO NOT use this for production."
         );
     }
-    let registry_config = RegistryConfig {
-        index_url: config.update.plugin_registry_url.clone(),
-        trusted_signing_key: if dev_unsigned {
-            None
-        } else {
-            Some(amigo_plugin_runtime::registry::AMIGO_REGISTRY_PUBLIC_KEY)
-        },
-        ..Default::default()
-    };
+    // Derived from `RegistryConfig::default()`, which never trusts the
+    // all-zero placeholder key of a build without AMIGO_REGISTRY_PUBKEY_HEX.
+    let registry_config =
+        RegistryConfig::for_index(config.update.plugin_registry_url.clone(), dev_unsigned);
     let plugin_updater = Arc::new(PluginUpdater::new(
         registry_config,
         http_client.clone(),

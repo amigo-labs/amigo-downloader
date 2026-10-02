@@ -72,8 +72,7 @@ pub fn save(remotes: &Remotes) -> Result<(), String> {
 
 /// Pick a remote by alias, falling back to `remotes.default`. The returned
 /// alias matches the key in `remotes.remotes`. Used by `--remote`-aware
-/// subcommands (threading is in-progress — see audit plan).
-#[allow(dead_code)]
+/// subcommands (`plugins install`).
 pub fn resolve(remotes: &Remotes, alias: Option<&str>) -> Option<(String, Remote)> {
     let key = alias
         .map(|s| s.to_string())

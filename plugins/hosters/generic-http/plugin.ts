@@ -285,6 +285,9 @@ module.exports = {
     id: "generic-http",
     name: "Generic HTTP",
     version: "5.0.0",
+    apiVersion: 1,
+    // No `permissions.domains`: a generic fallback must fetch whatever host
+    // the user handed it, so this plugin is deliberately unscoped.
     urlPattern: "https?://.+",
     pluginType: "generic" as PluginTypeHint,
     description: "Generic fallback — detects media and download links on any page",

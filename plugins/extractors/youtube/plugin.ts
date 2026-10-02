@@ -24,6 +24,8 @@ module.exports = {
     id: "youtube",
     name: "YouTube",
     version: "1.1.0",
+    apiVersion: 1,
+    permissions: { domains: ["www.youtube.com"] },
     description: "Download videos from YouTube",
     author: "amigo-labs",
     urlPattern: "https?://(www\\.)?(youtube\\.com/(watch|shorts|embed)|youtu\\.be/)",
