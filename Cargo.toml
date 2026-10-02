@@ -114,7 +114,7 @@ tempfile = "3"
 async-trait = "0.1"
 
 # JS runtime for YouTube N-parameter challenge
-rquickjs = { version = "0.9", features = ["bindgen", "parallel"] }
+rquickjs = { version = "0.14", features = ["bindgen", "parallel"] }
 
 # HLS/DASH manifest parsing
 m3u8-rs = "6"

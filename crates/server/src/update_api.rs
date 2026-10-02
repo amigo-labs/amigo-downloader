@@ -6,7 +6,7 @@ use axum::{
     http::StatusCode,
     routing::{get, post},
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use amigo_core::updater::{self, CoreUpdateStatus};
 
@@ -53,6 +53,14 @@ struct PluginUpdateEntry {
     current_version: Option<String>,
     available_version: String,
     is_new: bool,
+    /// Domains the new version declares; `null` = unscoped (any public host).
+    declared_domains: Option<Vec<String>>,
+    /// Domains the update adds over the installed version (`["*"]` when it
+    /// drops its allowlist). Present only when the update widens access.
+    added_domains: Option<Vec<String>>,
+    /// The update is never auto-applied; it must be confirmed by posting
+    /// `{"approve_permissions": true}`.
+    requires_approval: bool,
 }
 
 #[derive(Serialize)]
@@ -64,6 +72,20 @@ struct MarketplaceEntry {
     author: String,
     tags: Vec<String>,
     installed: bool,
+    /// Host-API major the plugin targets.
+    api_version: u32,
+    /// Domains the plugin may reach; `null` = unscoped (any public host).
+    domains: Option<Vec<String>>,
+}
+
+/// Optional body for install / single-plugin update. Installing always needs
+/// `approve_permissions: true`; updating needs it only when the update widens
+/// the plugin's domain set. Without it the server answers 428 with the
+/// domains that need confirming.
+#[derive(Deserialize, Default)]
+struct ApprovalRequest {
+    #[serde(default)]
+    approve_permissions: bool,
 }
 
 #[derive(Serialize)]
@@ -122,6 +144,9 @@ async fn check_updates(
             current_version: u.current_version,
             available_version: u.available_version,
             is_new: u.is_new,
+            declared_domains: u.declared_domains,
+            added_domains: u.added_domains,
+            requires_approval: u.requires_approval,
         })
         .collect();
 
@@ -216,6 +241,8 @@ async fn list_available_plugins(
         .into_iter()
         .map(|p| MarketplaceEntry {
             installed: installed_ids.contains(&p.id),
+            api_version: p.required_api_version(),
+            domains: p.declared_domains().map(<[String]>::to_vec),
             id: p.id,
             name: p.name,
             version: p.version,
@@ -237,6 +264,10 @@ fn plugin_error_status(err: &amigo_plugin_runtime::Error) -> StatusCode {
         amigo_plugin_runtime::Error::RegistryUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
         amigo_plugin_runtime::Error::ChecksumMismatch(_) => StatusCode::BAD_GATEWAY,
         amigo_plugin_runtime::Error::IncompatibleVersion { .. } => StatusCode::CONFLICT,
+        amigo_plugin_runtime::Error::PermissionApprovalRequired(_) => {
+            StatusCode::PRECONDITION_REQUIRED
+        }
+        amigo_plugin_runtime::Error::SandboxViolation(_) => StatusCode::BAD_GATEWAY,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }
@@ -268,8 +299,10 @@ async fn update_all_plugins(
 async fn update_plugin(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    body: Option<Json<ApprovalRequest>>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    match state.plugin_updater.update_plugin(&id).await {
+    let approved = body.map(|Json(b)| b.approve_permissions).unwrap_or(false);
+    match state.plugin_updater.update_plugin(&id, approved).await {
         Ok(meta) => (
             StatusCode::OK,
             Json(serde_json::json!({
@@ -287,8 +320,10 @@ async fn update_plugin(
 async fn install_plugin(
     State(state): State<AppState>,
     Path(id): Path<String>,
+    body: Option<Json<ApprovalRequest>>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    match state.plugin_updater.install_plugin(&id).await {
+    let approved = body.map(|Json(b)| b.approve_permissions).unwrap_or(false);
+    match state.plugin_updater.install_plugin(&id, approved).await {
         Ok(meta) => (
             StatusCode::CREATED,
             Json(serde_json::json!({
