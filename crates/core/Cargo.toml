@@ -29,7 +29,9 @@ tempfile = { workspace = true }
 m3u8-rs = { workspace = true }
 dash-mpd = { workspace = true }
 unrar = "0.5"
-sevenz-rust = "0.6"
+# Maintained successor of sevenz-rust (RUSTSEC-2026-0245/-0246). Decompression only;
+# ppmd/bzip2 cover the common non-LZMA 7z codecs.
+sevenz-rust2 = { version = "0.23", default-features = false, features = ["util", "ppmd", "bzip2"] }
 zip = "2"
 async-trait = { workspace = true }
 rand = "0.10"
@@ -37,6 +39,8 @@ base64 = "0.22"
 quick-xml = "0.37"
 
 [dev-dependencies]
+# `compress` lets the unit tests build 7z fixtures (incl. hostile entry names).
+sevenz-rust2 = { version = "0.23", default-features = false, features = ["util", "compress"] }
 tokio = { workspace = true, features = ["full", "test-util"] }
 tempfile = { workspace = true }
 wiremock = "0.6"

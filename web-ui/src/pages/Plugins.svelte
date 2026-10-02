@@ -3,7 +3,7 @@
   import {
     getPlugins, setPluginEnabled, checkUpdates, applyCoreUpdate,
     listAvailablePlugins, installPlugin, updatePlugin,
-    type Plugin, type MarketplaceEntry, type UpdateCheck,
+    type Plugin, type MarketplaceEntry, type UpdateCheck, type PluginUpdate,
   } from "../lib/api";
   import { addToast } from "../lib/toast";
   import { locale, tr } from "../lib/i18n";
@@ -29,7 +29,23 @@
   let marketState = $state<"loading" | "ready" | "unavailable">("loading");
   let marketQuery = $state("");
 
-  let updatableIds = $derived(new Set((updateInfo?.plugins ?? []).map((p) => p.id)));
+  // Updates for installed plugins, keyed by id (new plugins live in the
+  // marketplace section instead).
+  let updatesById = $derived(
+    new Map(
+      (updateInfo?.plugins ?? [])
+        .filter((u) => !u.is_new)
+        .map((u) => [u.plugin_id, u] as [string, PluginUpdate]),
+    ),
+  );
+
+  // Install / update waiting for the user to confirm the hosts it may reach.
+  // Installing always asks; an update asks only when it widens access.
+  let reviewId = $state<string | null>(null);
+
+  function isUnscoped(p: Plugin): boolean {
+    return p.permissions?.domains == null;
+  }
 
   let filteredMarket = $derived.by(() => {
     if (!marketQuery) return market;
@@ -96,9 +112,10 @@
 
   async function handleInstall(entry: MarketplaceEntry) {
     if (busyId) return;
+    reviewId = null;
     busyId = entry.id;
     try {
-      await installPlugin(entry.id);
+      await installPlugin(entry.id, true);
       addToast("success", tr($locale, "plugins.installed_toast"), entry.name);
       plugins = await getPlugins();
       market = market.map((p) => (p.id === entry.id ? { ...p, installed: true } : p));
@@ -109,11 +126,17 @@
     }
   }
 
-  async function handleUpdate(plugin: Plugin) {
+  async function handleUpdate(plugin: Plugin, approve: boolean) {
     if (busyId) return;
+    const update = updatesById.get(plugin.id);
+    if (update?.requires_approval && !approve) {
+      reviewId = plugin.id;
+      return;
+    }
+    reviewId = null;
     busyId = plugin.id;
     try {
-      await updatePlugin(plugin.id);
+      await updatePlugin(plugin.id, approve);
       addToast("success", tr($locale, "plugins.plugin_updated"), plugin.name);
       plugins = await getPlugins();
       updateInfo = await checkUpdates();
@@ -181,18 +204,50 @@
               <p class="text-xs mt-2 truncate m-0" style="font-family: var(--font-mono); color: var(--text-secondary)">
                 {plugin.url_pattern}
               </p>
-              {#if updatableIds.has(plugin.id)}
-                <div class="mt-3">
-                  <Button
-                    variant="soft"
-                    size="sm"
-                    iconLeft="refresh"
-                    loading={busyId === plugin.id}
-                    onclick={() => handleUpdate(plugin)}
-                  >
-                    {tr($locale, "plugins.update_available")}
-                  </Button>
-                </div>
+              {#if isUnscoped(plugin)}
+                <p
+                  class="text-xs mt-2 m-0 font-semibold perm-warn"
+                  title={tr($locale, "plugins.unscoped_hint")}
+                >
+                  {tr($locale, "plugins.unscoped")}
+                </p>
+              {/if}
+              {@const update = updatesById.get(plugin.id)}
+              {#if update}
+                {#if reviewId === plugin.id}
+                  <div class="mt-3" role="group" aria-label={tr($locale, "plugins.domains")}>
+                    <p class="text-xs m-0 perm-prompt">
+                      {update.added_domains?.includes("*")
+                        ? tr($locale, "plugins.review_update_unscoped")
+                        : tr($locale, "plugins.review_update")}
+                    </p>
+                    {#if update.added_domains && !update.added_domains.includes("*")}
+                      <ul class="text-xs mt-1 mb-0 pl-4 perm-list">
+                        {#each update.added_domains as domain}<li>{domain}</li>{/each}
+                      </ul>
+                    {/if}
+                    <div class="flex gap-2 mt-2">
+                      <Button variant="solid" size="sm" onclick={() => handleUpdate(plugin, true)}>
+                        {tr($locale, "plugins.confirm_update")}
+                      </Button>
+                      <Button variant="ghost" size="sm" onclick={() => (reviewId = null)}>
+                        {tr($locale, "plugins.cancel")}
+                      </Button>
+                    </div>
+                  </div>
+                {:else}
+                  <div class="mt-3">
+                    <Button
+                      variant="soft"
+                      size="sm"
+                      iconLeft="refresh"
+                      loading={busyId === plugin.id}
+                      onclick={() => handleUpdate(plugin, false)}
+                    >
+                      {tr($locale, "plugins.update_available")}
+                    </Button>
+                  </div>
+                {/if}
               {/if}
             </Card>
           </li>
@@ -261,13 +316,48 @@
                     size="sm"
                     loading={busyId === entry.id}
                     disabled={busyId !== null}
-                    onclick={() => handleInstall(entry)}
+                    aria-expanded={reviewId === entry.id}
+                    onclick={() => (reviewId = reviewId === entry.id ? null : entry.id)}
                   >
                     {tr($locale, "plugins.install")}
                   </Button>
                 {/if}
               </div>
               <p class="text-xs mt-2 m-0" style="color: var(--text-secondary)">{entry.description}</p>
+              <p class="text-xs mt-2 m-0 perm-line">
+                {tr($locale, "plugins.domains")}:
+                {#if entry.domains === null}
+                  <span class="font-semibold perm-warn" title={tr($locale, "plugins.unscoped_hint")}>
+                    {tr($locale, "plugins.unscoped")}
+                  </span>
+                {:else if entry.domains.length === 0}
+                  {tr($locale, "plugins.no_hosts")}
+                {:else}
+                  <span class="perm-mono">{entry.domains.join(", ")}</span>
+                {/if}
+              </p>
+              {#if reviewId === entry.id && !entry.installed}
+                <div class="mt-3" role="group" aria-label={tr($locale, "plugins.domains")}>
+                  <p class="text-xs m-0 perm-prompt">
+                    {entry.domains === null
+                      ? tr($locale, "plugins.review_install_unscoped")
+                      : tr($locale, "plugins.review_install")}
+                  </p>
+                  {#if entry.domains !== null}
+                    <ul class="text-xs mt-1 mb-0 pl-4 perm-list">
+                      {#each entry.domains as domain}<li>{domain}</li>{:else}<li>{tr($locale, "plugins.no_hosts")}</li>{/each}
+                    </ul>
+                  {/if}
+                  <div class="flex gap-2 mt-2">
+                    <Button variant="solid" size="sm" loading={busyId === entry.id} onclick={() => handleInstall(entry)}>
+                      {tr($locale, "plugins.confirm_install")}
+                    </Button>
+                    <Button variant="ghost" size="sm" onclick={() => (reviewId = null)}>
+                      {tr($locale, "plugins.cancel")}
+                    </Button>
+                  </div>
+                </div>
+              {/if}
               {#if entry.tags.length}
                 <div class="flex gap-1 mt-2 flex-wrap">
                   {#each entry.tags as tag}
@@ -285,3 +375,22 @@
     {/if}
   </section>
 </div>
+
+<style>
+  .perm-warn {
+    color: var(--warning-ink);
+  }
+  .perm-prompt {
+    color: var(--text-primary);
+  }
+  .perm-line {
+    color: var(--text-secondary);
+  }
+  .perm-list {
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+  }
+  .perm-mono {
+    font-family: var(--font-mono);
+  }
+</style>

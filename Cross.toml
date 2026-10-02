@@ -1,3 +1,8 @@
+# Forward the pinned signing public keys into the cross build container;
+# plugin-runtime/build.rs and core/build.rs refuse a release build without them.
+[build.env]
+passthrough = ["AMIGO_REGISTRY_PUBKEY_HEX", "AMIGO_UPDATE_PUBKEY_HEX"]
+
 [target.aarch64-unknown-linux-gnu]
 pre-build = [
     "dpkg --add-architecture $CROSS_DEB_ARCH",

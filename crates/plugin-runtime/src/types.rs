@@ -63,6 +63,19 @@ pub enum PluginType {
     Generic,
 }
 
+/// Capabilities a plugin declares in its manifest (`permissions` export).
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PluginPermissions {
+    /// Host patterns the plugin may reach over `amigo.http*`: exact hosts
+    /// (`api.real-debrid.com`) or a single leading wildcard label
+    /// (`*.rdeb.io`, which matches subdomains but not `rdeb.io` itself). No
+    /// schemes, paths, ports or bare `*`. `None` means the plugin declares no
+    /// allowlist (unscoped, legacy behaviour); `Some(vec![])` means it may
+    /// reach no host at all.
+    #[serde(default)]
+    pub domains: Option<Vec<String>>,
+}
+
 /// Metadata about a loaded plugin.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PluginMeta {
@@ -77,6 +90,26 @@ pub struct PluginMeta {
     /// Plugin type — determines matching priority.
     #[serde(default)]
     pub plugin_type: PluginType,
+    /// Host-API major the plugin declared (`apiVersion`). Plugins that predate
+    /// the field are loaded as 1.
+    #[serde(default = "default_api_version")]
+    pub api_version: u32,
+    /// Declared permissions. `permissions.domains == None` marks the plugin as
+    /// unscoped: it may reach any public host.
+    #[serde(default)]
+    pub permissions: PluginPermissions,
+}
+
+fn default_api_version() -> u32 {
+    1
+}
+
+impl PluginMeta {
+    /// True when the plugin declares no domain allowlist and may therefore
+    /// reach any public host.
+    pub fn is_unscoped(&self) -> bool {
+        self.permissions.domains.is_none()
+    }
 }
 
 /// HTTP response returned to plugins.

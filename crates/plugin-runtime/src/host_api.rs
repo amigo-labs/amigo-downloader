@@ -7,8 +7,12 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use std::sync::atomic::{AtomicU32, Ordering};
+
 use rquickjs::{Ctx, Function, Object, Value as JsValue};
 use tokio::sync::Mutex;
+
+use crate::permissions::DomainAllowlist;
 use tracing::{debug, error, info, warn};
 
 /// Callback for sending notifications from plugins to the UI.
@@ -59,7 +63,8 @@ const MAX_BASE64_INPUT_BYTES: usize = 8 * 1024 * 1024;
 
 /// Maximum wall-clock time a single plugin HTTP request may take before it is
 /// aborted. Matches the plugin execution deadline so a slow-loris endpoint
-/// cannot tie up the (serialized) plugin executor beyond the sandbox budget.
+/// cannot hold a plugin invocation (and its blocking-pool thread) beyond the
+/// sandbox budget.
 const HTTP_TIMEOUT_SECS: u64 = 30;
 
 /// Connect-phase timeout for plugin HTTP requests.
@@ -140,8 +145,15 @@ pub struct HostApi {
     /// cookie that plugin B stashed under the same domain.
     cookies: Arc<Mutex<CookieJars>>,
     storage: Arc<Mutex<HashMap<String, HashMap<String, String>>>>,
-    request_count: Arc<Mutex<u32>>,
+    /// HTTP requests made during the current invocation. Each plugin's scoped
+    /// copy (see [`HostApi::scoped`]) has its own counter, so concurrent
+    /// plugins never reset or consume each other's budget.
+    request_count: Arc<AtomicU32>,
     max_requests: u32,
+    /// Hosts this (scoped) API may reach, from the plugin's declared
+    /// `permissions.domains`. `None` = unscoped. Bound at register time from
+    /// the plugin's declared manifest and never reachable from JS.
+    domain_allowlist: Option<Arc<DomainAllowlist>>,
     /// Per-plugin storage quota (bytes). Counted across all `(key, value)`
     /// pairs of a single plugin's storage map.
     max_storage_bytes: u64,
@@ -172,8 +184,9 @@ impl HostApi {
                 .unwrap_or_else(|_| reqwest::Client::new()),
             cookies: Arc::new(Mutex::new(HashMap::new())),
             storage: Arc::new(Mutex::new(HashMap::new())),
-            request_count: Arc::new(Mutex::new(0)),
+            request_count: Arc::new(AtomicU32::new(0)),
             max_requests,
+            domain_allowlist: None,
             max_storage_bytes: DEFAULT_MAX_STORAGE_BYTES,
             notify_callback: None,
             captcha_callback: None,
@@ -206,22 +219,46 @@ impl HostApi {
         self.allow_private_network = allow;
     }
 
-    /// Validate `url` against the SSRF policy. Rejects non-http(s) schemes and
-    /// — when `allow_private_network` is false — any URL that resolves to a
+    /// A copy of this API for one plugin: shares the HTTP client, cookie
+    /// jars, storage and callbacks, but has its own request counter and
+    /// enforces `allowlist` (the plugin's declared `permissions.domains`,
+    /// `None` when it declares none). The loader binds the result into that
+    /// plugin's context only.
+    pub fn scoped(&self, allowlist: Option<DomainAllowlist>) -> Self {
+        let mut api = self.clone();
+        api.request_count = Arc::new(AtomicU32::new(0));
+        api.domain_allowlist = allowlist.map(Arc::new);
+        api
+    }
+
+    /// Validate `url` against the plugin's domain allowlist and the SSRF
+    /// policy. Rejects non-http(s) schemes, hosts outside the declared
+    /// `permissions.domains` (when the plugin declares them) and — when
+    /// `allow_private_network` is false — any URL that resolves to a
     /// loopback / private / link-local / CGNAT address, which includes the
-    /// AWS/GCP metadata endpoint `169.254.169.254`.
-    async fn check_url_allowed(&self, url: &str) -> Result<(), String> {
+    /// AWS/GCP metadata endpoint `169.254.169.254`. Called for the initial URL
+    /// and for every redirect hop.
+    pub(crate) async fn check_url_allowed(&self, url: &str) -> Result<(), String> {
         let parsed = url::Url::parse(url).map_err(|e| format!("Invalid URL: {e}"))?;
         match parsed.scheme() {
             "http" | "https" => {}
             other => return Err(format!("URL scheme not allowed: {other}")),
         }
-        if self.allow_private_network {
-            return Ok(());
-        }
         let host = parsed
             .host_str()
             .ok_or_else(|| "URL is missing a host".to_string())?;
+        if let Some(allowlist) = &self.domain_allowlist {
+            // `host_str` keeps IPv6 brackets; a bracketed literal can never
+            // match a declared host name, which is the intent.
+            if !allowlist.allows(host) {
+                return Err(format!(
+                    "Request blocked: {host} is not in this plugin's permissions.domains"
+                ));
+            }
+        }
+        if self.allow_private_network {
+            return Ok(());
+        }
         let port = parsed.port_or_known_default().unwrap_or(80);
 
         // If the host is an IP literal, check it directly without DNS.
@@ -250,18 +287,16 @@ impl HostApi {
 
     /// Reset request counter (called before each plugin invocation).
     pub async fn reset_request_count(&self) {
-        *self.request_count.lock().await = 0;
+        self.request_count.store(0, Ordering::Relaxed);
     }
 
     async fn check_request_limit(&self) -> Result<(), String> {
-        let mut count = self.request_count.lock().await;
-        if *count >= self.max_requests {
-            return Err(format!(
-                "Plugin exceeded max HTTP requests ({})",
-                self.max_requests
-            ));
+        let max = self.max_requests;
+        // Count every attempt; anything past the limit is refused. The
+        // counter is reset before each invocation, so overshooting is harmless.
+        if self.request_count.fetch_add(1, Ordering::Relaxed) >= max {
+            return Err(format!("Plugin exceeded max HTTP requests ({max})"));
         }
-        *count += 1;
         Ok(())
     }
 
@@ -1201,8 +1236,16 @@ const JS_SHIM: &str = r#"
 /// synchronous blocking calls. The plugin JS code can call them directly
 /// without await — they block until the result is ready.
 ///
-/// This is acceptable because each plugin runs in its own context and the
-/// blocking is done within a `spawn_blocking` task.
+/// `PluginLoader` runs every plugin invocation on tokio's blocking pool
+/// (`spawn_blocking`), so these calls block a blocking-pool thread, never an
+/// async worker. On such a thread `block_in_place` is a no-op passthrough and
+/// `Handle::block_on` drives the future; the `block_in_place` wrapper keeps
+/// the bindings correct when a test drives a context directly from a
+/// multi-threaded runtime worker.
+///
+/// `host` must already be scoped to this plugin (see [`HostApi::scoped`]):
+/// its domain allowlist and request counter are captured here, like
+/// `plugin_id`, and are not reachable from JS.
 pub fn register_host_api(
     ctx: &Ctx<'_>,
     host: Arc<HostApi>,
@@ -1213,8 +1256,8 @@ pub fn register_host_api(
         .map_err(|e| crate::Error::Execution(format!("Failed to create amigo object: {e}")))?;
 
     // --- Synchronous network wrappers ---
-    // We use tokio::runtime::Handle to block on async functions from sync QuickJS callbacks.
-    // This works because plugins execute within spawn_blocking.
+    // We use tokio::runtime::Handle to block on async functions from sync
+    // QuickJS callbacks; see the function docs for why this is safe.
     //
     // Raw functions return JSON strings. A JS shim (injected below) wraps them
     // into `amigo.httpGet(url, opts?)` that returns parsed objects directly.

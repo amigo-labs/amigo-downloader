@@ -40,6 +40,8 @@ module.exports = {
     id: "premiumize",
     name: "Premiumize",
     version: "1.0.0",
+    apiVersion: 1,
+    permissions: { domains: ["www.premiumize.me"] },
     description: "Premium link generator — unrestricts links from 60+ file hosters",
     author: "amigo-labs",
     urlPattern: buildUrlPattern(),

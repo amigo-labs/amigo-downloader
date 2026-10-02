@@ -184,6 +184,24 @@ struct PluginResponse {
     version: String,
     url_pattern: String,
     enabled: bool,
+    /// Host-API major the plugin declared.
+    api_version: u32,
+    /// Declared permissions; `permissions.domains == null` = unscoped.
+    permissions: amigo_plugin_runtime::types::PluginPermissions,
+}
+
+impl From<amigo_plugin_runtime::types::PluginMeta> for PluginResponse {
+    fn from(p: amigo_plugin_runtime::types::PluginMeta) -> Self {
+        Self {
+            id: p.id,
+            name: p.name,
+            version: p.version,
+            url_pattern: p.url_pattern,
+            enabled: p.enabled,
+            api_version: p.api_version,
+            permissions: p.permissions,
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -504,18 +522,7 @@ async fn delete_history(
 
 async fn list_plugins(State(state): State<AppState>) -> Json<Vec<PluginResponse>> {
     let plugins = state.plugins.list_plugins().await;
-    Json(
-        plugins
-            .into_iter()
-            .map(|p| PluginResponse {
-                id: p.id,
-                name: p.name,
-                version: p.version,
-                url_pattern: p.url_pattern,
-                enabled: p.enabled,
-            })
-            .collect(),
-    )
+    Json(plugins.into_iter().map(PluginResponse::from).collect())
 }
 
 async fn update_plugin(
@@ -1497,5 +1504,39 @@ mod config_redact_tests {
         // can actually rotate them.
         assert_eq!(incoming.feedback.github_token, "ghp_replaced");
         assert_eq!(incoming.nzbget_api.password, "newpass");
+    }
+}
+
+#[cfg(test)]
+mod plugin_response_tests {
+    use super::*;
+    use amigo_plugin_runtime::types::{PluginMeta, PluginPermissions};
+
+    fn meta(domains: Option<Vec<String>>) -> PluginMeta {
+        PluginMeta {
+            id: "rd".into(),
+            name: "RD".into(),
+            version: "1.0.0".into(),
+            url_pattern: ".*".into(),
+            file_path: "/p/plugin.ts".into(),
+            enabled: true,
+            description: None,
+            author: None,
+            plugin_type: Default::default(),
+            api_version: 1,
+            permissions: PluginPermissions { domains },
+        }
+    }
+
+    #[test]
+    fn plugin_response_carries_api_version_and_permissions() {
+        let scoped = meta(Some(vec!["api.real-debrid.com".into()]));
+        let json = serde_json::to_value(PluginResponse::from(scoped)).unwrap();
+        assert_eq!(json["api_version"], 1);
+        assert_eq!(json["permissions"]["domains"][0], "api.real-debrid.com");
+
+        // An unscoped plugin serializes `domains: null`, which the UI flags.
+        let json = serde_json::to_value(PluginResponse::from(meta(None))).unwrap();
+        assert!(json["permissions"]["domains"].is_null());
     }
 }
