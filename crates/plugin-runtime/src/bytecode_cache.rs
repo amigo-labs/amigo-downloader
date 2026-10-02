@@ -271,7 +271,7 @@ pub(crate) fn compile_script(
         let mut len = 0usize;
         let buf = qjs::JS_WriteObject(
             raw,
-            &mut len as *mut usize as *mut _,
+            (&raw mut len).cast(),
             func,
             qjs::JS_WRITE_OBJ_BYTECODE as i32,
         );

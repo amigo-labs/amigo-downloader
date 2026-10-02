@@ -318,12 +318,9 @@ fn load_cached_index(cache_path: &Path, config: &RegistryConfig) -> Option<Regis
 
     let raw = std::fs::read(cache_path).ok()?;
     if let Some(pubkey) = config.index_verifier() {
-        let sig_hex = match std::fs::read_to_string(cached_signature_path(cache_path)) {
-            Ok(s) => s,
-            Err(_) => {
-                warn!("Cached registry index has no signature — refetching");
-                return None;
-            }
+        let Ok(sig_hex) = std::fs::read_to_string(cached_signature_path(cache_path)) else {
+            warn!("Cached registry index has no signature — refetching");
+            return None;
         };
         if let Err(e) = verify_ed25519(&raw, &sig_hex, pubkey) {
             warn!("Cached registry index failed verification ({e}) — refetching");
