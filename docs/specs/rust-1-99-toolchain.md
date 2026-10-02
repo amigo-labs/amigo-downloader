@@ -31,7 +31,7 @@ IPv6 ranges, `Duration::from_secs(60 * 60)`, and so on.
   `clippy`. rustup reads it automatically and installs the toolchain on first
   use.
 - CI (`ci.yml`, `release-build.yml`) — every `dtolnay/rust-toolchain` step
-  uses `@1.99.0`.
+  uses `@1.99.0`, including the release-build guard job.
 - `docker/Dockerfile` — builder stage `FROM rust:1.99.0-bookworm`. The
   toolchain file is not copied into the image; the tag is the source of truth
   there.
@@ -93,7 +93,7 @@ e.g. `collapsible_if` → let chains):
 | AC-1 | The repo builds with exactly Rust 1.99.0 | `rustc --version` inside the repo prints `rustc 1.99.0` |
 | AC-2 | CI does not float on `@stable` | `grep -rn 'rust-toolchain@stable' .github` returns no matches |
 | AC-3 | Docker builds with the same toolchain | `grep -n '^FROM rust:' docker/Dockerfile` shows `rust:1.99.0-bookworm` |
-| AC-4 | The workspace is clean under the lint table | `cargo clippy --workspace --exclude amigo-desktop --all-targets --locked -- -D warnings` exits 0 |
+| AC-4 | The workspace — all six members, including the `amigo-desktop` stub — is clean under the lint table | `cargo clippy --workspace --all-targets --locked -- -D warnings` exits 0 (this is the CI clippy step) |
 | AC-5 | No `#[allow]` remains in first-party Rust code | `grep -rnE '#!?\[allow\(' crates tauri --include=*.rs` returns no matches |
 | AC-6 | Every workspace member opts into the lint table | each `crates/*/Cargo.toml` and `tauri/Cargo.toml` contains `[lints]` with `workspace = true` |
 | AC-7 | `Extractor` no longer depends on `async-trait` | `grep -n 'async-trait' crates/extractors/Cargo.toml` returns no matches |
