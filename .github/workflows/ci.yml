@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+# Every job only reads the repository; none needs a writable token.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
@@ -55,8 +59,6 @@ jobs:
     # a fat-LTO link; release-build.yml must thread the real keys through.
     name: Release build guard (pinned signing keys)
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
     env:
       AMIGO_REGISTRY_PUBKEY_HEX: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
       AMIGO_UPDATE_PUBKEY_HEX: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef

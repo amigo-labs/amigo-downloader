@@ -1062,6 +1062,11 @@ mod tests {
         }
     }
 
+    /// Public half of `SigningKey::from_bytes(&[5u8; 32])`, pinned as a
+    /// constant so the config under test is built from public data only.
+    const TEST_SIGNER_PUBLIC: [u8; 32] =
+        parse_hex32("6e7a1cdd29b0b78fd13af4c5598feff4ef2a97166e3ca6f2e4fbfccd80505bf1");
+
     fn signed_index(signer: &ed25519_dalek::SigningKey, plugins: &str) -> (Vec<u8>, String) {
         use ed25519_dalek::Signer;
         let body = format!(r#"{{"schema_version":1,"plugins":[{plugins}]}}"#).into_bytes();
@@ -1075,6 +1080,7 @@ mod tests {
         use wiremock::{Mock, MockServer, ResponseTemplate};
 
         let signer = ed25519_dalek::SigningKey::from_bytes(&[5u8; 32]);
+        assert_eq!(signer.verifying_key().to_bytes(), TEST_SIGNER_PUBLIC);
         let (body, sig) = signed_index(&signer, "");
         let mock = MockServer::start().await;
         Mock::given(method("GET"))
@@ -1096,7 +1102,7 @@ mod tests {
             cache_path: Some(cache_path.clone()),
             ..RegistryConfig::default()
         }
-        .with_trusted_signer(signer.verifying_key().to_bytes())
+        .with_trusted_signer(TEST_SIGNER_PUBLIC)
         .unwrap();
         let client = reqwest::Client::new();
 
