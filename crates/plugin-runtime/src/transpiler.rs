@@ -102,9 +102,8 @@ fn transpile_uncached(source: &str, filename: &str) -> Result<String, crate::Err
         let mut pass = typescript::strip(unresolved_mark, top_level_mark);
         let mut program = Program::Module(module);
         pass.process(&mut program);
-        let module = match program {
-            Program::Module(m) => m,
-            _ => unreachable!(),
+        let Program::Module(module) = program else {
+            unreachable!("the TypeScript strip pass keeps a Module a Module")
         };
 
         // Generate JavaScript output
@@ -131,7 +130,7 @@ fn transpile_uncached(source: &str, filename: &str) -> Result<String, crate::Err
 pub fn is_typescript(path: &Path) -> bool {
     matches!(
         path.extension().and_then(|e| e.to_str()),
-        Some("ts") | Some("mts")
+        Some("ts" | "mts")
     )
 }
 

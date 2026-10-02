@@ -94,9 +94,8 @@ impl PluginLoader {
         let mut metas = Vec::new();
         let skip = ["types", "template"];
 
-        let entries = match std::fs::read_dir(&self.plugin_dir) {
-            Ok(e) => e,
-            Err(_) => return Ok(metas),
+        let Ok(entries) = std::fs::read_dir(&self.plugin_dir) else {
+            return Ok(metas);
         };
 
         for entry in entries.flatten() {
@@ -705,8 +704,7 @@ module.exports = {
 
         assert!(
             !plugins.is_empty(),
-            "Should discover at least one plugin. Dir: {:?}",
-            dir
+            "Should discover at least one plugin. Dir: {dir:?}"
         );
         assert!(plugins.iter().any(|p| p.id == "test-hoster"));
 

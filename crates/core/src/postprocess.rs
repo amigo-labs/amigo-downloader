@@ -80,9 +80,8 @@ pub async fn run_pipeline(
         return Ok(());
     }
 
-    let archive = match archive_type(download_path) {
-        Some(t) => t,
-        None => return Ok(()), // Not an archive, nothing to do
+    let Some(archive) = archive_type(download_path) else {
+        return Ok(()); // Not an archive, nothing to do
     };
 
     let output_dir = download_path.parent().unwrap_or(Path::new("."));
@@ -269,10 +268,10 @@ fn is_symlink_entry(entry: &zip::read::ZipFile<'_>) -> bool {
 /// we want to refuse).
 fn has_symlink_ancestor(root: &Path, path: &Path) -> Result<bool, crate::Error> {
     let mut cur = path.parent();
-    while let Some(p) = cur {
-        if p == root || !p.starts_with(root) {
-            break;
-        }
+    while let Some(p) = cur
+        && p != root
+        && p.starts_with(root)
+    {
         match std::fs::symlink_metadata(p) {
             Ok(meta) if meta.file_type().is_symlink() => return Ok(true),
             Ok(_) => {}
@@ -521,9 +520,8 @@ fn count_par2_volumes(dir: &Path) -> usize {
 }
 
 fn find_archives(dir: &Path) -> Vec<std::path::PathBuf> {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return Vec::new(),
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
     };
     entries
         .filter_map(|e| e.ok())
@@ -584,17 +582,16 @@ fn run_external(cmd: &str, args: &[&str]) -> Result<(), crate::Error> {
         .output()
         .map_err(|e| crate::Error::Other(format!("Failed to run {cmd}: {e}. Is it installed?")))?;
 
-    if output.status.success() {
-        Ok(())
-    } else {
+    output.status.success().ok_or_else(|| {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(crate::Error::Other(format!("{cmd} failed: {stderr}")))
-    }
+        crate::Error::Other(format!("{cmd} failed: {stderr}"))
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::assert_matches;
 
     /// Build a zip in memory containing one symlink entry pointing at an
     /// absolute path outside the output directory, plus a regular file.
@@ -669,30 +666,18 @@ mod tests {
 
     #[test]
     fn test_archive_type_detection() {
-        assert!(matches!(
-            archive_type(Path::new("file.rar")),
-            Some(ArchiveType::Rar)
-        ));
-        assert!(matches!(
-            archive_type(Path::new("file.zip")),
-            Some(ArchiveType::Zip)
-        ));
-        assert!(matches!(
+        assert_matches!(archive_type(Path::new("file.rar")), Some(ArchiveType::Rar));
+        assert_matches!(archive_type(Path::new("file.zip")), Some(ArchiveType::Zip));
+        assert_matches!(
             archive_type(Path::new("file.7z")),
             Some(ArchiveType::SevenZip)
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             archive_type(Path::new("file.tar.gz")),
             Some(ArchiveType::Gzip)
-        ));
-        assert!(matches!(
-            archive_type(Path::new("file.r00")),
-            Some(ArchiveType::Rar)
-        ));
-        assert!(matches!(
-            archive_type(Path::new("file.r15")),
-            Some(ArchiveType::Rar)
-        ));
+        );
+        assert_matches!(archive_type(Path::new("file.r00")), Some(ArchiveType::Rar));
+        assert_matches!(archive_type(Path::new("file.r15")), Some(ArchiveType::Rar));
         assert!(archive_type(Path::new("file.txt")).is_none());
         assert!(archive_type(Path::new("file.mkv")).is_none());
     }

@@ -229,12 +229,9 @@ pub async fn check_for_update(
 
     let current =
         semver::Version::parse(CURRENT_VERSION).unwrap_or_else(|_| semver::Version::new(0, 0, 0));
-    let latest = match semver::Version::parse(latest_tag) {
-        Ok(v) => v,
-        Err(_) => {
-            debug!("Could not parse release tag as semver: {latest_tag}");
-            return Ok(CoreUpdateStatus::UpToDate);
-        }
+    let Ok(latest) = semver::Version::parse(latest_tag) else {
+        debug!("Could not parse release tag as semver: {latest_tag}");
+        return Ok(CoreUpdateStatus::UpToDate);
     };
 
     if latest > current {
@@ -482,6 +479,7 @@ pub async fn download_and_apply(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::assert_matches;
 
     #[test]
     fn test_detect_distribution_default() {
@@ -602,8 +600,9 @@ mod tests {
         let err = download_and_verify(&client, &asset, None, None)
             .await
             .expect_err("must refuse to apply an unverified update");
-        assert!(
-            matches!(err, crate::Error::Update(_)),
+        assert_matches!(
+            err,
+            crate::Error::Update(_),
             "expected an Update error, got {err:?}"
         );
     }
@@ -634,7 +633,7 @@ mod tests {
         let sig_hex = hex::encode(sk.sign(b"original binary").to_bytes());
         let err = verify_ed25519(b"tampered binary", &sig_hex, &pk)
             .expect_err("tampered payload must be rejected");
-        assert!(matches!(err, crate::Error::Update(_)));
+        assert_matches!(err, crate::Error::Update(_));
     }
 
     #[test]
@@ -649,7 +648,7 @@ mod tests {
             .to_bytes();
         let err =
             verify_ed25519(payload, &sig_hex, &other).expect_err("wrong key must be rejected");
-        assert!(matches!(err, crate::Error::Update(_)));
+        assert_matches!(err, crate::Error::Update(_));
     }
 
     #[test]
@@ -724,10 +723,8 @@ mod tests {
         )
         .await
         .expect_err("must refuse when signature is missing");
-        assert!(
-            matches!(err, crate::Error::Update(m) if m.contains(".sig")),
-            "error should mention the missing signature asset"
-        );
+        assert_matches!(err, crate::Error::Update(m) if m.contains(".sig"),
+            "error should mention the missing signature asset");
     }
 
     #[tokio::test]
@@ -747,6 +744,6 @@ mod tests {
         )
         .await
         .expect_err("must reject a non-GitHub download host");
-        assert!(matches!(err, crate::Error::Update(_)));
+        assert_matches!(err, crate::Error::Update(_));
     }
 }

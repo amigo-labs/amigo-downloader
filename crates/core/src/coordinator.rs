@@ -183,17 +183,17 @@ impl OwnerCache {
     /// entry first when the cache is full and the id is new.
     fn insert(&mut self, id: String, owner: Option<String>) {
         self.tick += 1;
-        if !self.map.contains_key(&id) && self.map.len() >= self.cap {
-            // Evict the least-recently-used entry. This runs only on inserts
-            // past capacity, so the O(n) scan is off the steady-state hot path.
-            if let Some(lru_id) = self
+        // Evict the least-recently-used entry first. This runs only on inserts
+        // past capacity, so the O(n) scan is off the steady-state hot path.
+        if !self.map.contains_key(&id)
+            && self.map.len() >= self.cap
+            && let Some(lru_id) = self
                 .map
                 .iter()
                 .min_by_key(|(_, (_, t))| *t)
                 .map(|(k, _)| k.clone())
-            {
-                self.map.remove(&lru_id);
-            }
+        {
+            self.map.remove(&lru_id);
         }
         self.map.insert(id, (owner, self.tick));
     }
@@ -845,13 +845,10 @@ async fn run_usenet_download(
         .and_then(|m| serde_json::from_str::<serde_json::Value>(m).ok())
         .and_then(|v| v.get("nzb_data")?.as_str().map(String::from));
 
-    let nzb_data = match nzb_data {
-        Some(data) => data,
-        None => {
-            return Err(crate::Error::Other(
-                "No NZB data found in download metadata".into(),
-            ));
-        }
+    let Some(nzb_data) = nzb_data else {
+        return Err(crate::Error::Other(
+            "No NZB data found in download metadata".into(),
+        ));
     };
 
     let _ = progress_tx.send(DownloadProgress {
@@ -918,6 +915,7 @@ impl Protocol {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::assert_matches;
 
     #[test]
     fn owner_cache_is_bounded_and_reflects_owner() {
@@ -984,33 +982,30 @@ mod tests {
             ctx.send_replace(true);
         });
 
-        let a = attempts.clone();
-        let result: Result<(), _> = retry_with_policy(&policy, move |attempt| {
+        let result: Result<(), _> = retry_with_policy(&policy, async |attempt| {
             let mut crx = cancel_rx.clone();
-            let a = a.clone();
-            async move {
-                a.fetch_add(1, Ordering::SeqCst);
-                if attempt == 0 {
-                    // First attempt fails fast, forcing the loop to retry.
-                    return RetryOutcome::Retry(crate::Error::Other("boom".into()));
+            attempts.fetch_add(1, Ordering::SeqCst);
+            if attempt == 0 {
+                // First attempt fails fast, forcing the loop to retry.
+                return RetryOutcome::Retry(crate::Error::Other("boom".into()));
+            }
+            // Later attempts run until cancelled — the exact pattern used by
+            // `HttpDownloader::download`. Without observing the cancel, this
+            // would keep "failing" until the retry policy is exhausted.
+            tokio::select! {
+                _ = crate::protocol::wait_for_cancel(&mut crx) => {
+                    RetryOutcome::Abort(crate::Error::Cancelled)
                 }
-                // Later attempts run until cancelled — the exact pattern used by
-                // `HttpDownloader::download`. Without observing the cancel, this
-                // would keep "failing" until the retry policy is exhausted.
-                tokio::select! {
-                    _ = crate::protocol::wait_for_cancel(&mut crx) => {
-                        RetryOutcome::Abort(crate::Error::Cancelled)
-                    }
-                    _ = tokio::time::sleep(Duration::from_secs(30)) => {
-                        RetryOutcome::Retry(crate::Error::Other("still failing".into()))
-                    }
+                _ = tokio::time::sleep(Duration::from_secs(30)) => {
+                    RetryOutcome::Retry(crate::Error::Other("still failing".into()))
                 }
             }
         })
         .await;
 
-        assert!(
-            matches!(result, Err(crate::Error::Cancelled)),
+        assert_matches!(
+            result,
+            Err(crate::Error::Cancelled),
             "cancel must abort the retry chain, got {result:?}"
         );
         assert!(

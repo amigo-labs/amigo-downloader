@@ -68,7 +68,7 @@ pub struct FeedbackRequest {
     error_context: Option<ErrorContext>,
 }
 
-#[derive(Deserialize, Clone, Copy)]
+#[derive(Debug, Deserialize, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
 enum FeedbackType {
     Bug,
@@ -460,7 +460,7 @@ fn urlencoding(s: &str) -> String {
                 result.push(byte as char);
             }
             _ => {
-                result.push_str(&format!("%{:02X}", byte));
+                result.push_str(&format!("%{byte:02X}"));
             }
         }
     }
@@ -521,6 +521,7 @@ fn scrub(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::assert_matches;
 
     #[test]
     fn scrub_redacts_bearer_and_headers() {
@@ -585,7 +586,7 @@ mod tests {
         let mut limiter = RateLimiter::new(1);
         assert!(limiter.check_at(t0));
         assert!(!limiter.check_at(t0));
-        assert!(!limiter.check_at(t0 + RATE_LIMIT_WINDOW - Duration::from_secs(1)));
+        assert!(!limiter.check_at(t0 + Duration::from_mins(59)));
         assert!(limiter.check_at(t0 + RATE_LIMIT_WINDOW + Duration::from_secs(1)));
     }
 
@@ -593,15 +594,15 @@ mod tests {
     fn test_feedback_type_deserialization() {
         let json = r#"{"type":"bug","title":"test","description":"desc"}"#;
         let req: FeedbackRequest = serde_json::from_str(json).unwrap();
-        assert!(matches!(req.feedback_type, FeedbackType::Bug));
+        assert_matches!(req.feedback_type, FeedbackType::Bug);
 
         let json = r#"{"type":"feature","title":"test","description":"desc"}"#;
         let req: FeedbackRequest = serde_json::from_str(json).unwrap();
-        assert!(matches!(req.feedback_type, FeedbackType::Feature));
+        assert_matches!(req.feedback_type, FeedbackType::Feature);
 
         let json = r#"{"type":"crash","title":"test","description":"desc","error_context":{"download_id":"abc","error_message":"timeout"}}"#;
         let req: FeedbackRequest = serde_json::from_str(json).unwrap();
-        assert!(matches!(req.feedback_type, FeedbackType::Crash));
+        assert_matches!(req.feedback_type, FeedbackType::Crash);
         assert_eq!(req.error_context.unwrap().download_id.unwrap(), "abc");
     }
 

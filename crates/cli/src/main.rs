@@ -250,7 +250,6 @@ struct Tui {
     mode: OutputMode,
 }
 
-#[allow(dead_code)]
 impl Tui {
     fn new(mode: OutputMode) -> Self {
         Self { mode }
@@ -285,15 +284,6 @@ impl Tui {
         }
     }
 
-    /// Print a warning message.
-    fn warn(&self, msg: &str) {
-        match self.mode {
-            OutputMode::Fancy => eprintln!("  {} {}", style("⚠").yellow(), style(msg).yellow()),
-            OutputMode::Plain => eprintln!("WARN: {msg}"),
-            OutputMode::Json => {}
-        }
-    }
-
     /// Print a step in a process.
     fn step(&self, icon: &str, msg: &str) {
         match self.mode {
@@ -316,16 +306,6 @@ impl Tui {
     fn json(&self, value: &serde_json::Value) {
         if self.mode == OutputMode::Json {
             println!("{}", serde_json::to_string(value).unwrap_or_default());
-        }
-    }
-
-    /// Output pretty JSON (only in JSON mode).
-    fn json_pretty(&self, value: &serde_json::Value) {
-        if self.mode == OutputMode::Json {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(value).unwrap_or_default()
-            );
         }
     }
 
@@ -563,10 +543,7 @@ async fn direct_download(
 
     // Poll progress until download completes
     let filename_display = filename.clone();
-    loop {
-        if download_handle.is_finished() {
-            break;
-        }
+    while !download_handle.is_finished() {
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         let p = progress_rx.borrow().clone();
         pb.set_position(p.bytes_downloaded);
@@ -888,8 +865,7 @@ async fn main() -> anyhow::Result<()> {
                 .iter()
                 .filter(|d| {
                     ids.as_ref()
-                        .map(|ids_str| ids_str.split(',').any(|i| i.trim() == d.id))
-                        .unwrap_or(true)
+                        .is_none_or(|ids_str| ids_str.split(',').any(|i| i.trim() == d.id))
                 })
                 .map(|d| amigo_core::container::ContainerLink {
                     url: d.url.clone(),
@@ -954,7 +930,7 @@ async fn main() -> anyhow::Result<()> {
                                 status_icon,
                                 style(d.filename.as_deref().unwrap_or(&d.url)).bold(),
                                 style(&d.id[..8]).dim(),
-                                pct.map(|p| format!("{}%", p)).unwrap_or_default(),
+                                pct.map(|p| format!("{p}%")).unwrap_or_default(),
                             );
                         }
                     }
@@ -1203,7 +1179,7 @@ async fn main() -> anyhow::Result<()> {
 
                 let plugins = loader.list_plugins().await;
                 if plugins.is_empty() {
-                    anyhow::bail!("No plugin found in {}", plugin);
+                    anyhow::bail!("No plugin found in {plugin}");
                 }
 
                 let meta = &plugins[0];
@@ -1447,7 +1423,7 @@ async fn pair_with_remote(url: &str, name_override: Option<&str>, tui: &Tui) -> 
     ));
     tui.info("   Waiting for approval… (Ctrl-C to abort)");
 
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5 * 60);
+    let deadline = std::time::Instant::now() + std::time::Duration::from_mins(5);
     loop {
         if std::time::Instant::now() > deadline {
             anyhow::bail!("pairing timed out after 5 minutes");
