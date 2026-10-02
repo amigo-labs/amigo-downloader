@@ -6,6 +6,7 @@
 use std::net::SocketAddr;
 
 use amigo_core::config::Config;
+use std::assert_matches;
 
 /// Spawn a test server on a random port. Returns the bound address.
 async fn spawn_test_server() -> SocketAddr {
@@ -951,8 +952,9 @@ async fn dlc_upload_rejects_oversize_body() {
         status.is_client_error(),
         "expected 4xx for oversize DLC, got {status}"
     );
-    assert!(
-        matches!(status.as_u16(), 400 | 413),
+    assert_matches!(
+        status.as_u16(),
+        400 | 413,
         "expected 400 or 413 for oversize DLC, got {status}"
     );
 }

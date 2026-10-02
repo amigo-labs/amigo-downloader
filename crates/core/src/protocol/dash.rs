@@ -254,7 +254,7 @@ fn expand_template(template: &str, repr: &dash_mpd::Representation, number: u64)
     result = DASH_NUMBER_RE
         .replace_all(&result, |caps: &regex::Captures| {
             let width: usize = caps[1].parse().unwrap_or(1);
-            format!("{:0>width$}", number, width = width)
+            format!("{number:0>width$}")
         })
         .to_string();
 

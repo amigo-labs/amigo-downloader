@@ -48,7 +48,10 @@ jobs:
         run: mkdir -p web-ui/dist
 
       - name: Clippy (includes check)
-        run: cargo clippy --workspace --exclude amigo-desktop --all-targets --locked -- -D warnings
+        # amigo-desktop is included: without the `tauri` feature it builds a
+        # stub that needs no system libraries, and it opts into the workspace
+        # lint table like every other member.
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Test
         run: cargo test --workspace --exclude amigo-desktop --locked
@@ -64,7 +67,7 @@ jobs:
       AMIGO_UPDATE_PUBKEY_HEX: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.99.0
       - name: Install protobuf compiler
         run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
       - uses: Swatinem/rust-cache@v2

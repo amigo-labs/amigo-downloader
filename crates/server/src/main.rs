@@ -1,21 +1,3 @@
-mod api;
-mod auth;
-mod background;
-mod clicknload;
-mod feedback;
-mod login;
-mod net_guard;
-mod nzbget_api;
-mod pairing;
-mod password;
-mod resolver;
-mod security_headers;
-mod setup;
-mod static_files;
-mod update_api;
-pub mod webhooks;
-mod ws;
-
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -31,6 +13,17 @@ use amigo_plugin_runtime::loader::PluginLoader;
 use amigo_plugin_runtime::registry::RegistryConfig;
 use amigo_plugin_runtime::sandbox::SandboxLimits;
 use amigo_plugin_runtime::updater::PluginUpdater;
+use amigo_server::{
+    api, auth, background, clicknload, feedback, login, nzbget_api, pairing, password, resolver,
+    security_headers_layer, setup, static_files, update_api, webhooks, ws,
+};
+
+/// Whether a boolean-style environment variable is set to a truthy value
+/// (`1` / `true` / `yes` / `on`, case-insensitive).
+fn env_flag(name: &str) -> bool {
+    std::env::var(name)
+        .is_ok_and(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -51,16 +44,10 @@ async fn main() -> anyhow::Result<()> {
     {
         config.server.bind = bind;
     }
-    if std::env::var("AMIGO_TRUST_PROXY")
-        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-        .unwrap_or(false)
-    {
+    if env_flag("AMIGO_TRUST_PROXY") {
         config.server.trust_proxy = true;
     }
-    if std::env::var("AMIGO_AUTO_UPDATE_PLUGINS")
-        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-        .unwrap_or(false)
-    {
+    if env_flag("AMIGO_AUTO_UPDATE_PLUGINS") {
         config.update.auto_update_plugins = true;
     }
 
@@ -194,9 +181,7 @@ async fn main() -> anyhow::Result<()> {
     // developer bootstrap override (`AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED=1`)
     // disables verification with a loud warning, for working against a
     // locally-hosted unsigned fork.
-    let dev_unsigned = std::env::var("AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED")
-        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-        .unwrap_or(false);
+    let dev_unsigned = env_flag("AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED");
     if dev_unsigned {
         tracing::warn!(
             "AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED is set — plugin registry signatures will NOT be verified. DO NOT use this for production."
@@ -307,9 +292,7 @@ async fn main() -> anyhow::Result<()> {
         // Options, Referrer-Policy, CSP, Permissions-Policy) on every
         // response. Outermost layer so even error / redirect responses
         // carry them.
-        .layer(axum::middleware::from_fn(
-            security_headers::security_headers,
-        ));
+        .layer(axum::middleware::from_fn(security_headers_layer));
 
     // Start background tasks (NZB watch folder, RSS poller)
     background::spawn_background_tasks(

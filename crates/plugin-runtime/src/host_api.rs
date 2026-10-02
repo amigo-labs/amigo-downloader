@@ -82,14 +82,7 @@ const MAX_PLUGIN_REDIRECTS: usize = 10;
 const MAX_RESPONSE_BODY_BYTES: usize = 32 * 1024 * 1024;
 
 fn enforce_input_limit(field: &str, len: usize, max: usize) -> Result<(), String> {
-    if len > max {
-        Err(format!(
-            "{field} too large ({} bytes; limit {} bytes)",
-            len, max
-        ))
-    } else {
-        Ok(())
-    }
+    (len <= max).ok_or_else(|| format!("{field} too large ({len} bytes; limit {max} bytes)"))
 }
 
 /// Upper bound on cached compiled regexes. Plugins typically use a small,
@@ -403,8 +396,7 @@ impl HostApi {
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
             .collect();
-        let bytes = read_body_capped(resp).await?;
-        let body = String::from_utf8_lossy(&bytes).into_owned();
+        let body = String::from_utf8_lossy_owned(read_body_capped(resp).await?);
 
         Ok((status, body, resp_headers))
     }
@@ -439,8 +431,7 @@ impl HostApi {
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
             .collect();
-        let bytes = read_body_capped(resp).await?;
-        let body = String::from_utf8_lossy(&bytes).into_owned();
+        let body = String::from_utf8_lossy_owned(read_body_capped(resp).await?);
 
         Ok((status, body, resp_headers))
     }
@@ -519,9 +510,8 @@ impl HostApi {
         if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
             return Vec::new();
         }
-        let re = match compile_plugin_regex(pattern) {
-            Ok(r) => r,
-            Err(_) => return Vec::new(),
+        let Ok(re) = compile_plugin_regex(pattern) else {
+            return Vec::new();
         };
         re.captures_iter(text)
             .filter_map(|caps| {
@@ -852,9 +842,8 @@ impl HostApi {
             return HashMap::new();
         }
         let doc = Html::parse_document(html);
-        let sel = match Selector::parse("input[type='hidden']") {
-            Ok(s) => s,
-            Err(_) => return HashMap::new(),
+        let Ok(sel) = Selector::parse("input[type='hidden']") else {
+            return HashMap::new();
         };
         doc.select(&sel)
             .filter_map(|el| {
@@ -931,9 +920,7 @@ impl HostApi {
         if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
             return false;
         }
-        compile_plugin_regex(pattern)
-            .map(|re| re.is_match(text))
-            .unwrap_or(false)
+        compile_plugin_regex(pattern).is_ok_and(|re| re.is_match(text))
     }
 
     pub fn regex_split(&self, pattern: &str, text: &str) -> Vec<String> {
@@ -1021,8 +1008,7 @@ impl HostApi {
             .iter()
             .map(|(k, v)| (k.to_string(), v.to_str().unwrap_or("").to_string()))
             .collect();
-        let bytes = read_body_capped(resp).await?;
-        let body = String::from_utf8_lossy(&bytes).into_owned();
+        let body = String::from_utf8_lossy_owned(read_body_capped(resp).await?);
 
         Ok((status, body, resp_headers))
     }
@@ -2133,12 +2119,8 @@ fn is_blocked_ip(ip: std::net::IpAddr) -> bool {
                 return true;
             }
             let segs = v6.segments();
-            // Unique-local fc00::/7
-            if (segs[0] & 0xfe00) == 0xfc00 {
-                return true;
-            }
-            // Link-local fe80::/10
-            if (segs[0] & 0xffc0) == 0xfe80 {
+            // Unique-local fc00::/7 and link-local fe80::/10
+            if v6.is_unique_local() || v6.is_unicast_link_local() {
                 return true;
             }
             // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d)

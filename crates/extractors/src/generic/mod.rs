@@ -127,17 +127,7 @@ impl GenericExtractor {
     }
 
     /// Extract media from an HTML page using all detection methods.
-    fn extract_from_html<'a>(
-        &'a self,
-        client: &'a reqwest::Client,
-        page_url: &'a str,
-        html: &'a str,
-        depth: u32,
-    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Vec<MediaStream>> + Send + 'a>> {
-        Box::pin(self.extract_from_html_inner(client, page_url, html, depth))
-    }
-
-    async fn extract_from_html_inner(
+    async fn extract_from_html(
         &self,
         client: &reqwest::Client,
         page_url: &str,
@@ -316,9 +306,11 @@ impl GenericExtractor {
             match client.get(&iframe_url).send().await {
                 Ok(resp) if resp.status().is_success() => {
                     if let Ok(body) = resp.text().await {
-                        let iframe_streams = self
-                            .extract_from_html(client, &iframe_url, &body, depth + 1)
-                            .await;
+                        // Recursive async call: box only here to give the
+                        // future a finite size.
+                        let iframe_streams =
+                            Box::pin(self.extract_from_html(client, &iframe_url, &body, depth + 1))
+                                .await;
                         streams.extend(iframe_streams);
                     }
                 }
@@ -335,7 +327,6 @@ impl GenericExtractor {
     }
 }
 
-#[async_trait::async_trait]
 impl Extractor for GenericExtractor {
     fn name(&self) -> &str {
         "Generic"
@@ -426,7 +417,7 @@ fn resolve_url(base: &str, relative: &str) -> Option<String> {
         } else {
             "http:"
         };
-        return Some(format!("{}{}", scheme, relative));
+        return Some(format!("{scheme}{relative}"));
     }
     Url::parse(base)
         .ok()

@@ -38,6 +38,25 @@ homepage = "https://github.com/amigo-labs/amigo-downloader"
 authors = ["amigo-labs"]
 description = "Fast, modular download manager in Rust — HTTP, Usenet, HLS/DASH, with a TypeScript plugin system and a responsive Web UI."
 
+[workspace.lints.clippy]
+# Modern-idiom guard: every lint below flags code that has a newer, stable
+# std/language replacement. Clippy's default groups already cover the rest
+# (collapsible_if → let chains, manual_div_ceil, io_other_error, ...).
+# Members opt in with `[lints] workspace = true`.
+allow_attributes = "warn"                # #[allow] → #[expect(.., reason)]
+allow_attributes_without_reason = "warn"
+non_std_lazy_statics = "warn"            # once_cell / lazy_static → LazyLock
+manual_let_else = "warn"                 # match { .. => return } → let-else
+manual_is_variant_and = "warn"           # .map(f).unwrap_or_default() → is_some_and
+manual_ok_or = "warn"
+manual_midpoint = "warn"
+uninlined_format_args = "warn"
+borrow_as_ptr = "warn"                   # &x as *const T → &raw const x
+ref_as_ptr = "warn"
+duration_suboptimal_units = "warn"       # from_secs(3600) → Duration::from_hours(1)
+unnested_or_patterns = "warn"            # Some(A) | Some(B) → Some(A | B)
+unchecked_time_subtraction = "warn"      # Instant - Duration can panic on underflow
+
 [workspace.dependencies]
 # Async runtime. Feature set is the union of what the member crates actually
 # use (rt-multi-thread is mandatory: plugin-runtime relies on block_in_place,
