@@ -80,7 +80,7 @@ jobs:
         with:
           ref: ${{ inputs.tag_name }}
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.99.0
         with:
           targets: ${{ matrix.target }}
 
@@ -216,7 +216,7 @@ jobs:
         with:
           ref: ${{ inputs.tag_name }}
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.99.0
         with:
           targets: ${{ matrix.target }}
 

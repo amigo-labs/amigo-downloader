@@ -1,0 +1,8 @@
+# Pinned Rust toolchain. rustup reads this file automatically and installs
+# the toolchain (plus the components below) on first use. CI pins the same
+# version via `dtolnay/rust-toolchain@1.99.0` and docker/Dockerfile via
+# `rust:1.99.0-bookworm` — bump all three together.
+[toolchain]
+channel = "1.99.0"
+profile = "minimal"
+components = ["rustfmt", "clippy"]
