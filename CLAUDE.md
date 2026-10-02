@@ -257,7 +257,7 @@ amigo-downloader/
 
 | Komponente | Technologie | Begründung |
 |---|---|---|
-| Sprache Core | **Rust (2024 edition)** | Performance, Safety, async I/O |
+| Sprache Core | **Rust 1.99.0 (2024 edition, pinned in `rust-toolchain.toml`)** | Performance, Safety, async I/O |
 | Async Runtime | **Tokio** | De-facto Standard |
 | HTTP Client | **reqwest** | Connection Pooling, Cookie-Handling |
 | HLS/DASH | **m3u8-rs, dash-mpd** | Streaming-Manifest-Parsing |

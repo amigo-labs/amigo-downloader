@@ -18,10 +18,11 @@ COPY web-ui web-ui
 RUN pnpm --filter amigo-web-ui build
 
 # Stage 2: Build Rust
-# Pinning to a minor + dated tag stops a silent base-image bump from
-# changing the toolchain mid-release. Bump deliberately when the project
-# moves to a new MSRV.
-FROM rust:1.94-bookworm AS rust-builder
+# Pinned to the exact toolchain version so a silent base-image bump can't
+# change the compiler mid-release. Keep in sync with rust-toolchain.toml
+# (the toolchain file is deliberately not copied into the image — the tag
+# is the source of truth here).
+FROM rust:1.99.0-bookworm AS rust-builder
 RUN apt-get update && apt-get install -y protobuf-compiler libclang-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
