@@ -111,7 +111,6 @@ pub fn client_ip(
 /// Whether the original request came in over HTTPS. When `trust_proxy` is
 /// true, honours `X-Forwarded-Proto`; otherwise conservatively returns
 /// `false` (the listener itself is plain HTTP).
-#[allow(dead_code)] // consumed by setup/login cookie emission in follow-up patches
 pub fn request_is_secure(headers: &HeaderMap, trust_proxy: bool) -> bool {
     if !trust_proxy {
         return false;
@@ -119,8 +118,7 @@ pub fn request_is_secure(headers: &HeaderMap, trust_proxy: bool) -> bool {
     headers
         .get("x-forwarded-proto")
         .and_then(|v| v.to_str().ok())
-        .map(|s| s.eq_ignore_ascii_case("https"))
-        .unwrap_or(false)
+        .is_some_and(|s| s.eq_ignore_ascii_case("https"))
 }
 
 /// Hash a plaintext bearer token for API-token lookups. SHA-256 is fast and
@@ -167,10 +165,8 @@ fn extract_session_cookie(headers: &HeaderMap) -> Option<&str> {
 }
 
 /// Identity returned by [`authenticate`] on success. Fields are read via
-/// `req.extensions().get::<Principal>()` from Svelte-free handlers; clippy
-/// can't see that across the middleware boundary, hence the allow.
+/// `req.extensions().get::<Principal>()` from Svelte-free handlers.
 #[derive(Debug, Clone)]
-#[allow(dead_code)]
 pub enum Principal {
     /// Browser session — carries the username.
     Session {
