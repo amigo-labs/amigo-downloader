@@ -193,11 +193,11 @@ pub struct RegistryConfig {
     /// signature verification — only for local development. Private so the
     /// only ways to set it are the constructors below, none of which accept
     /// the all-zero placeholder or another low-order key.
-    trusted_signing_key: Option<[u8; 32]>,
+    trusted_signer: Option<[u8; 32]>,
 }
 
 /// The compile-time key, unless it is the all-zero placeholder.
-fn compiled_in_signing_key() -> Option<[u8; 32]> {
+fn compiled_in_signer() -> Option<[u8; 32]> {
     // If no real key was injected at compile time, refuse to trust the zero
     // placeholder. Disabling verification with a warning is safer than
     // verifying against a key whose private half is publicly derivable.
@@ -214,7 +214,7 @@ impl Default for RegistryConfig {
             index_url: "https://raw.githubusercontent.com/amigo-labs/amigo-downloader-plugins/main/index.json".into(),
             cache_path: Some(PathBuf::from("plugins/index.json")),
             cache_max_age_secs: 24 * 60 * 60, // 24 hours
-            trusted_signing_key: compiled_in_signing_key(),
+            trusted_signer: compiled_in_signer(),
         }
     }
 }
@@ -237,27 +237,27 @@ impl RegistryConfig {
 
     /// Disable signature verification. Development only.
     pub fn without_signature_verification(mut self) -> Self {
-        self.trusted_signing_key = None;
+        self.trusted_signer = None;
         self
     }
 
     /// Pin a specific signing key. Rejects keys that are not valid, or are
     /// low-order (weak) — which includes the all-zero placeholder.
-    pub fn with_trusted_signing_key(mut self, key: [u8; 32]) -> Result<Self, crate::Error> {
-        let vk = VerifyingKey::from_bytes(&key)
+    pub fn with_trusted_signer(mut self, signer: [u8; 32]) -> Result<Self, crate::Error> {
+        let vk = VerifyingKey::from_bytes(&signer)
             .map_err(|e| crate::Error::RegistryUnavailable(format!("bad registry pubkey: {e}")))?;
         if vk.is_weak() {
             return Err(crate::Error::RegistryUnavailable(
                 "refusing a low-order registry signing key".into(),
             ));
         }
-        self.trusted_signing_key = Some(key);
+        self.trusted_signer = Some(signer);
         Ok(self)
     }
 
     /// The key index signatures are verified against, if any.
-    pub fn trusted_signing_key(&self) -> Option<&[u8; 32]> {
-        self.trusted_signing_key.as_ref()
+    pub fn trusted_signer(&self) -> Option<&[u8; 32]> {
+        self.trusted_signer.as_ref()
     }
 }
 
@@ -316,7 +316,7 @@ fn load_cached_index(cache_path: &Path, config: &RegistryConfig) -> Option<Regis
     }
 
     let raw = std::fs::read(cache_path).ok()?;
-    if let Some(pubkey) = config.trusted_signing_key() {
+    if let Some(pubkey) = config.trusted_signer() {
         let sig_hex = match std::fs::read_to_string(cached_signature_path(cache_path)) {
             Ok(s) => s,
             Err(_) => {
@@ -390,7 +390,7 @@ async fn fetch_index_remote(
     // wire-format, not a re-serialised copy.
     let raw = read_capped(resp, MAX_INDEX_BYTES, "registry index").await?;
 
-    let signature_hex = match config.trusted_signing_key() {
+    let signature_hex = match config.trusted_signer() {
         Some(pubkey) => {
             let sig_url = format!("{}.sig", config.index_url);
             let sig_hex = fetch_signature(client, &sig_url).await?;
@@ -892,12 +892,12 @@ mod tests {
         if AMIGO_REGISTRY_PUBLIC_KEY == ZERO_PUBKEY {
             let cfg = RegistryConfig::default();
             assert!(
-                cfg.trusted_signing_key.is_none(),
+                cfg.trusted_signer.is_none(),
                 "default must not trust the zero placeholder"
             );
         } else {
             let cfg = RegistryConfig::default();
-            assert_eq!(cfg.trusted_signing_key, Some(AMIGO_REGISTRY_PUBLIC_KEY));
+            assert_eq!(cfg.trusted_signer, Some(AMIGO_REGISTRY_PUBLIC_KEY));
         }
     }
 
@@ -939,20 +939,17 @@ mod tests {
         // `for_index` is what amigo-server uses. In a build without a real
         // key it must disable verification instead of pinning [0; 32].
         let cfg = RegistryConfig::for_index("https://example.com/index.json", false);
-        assert_ne!(cfg.trusted_signing_key(), Some(&ZERO_PUBKEY));
-        assert_eq!(
-            cfg.trusted_signing_key().copied(),
-            compiled_in_signing_key()
-        );
+        assert_ne!(cfg.trusted_signer(), Some(&ZERO_PUBKEY));
+        assert_eq!(cfg.trusted_signer().copied(), compiled_in_signer());
         let dev = RegistryConfig::for_index("https://example.com/index.json", true);
-        assert!(dev.trusted_signing_key().is_none());
+        assert!(dev.trusted_signer().is_none());
     }
 
     #[test]
     fn explicit_low_order_keys_are_rejected() {
         assert!(
             RegistryConfig::default()
-                .with_trusted_signing_key(ZERO_PUBKEY)
+                .with_trusted_signer(ZERO_PUBKEY)
                 .is_err()
         );
         // The identity point (y = 1) is another small-order key.
@@ -960,18 +957,14 @@ mod tests {
         identity[0] = 1;
         assert!(
             RegistryConfig::default()
-                .with_trusted_signing_key(identity)
+                .with_trusted_signer(identity)
                 .is_err()
         );
         use ed25519_dalek::SigningKey;
         let real = SigningKey::from_bytes(&[3u8; 32])
             .verifying_key()
             .to_bytes();
-        assert!(
-            RegistryConfig::default()
-                .with_trusted_signing_key(real)
-                .is_ok()
-        );
+        assert!(RegistryConfig::default().with_trusted_signer(real).is_ok());
     }
 
     #[test]
@@ -1064,7 +1057,7 @@ mod tests {
             cache_path: Some(cache_path.clone()),
             ..RegistryConfig::default()
         }
-        .with_trusted_signing_key(signer.verifying_key().to_bytes())
+        .with_trusted_signer(signer.verifying_key().to_bytes())
         .unwrap();
         let client = reqwest::Client::new();
 

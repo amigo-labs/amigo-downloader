@@ -292,12 +292,12 @@ impl HostApi {
 
     async fn check_request_limit(&self) -> Result<(), String> {
         let max = self.max_requests;
-        self.request_count
-            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |n| {
-                (n < max).then_some(n + 1)
-            })
-            .map(|_| ())
-            .map_err(|_| format!("Plugin exceeded max HTTP requests ({max})"))
+        // Count every attempt; anything past the limit is refused. The
+        // counter is reset before each invocation, so overshooting is harmless.
+        if self.request_count.fetch_add(1, Ordering::Relaxed) >= max {
+            return Err(format!("Plugin exceeded max HTTP requests ({max})"));
+        }
+        Ok(())
     }
 
     // --- Network functions (sync wrappers for use from JS) ---

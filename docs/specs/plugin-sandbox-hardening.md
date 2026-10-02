@@ -23,9 +23,9 @@ model; its design decisions are recorded at the end.
 **Acceptance criteria**
 
 - [x] No construction path can set the trusted key to the all-zero placeholder.
-  `RegistryConfig::trusted_signing_key` is private; the server uses
+  `RegistryConfig::trusted_signer` is private; the server uses
   `RegistryConfig::for_index`, derived from `Default`;
-  `with_trusted_signing_key` rejects low-order keys.
+  `with_trusted_signer` rejects low-order keys.
   Test: `server_construction_path_never_trusts_the_zero_key`,
   `explicit_low_order_keys_are_rejected`.
 - [x] `verify_ed25519` uses `verify_strict` and rejects low-order public keys.
