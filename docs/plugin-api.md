@@ -372,10 +372,14 @@ Also available as `console.log()`, `console.warn()`, `console.error()`.
 
 ## Sandbox Limits
 
-Each plugin runs in **its own QuickJS runtime**, so memory and the execution
-deadline are per plugin; different plugins execute concurrently on the
-server's blocking thread pool, and one slow plugin never delays another or
-the plugin list.
+Plugin JavaScript runs in a separate process, `amigo-plugin-host`, which the
+server (and `amigo-dl`) start next to themselves. Inside it each plugin runs in
+**its own QuickJS runtime**, so memory and the execution deadline are per
+plugin; different plugins execute concurrently, and one slow plugin never
+delays another or the plugin list. Stateful host functions (HTTP, cookies,
+storage, logging, notifications, captcha) are executed by the daemon on the
+plugin's behalf; pure helpers (regex, crypto, URL, HTML) run in the plugin
+host.
 
 | Limit | Default | Enforced how |
 |-------|---------|--------------|
@@ -387,10 +391,13 @@ the plugin list.
 | Network destinations | `permissions.domains`, if declared | Checked on every request and redirect hop |
 | Storage | 1 MB per plugin | Host-side quota |
 
-**What these limits are not:** they bound a *cooperating* interpreter. Plugin
-JS still runs inside the daemon process, so a memory-safety bug in QuickJS
-itself is not contained by any of them. Out-of-process isolation is tracked in
-#79. The execution deadline is wall-clock for the whole invocation: it cannot
+**What these limits are not:** they bound a *cooperating* interpreter. A crash
+in QuickJS (abort, segfault) only takes down the plugin host: the calls it was
+running fail, the plugins are marked `failing`, and the next call starts a new
+plugin host — the download queue keeps running. The plugin host is not yet
+confined by the operating system, though: until the OS sandbox from #79 lands,
+it runs as the same user as the daemon, so a memory-safety *exploit* in
+QuickJS is still not contained. The execution deadline is wall-clock for the whole invocation: it cannot
 interrupt a pending host call (an HTTP request has its own 30 s timeout;
 `amigo.solveCaptcha` waits for the user), but JS is stopped as soon as it
 resumes past the deadline.
@@ -424,7 +431,9 @@ bytecode is a memory-safety problem, not a parse error — so:
 - every entry carries a SHA-256 of its payload; a truncated or corrupted entry
   is deleted and the plugin is recompiled from source;
 - the cache directory must only be writable by the daemon (plugin JS has no
-  filesystem access at all).
+  filesystem access at all);
+- the daemon reads and writes the cache; the plugin host only ever receives
+  bytecode from it, so a bad entry can at worst crash the plugin host.
 
 ## Reloading Plugins
 

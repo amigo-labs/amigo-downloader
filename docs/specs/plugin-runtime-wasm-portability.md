@@ -73,8 +73,8 @@ No function takes or returns an engine handle (`Ctx`, `Value`, `Object`,
 
 | # | Blocker | Smallest change | Worth doing now? |
 |---|---|---|---|
-| B1 | Host calls block via `block_in_place` + `Handle::block_on` | **Done in #82.** Execution runs on `spawn_blocking`, so a host call blocks a dedicated thread, not an executor worker. A Wasm host would call the same async functions from its own blocking thread, or via `wasmtime`'s async support. | Done |
-| B2 | `register_host_api` is shaped around `rquickjs` (`&Ctx`, `Function::new`) | Extract a backend-agnostic table `[(name, arity, fn(&HostScope, &[&str]) -> Result<String, String>)]` and keep the `rquickjs` registration as a thin loop over it. #79's IPC needs the same table for the child-to-parent callbacks. | **Yes, as the first step of #79**: one table serves IPC and any future backend |
+| B1 | Host calls block via `block_in_place` + `Handle::block_on` | **Done in #82, superseded by #79.** Execution ran on `spawn_blocking`; it now runs in the plugin host, where a host call blocks the call's own thread on an IPC reply. A Wasm host would call the same async functions from its own blocking thread, or via `wasmtime`'s async support. | Done |
+| B2 | `register_host_api` is shaped around `rquickjs` (`&Ctx`, `Function::new`) | **Done in #79.** `host_fns::HOST_FNS` is the backend-agnostic table; each entry is a local `fn(&[Option<String>]) -> Result<Option<String>, String>` or a route to `HostApi::dispatch` in the daemon. `register_host_api` is a thin rquickjs loop over it, and the IPC boundary uses the same table. | Done |
 | B3 | `call_resolve` drives the job queue by `eval`-ing generated JS and polling `__resolve_done` globals | Replace with direct `Function::call` on the export plus `Promise` inspection through the engine API. Only the "call an export with a JSON argument, get JSON back" contract has to survive. | Only when a second backend exists. It is isolated in one method today. |
 | B4 | `solveCaptcha` blocks on a human with no bound | Turn it into an out-of-band completion: `resolve()` returns a "needs captcha" result, the host solves it, and then resumes or re-invokes. This changes the plugin contract, so it needs a host-API major bump (see `docs/plugin-api.md`). | Not as part of the Wasm question. It changes the API. Separately, the wall-clock deadline keeps running while a captcha is pending, so a captcha answered after the 30 s budget still ends the resolve. That is a functional reason to fix B4 on its own. |
 | B5 | A runtime-wide wall-clock deadline (shared atomic) | **Done in #81/#82.** The deadline is per plugin runtime, so the behaviour is already per instance, like fuel. | Done |
@@ -104,15 +104,14 @@ cost. The toolchain and maintenance cost is.
 Enforcement:
 
 - **Today:** code review. This note is the reference.
-- **With B2:** the function table's type signature enforces it, because the
-  table cannot hold a closure that mentions `Ctx<'_>`.
+- **Since B2 (#79):** the function table's type signature enforces it, because
+  the table cannot hold a closure that mentions `Ctx<'_>`.
 
 ## 5. Recommendation
 
 Do not switch now. #79 (out-of-process host with OS sandboxing) also contains
 the memory-safety bug class, at lower cost and without slowing JS down. With
-B1 and B5 already done and B2 planned as part of #79, a later Wasm port stays
-mechanical.
+B1, B2 and B5 done, a later Wasm port stays mechanical.
 
 Revisit if any of these becomes true:
 

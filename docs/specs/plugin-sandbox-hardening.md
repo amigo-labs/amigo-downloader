@@ -69,9 +69,11 @@ second, overlapping key is a possible follow-up.
 - [x] Each plugin gets its **own** `rquickjs::Runtime`. This makes the memory
   limit and the deadline per plugin, and lets plugins run concurrently. rquickjs
   serializes all contexts of one runtime behind a single lock.
-- [x] Execution runs on `spawn_blocking`. The plugin list is an `RwLock` that is
-  held only to look a plugin up. A per-plugin exec lock serializes calls to the
-  same plugin, and that lock moves into the blocking task.
+- [x] Execution does not run on an async worker. Since SH-7a it runs in the
+  plugin host process (one thread per call); before that it ran on
+  `spawn_blocking`. The plugin list is an `RwLock` that is held only to look a
+  plugin up. A per-plugin exec lock serializes calls to the same plugin, and
+  that lock moves into a task that holds it until the call returns.
 - [x] HTTP request counters are per plugin (`HostApi::scoped`).
 - Tests: `slow_plugin_does_not_block_other_plugins_or_metadata` (list, match
   and an unrelated resolve finish in under 2 s while a 3 s plugin spins) and
@@ -187,6 +189,24 @@ network reach as the daemon until SH-7b lands.
   plugins. Test: `missing_host_binary_is_a_clear_error`.
 - [x] The Docker image and both release archives (CLI, server) ship
   `amigo-plugin-host`.
+- Measured with `tests/perf_baseline.rs` in release (4 vCPU container), median
+  of four runs each, against the same commit without the split:
+
+  | | in-process | plugin host |
+  |---|---|---|
+  | `discover()` first cold start | 12.9 ms | 16.7 ms |
+  | `discover()` cold (median of 5) | 9.0 ms | 17.3 ms |
+  | `discover()` warm, bytecode cache (median of 5) | 6.0 ms | 11.9 ms |
+  | `generic-http` `resolve()`, 3 host HTTP calls | 1.07 ms | 1.78 ms |
+
+  The ~6 ms on `discover()` is one spawn plus handshake: the benchmark builds
+  a fresh loader, hence a fresh child, per run, and the child's SWC transpile
+  cache starts empty, so "cold" no longer benefits from an earlier run. A
+  daemon pays this once at startup. Each host call costs ~0.2 ms of IPC,
+  which is noise next to the network latency of a real resolve.
+- The self-updater replaces only the daemon binary. A new daemon refuses an
+  `amigo-plugin-host` that speaks another protocol version (handshake), so
+  plugins fail closed with a clear error until the plugin host is updated too.
 - A compromised child could return poisoned bytecode for the cache. That
   bytecode is only ever evaluated in a child again, so it adds persistence but
   no new reach. The parent re-validates everything it trusts from a manifest
