@@ -164,6 +164,7 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "hmac",
+ "libc",
  "md-5",
  "rand 0.10.2",
  "regex",

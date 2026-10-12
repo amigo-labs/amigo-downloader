@@ -75,8 +75,8 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
       - name: Create web-ui dist stub
         run: mkdir -p web-ui/dist
-      - name: cargo check --release (server + CLI)
-        run: cargo check --release --locked -p amigo-server -p amigo-cli
+      - name: cargo check --release (server + CLI + plugin host)
+        run: cargo check --release --locked -p amigo-server -p amigo-cli -p amigo-plugin-runtime
 
   cargo-audit:
     name: Cargo audit (known vulnerabilities)

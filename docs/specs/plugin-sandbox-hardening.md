@@ -1,7 +1,7 @@
 # Plugin Sandbox Hardening
 
 **Date**: 2026-10-02
-**Status**: Implemented (#78, #80–#84), design note (#85), open (#79)
+**Status**: Implemented (#78, #80–#84, #79 process split), design note (#85), open (#79 OS sandbox)
 **Scope**: `crates/plugin-runtime`, server plugin endpoints, Web UI / CLI install flow, release workflow
 **Tracking**: #77
 
@@ -13,8 +13,9 @@ The plugin sandbox's documented limits (30 s, 64 MB, 20 requests, 1 MB storage)
 bounded a *cooperating* interpreter but were not a security boundary: some
 entry points ran without a deadline, the registry signature check could be
 bypassed, and any plugin could reach any host. This spec covers the in-process
-hardening. Process isolation (#79) is the remaining step that changes the trust
-model; its design decisions are recorded at the end.
+hardening and the process split (#79, SH-7a). The OS sandbox around the
+child process (SH-7b) is the remaining step that changes the trust model; its
+design decisions are recorded at the end.
 
 ---
 
@@ -68,9 +69,11 @@ second, overlapping key is a possible follow-up.
 - [x] Each plugin gets its **own** `rquickjs::Runtime`. This makes the memory
   limit and the deadline per plugin, and lets plugins run concurrently. rquickjs
   serializes all contexts of one runtime behind a single lock.
-- [x] Execution runs on `spawn_blocking`. The plugin list is an `RwLock` that is
-  held only to look a plugin up. A per-plugin exec lock serializes calls to the
-  same plugin, and that lock moves into the blocking task.
+- [x] Execution does not run on an async worker. Since SH-7a it runs in the
+  plugin host process (one thread per call); before that it ran on
+  `spawn_blocking`. The plugin list is an `RwLock` that is held only to look a
+  plugin up. A per-plugin exec lock serializes calls to the same plugin, and
+  that lock moves into a task that holds it until the call returns.
 - [x] HTTP request counters are per plugin (`HostApi::scoped`).
 - Tests: `slow_plugin_does_not_block_other_plugins_or_metadata` (list, match
   and an unrelated resolve finish in under 2 s while a 3 s plugin spins) and
@@ -141,34 +144,92 @@ second, overlapping key is a possible follow-up.
 
 ---
 
-## SH-7. Out-of-process plugin host (#79) — open
+## SH-7a. Out-of-process plugin host (#79) — process split
+
+Plugin JS runs in a separate binary, `amigo-plugin-host`, not in the daemon.
+This contains crashes (a QuickJS abort or segfault, or `panic = "abort"`, kills
+the child, not the queue). It does **not** yet contain a memory-safety
+exploit: the child runs as the same OS user with the same filesystem and
+network reach as the daemon until SH-7b lands.
+
+- [x] The daemon holds no `rquickjs::Runtime`. `PluginLoader` keeps metadata,
+  URL matching, enable flags, per-plugin exec locks and the scoped `HostApi`s.
+  The child (`plugin_host.rs`) owns every QuickJS runtime.
+  Test: `daemon_runs_plugins_in_a_child_process`.
+- [x] The child never touches the filesystem or the network. The parent reads
+  plugin and spec sources and bytecode-cache entries and sends them; the child
+  transpiles (SWC), evaluates and returns new bytecode for the parent to cache.
+  Every stateful host function (HTTP, cookies, storage, notify, logging,
+  captcha) is a callback to the parent; pure helpers (regex, crypto, URL,
+  HTML) run in the child.
+- [x] Host functions are registered from one backend-agnostic table
+  (`host_fns::HOST_FNS`, B2 of `plugin-runtime-wasm-portability.md`). Its
+  entries are `fn(&[Option<String>]) -> Result<Option<String>, String>` or a
+  parent route; no engine type appears in a signature.
+  Test: `table_covers_every_function_the_shim_uses`.
+- [x] Protocol: length-prefixed (u32 BE) JSON over the child's stdin/stdout,
+  max frame 256 MiB (a 32 MiB HTTP body JSON-escaped twice is at worst 7×;
+  readers grow their buffer with the data instead of pre-allocating), a
+  `hello` handshake that pins the protocol version.
+  Tests: `ipc::tests::*`.
+- [x] Every existing plugin test passes unchanged against the new boundary.
+- [x] A child that exits (crash, abort, `SIGKILL`) fails only the in-flight
+  calls with `Error::HostCrashed`, and marks those plugins `failing` (cleared
+  on their next successful call). The next call spawns a new child; a plugin is
+  re-loaded into it lazily from the source kept in memory. Cookies and storage
+  live in the parent and survive. After 5 spawns within 60 s, spawning pauses
+  for 30 s. Tests: `killed_child_fails_the_call_and_marks_the_plugin_failing`,
+  `plugin_state_survives_a_child_restart`.
+- [x] Liveness: a request whose child shows no activity for its budget plus a
+  10 s grace, while no host callback is outstanding, gets the child killed.
+  `solveCaptcha` is a callback, so a pending captcha never trips it.
+  Tests: `stopped_child_is_killed_by_the_watchdog`,
+  `captcha_callback_round_trips_through_the_parent`.
+- [x] The parent finds the binary through `AMIGO_PLUGIN_HOST_BIN`, then next to
+  its own executable (and one level up from `deps/` for test binaries). When
+  it is missing, loading fails with a clear error and the daemon runs without
+  plugins. Test: `missing_host_binary_is_a_clear_error`.
+- [x] The Docker image and both release archives (CLI, server) ship
+  `amigo-plugin-host`.
+- Measured with `tests/perf_baseline.rs` in release (4 vCPU container), median
+  of four runs each, against the same commit without the split:
+
+  | | in-process | plugin host |
+  |---|---|---|
+  | `discover()` first cold start | 12.9 ms | 16.7 ms |
+  | `discover()` cold (median of 5) | 9.0 ms | 17.3 ms |
+  | `discover()` warm, bytecode cache (median of 5) | 6.0 ms | 11.9 ms |
+  | `generic-http` `resolve()`, 3 host HTTP calls | 1.07 ms | 1.78 ms |
+
+  The ~6 ms on `discover()` is one spawn plus handshake: the benchmark builds
+  a fresh loader, hence a fresh child, per run, and the child's SWC transpile
+  cache starts empty, so "cold" no longer benefits from an earlier run. A
+  daemon pays this once at startup. Each host call costs ~0.2 ms of IPC,
+  which is noise next to the network latency of a real resolve.
+- The self-updater replaces only the daemon binary. A new daemon refuses an
+  `amigo-plugin-host` that speaks another protocol version (handshake), so
+  plugins fail closed with a clear error until the plugin host is updated too.
+- A compromised child could return poisoned bytecode for the cache. That
+  bytecode is only ever evaluated in a child again, so it adds persistence but
+  no new reach. The parent re-validates everything it trusts from a manifest
+  (allowlist, URL pattern, API version).
+
+## SH-7b. OS sandbox for the plugin host (#79) — open
 
 These decisions are settled here so the implementation PR does not have to
 argue them again:
 
-- **Topology:** start with one shared child process (`amigo-plugin-host`) for
-  all plugins. The threat is plugin-vs-daemon. Cookie jars, storage, request
+- **Topology:** one shared child process (`amigo-plugin-host`) for all
+  plugins. The threat is plugin-vs-daemon. Cookie jars, storage, request
   counters and allowlists are already per plugin, and each plugin already has
   its own QuickJS runtime inside the child.
-- **Protocol:** length-prefixed JSON over the child's stdin/stdout. Messages
-  are `load`, `resolve`, `postProcess` and `runSpec`, plus host-API callbacks
-  routed back to the parent. Every host function already fits
-  `(&str, …) -> Result<String, String>`; see `plugin-runtime-wasm-portability.md`.
-  The `HostApi` (HTTP, SSRF and domain checks, storage, captcha) stays in the
-  parent, so the child needs no network access.
-- **Long-blocking callbacks:** `solveCaptcha` is a callback that has no IPC
-  request timeout. The wall-clock invocation deadline is enforced in the child
-  by the interrupt handler, as it is today. The parent only watches the child
-  for liveness.
 - **Sandbox:** on Linux, Landlock with no filesystem access plus a seccomp
   allowlist that denies `socket(2)`. On Windows, a Job Object with an
   AppContainer token. On macOS, a `sandbox_init` profile that denies `file*` and
-  `network*`.
+  `network*`. The child needs neither: SH-7a already moved all I/O to the
+  parent.
 - **No sandbox primitive available** (for example, Linux before 5.13): refuse
   to run *unscoped* plugins and run scoped ones with a startup warning. An
   `AMIGO_PLUGIN_SANDBOX=off` override is for development only.
-- **Fault handling:** if the child crashes, that resolve fails, the child is
-  restarted and the plugin is marked failing. The download queue keeps
-  running.
 - **Measurements:** compare against the baseline in SH-6 (load and resolve)
   plus daemon startup.

@@ -98,6 +98,10 @@ pub struct PluginMeta {
     /// unscoped: it may reach any public host.
     #[serde(default)]
     pub permissions: PluginPermissions,
+    /// The plugin host process died while this plugin was running. Cleared by
+    /// the plugin's next successful call.
+    #[serde(default)]
+    pub failing: bool,
 }
 
 fn default_api_version() -> u32 {
