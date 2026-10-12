@@ -1,8 +1,12 @@
 pub mod bytecode_cache;
 pub mod engine;
 pub mod host_api;
+pub mod host_fns;
+pub mod ipc;
 pub mod loader;
 pub mod permissions;
+pub mod plugin_host;
+mod process_host;
 pub mod registry;
 pub mod sandbox;
 pub mod transpiler;
@@ -28,8 +32,9 @@ pub fn is_supported_api_version(version: u32) -> bool {
     (MIN_SUPPORTED_API_VERSION..=HOST_API_VERSION).contains(&version)
 }
 
-/// Plugin runtime error type.
-#[derive(Debug, thiserror::Error)]
+/// Plugin runtime error type. Serializable, because errors raised in the
+/// plugin host process cross the IPC boundary with their variant intact.
+#[derive(Debug, thiserror::Error, serde::Serialize, serde::Deserialize)]
 pub enum Error {
     #[error("Plugin execution error: {0}")]
     Execution(String),
@@ -56,6 +61,11 @@ pub enum Error {
     /// has not approved yet. The message lists the domains.
     #[error("Permission approval required: {0}")]
     PermissionApprovalRequired(String),
+
+    /// The plugin host process exited or was killed while this call was in
+    /// flight. The next call starts a new one.
+    #[error("Plugin host crashed: {0}")]
+    HostCrashed(String),
 
     #[error("{0}")]
     Other(String),

@@ -1,7 +1,9 @@
 //! Plugin discovery, loading, validation, and URL matching.
 //!
-//! Loads JavaScript (.js) and TypeScript (.ts) plugins via QuickJS-NG.
-//! TypeScript files are transpiled to JavaScript via SWC before loading.
+//! Loads JavaScript (.js) and TypeScript (.ts) plugins. The plugins' JS runs
+//! in the `amigo-plugin-host` child process (see [`crate::plugin_host`]); this
+//! side keeps the metadata, URL matching, enable flags, the per-plugin exec
+//! locks and the scoped [`HostApi`]s, and holds no QuickJS runtime.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -12,43 +14,163 @@ use tokio::sync::{Mutex, RwLock};
 use tracing::{debug, info, warn};
 
 use crate::bytecode_cache::BytecodeCache;
-use crate::engine::{EngineConfig, PluginContext, PluginEngine};
-use crate::host_api::{self, HostApi};
-use crate::permissions::DomainAllowlist;
+use crate::host_api::{HostApi, base64_decode_bytes, base64_encode_bytes};
+use crate::ipc::{Handle, Payload, Request};
+use crate::plugin_host::{check_api_version, parse_allowlist};
+use crate::process_host::{Child, ProcessHost};
 use crate::sandbox::SandboxLimits;
 use crate::types::{
-    DownloadPackage, PluginMeta, PluginPermissions, PluginType, PostProcessContext,
-    PostProcessResult,
+    DownloadPackage, PluginMeta, PluginType, PostProcessContext, PostProcessResult,
 };
+
+/// A plugin's source, kept so the plugin can be re-loaded into a new plugin
+/// host after the old one died.
+struct PluginSource {
+    /// Path shown in errors until the plugin's id is known.
+    label: String,
+    source: String,
+    filename: String,
+    is_typescript: bool,
+}
+
+/// Where a plugin is loaded: which plugin host generation, under which
+/// handle. Generation 0 never matches a live host.
+struct Slot {
+    generation: u64,
+    handle: Handle,
+}
 
 /// A loaded, ready-to-execute plugin.
 struct LoadedPlugin {
     meta: PluginMeta,
-    context: Arc<PluginContext>,
+    source: Arc<PluginSource>,
     /// The host API scoped to this plugin (own request counter, own domain
     /// allowlist).
     host: HostApi,
-    /// Serializes invocations of this one plugin. Held across execution —
-    /// unlike the plugin-list lock, which is only held to look a plugin up.
-    exec: Arc<Mutex<()>>,
+    /// Serializes invocations of this one plugin and records where it is
+    /// loaded. Held across execution — unlike the plugin-list lock, which is
+    /// only held to look a plugin up.
+    slot: Arc<Mutex<Slot>>,
     url_regex: Regex,
+}
+
+/// What the loader shares with execution tasks.
+struct Runtime {
+    process: ProcessHost,
+    sandbox_limits: SandboxLimits,
+    bytecode_cache: Option<BytecodeCache>,
+}
+
+/// A plugin freshly loaded into a plugin host.
+struct Prepared {
+    child: Arc<Child>,
+    handle: Handle,
+    meta: PluginMeta,
+    allowlist: Option<crate::permissions::DomainAllowlist>,
+}
+
+impl Runtime {
+    /// Load `source` into the live plugin host (spawning one if needed),
+    /// using and feeding the bytecode cache. Re-validates what the child
+    /// reports instead of trusting it.
+    async fn load(&self, source: &PluginSource) -> Result<Prepared, crate::Error> {
+        let child = self.process.child().await?;
+        let cache_key = self
+            .bytecode_cache
+            .as_ref()
+            .map(|c| c.key(&source.filename, &source.source));
+        let cached_bytecode = match (&self.bytecode_cache, &cache_key) {
+            (Some(cache), Some(key)) => cache.get(key).map(|b| base64_encode_bytes(&b)),
+            _ => None,
+        };
+
+        let request = Request::Load {
+            source: source.source.clone(),
+            filename: source.filename.clone(),
+            is_typescript: source.is_typescript,
+            cached_bytecode,
+            want_bytecode: self.bytecode_cache.is_some(),
+            limits: self.sandbox_limits.clone(),
+        };
+        // Module evaluation and each manifest read run under their own load
+        // deadline inside the child; allow for all of them.
+        let budget = Duration::from_secs(self.sandbox_limits.max_load_secs.max(1) * 16);
+        let payload = child
+            .request(
+                request,
+                &source.label,
+                budget,
+                self.process.watchdog_grace(),
+            )
+            .await?;
+        let Payload::Loaded {
+            handle,
+            mut meta,
+            new_bytecode,
+            cached_bytecode_rejected,
+            warnings,
+        } = payload
+        else {
+            return Err(crate::Error::Execution(
+                "plugin host answered a load with the wrong payload".into(),
+            ));
+        };
+
+        if let (Some(cache), Some(key)) = (&self.bytecode_cache, &cache_key) {
+            if cached_bytecode_rejected {
+                warn!(
+                    "Cached bytecode for {} failed; dropping the entry",
+                    source.filename
+                );
+                cache.remove(key);
+            }
+            if let Some(b64) = new_bytecode
+                && let Ok(bytecode) = base64_decode_bytes(&b64)
+            {
+                cache.put(key, &bytecode);
+            }
+        } else if !cached_bytecode_rejected {
+            debug!("Loaded {} without a bytecode cache", source.filename);
+        }
+        for w in warnings {
+            warn!("{w}");
+        }
+
+        let validated = (|| {
+            check_api_version(meta.api_version)?;
+            let allowlist = parse_allowlist(&meta.id, &meta.permissions)?;
+            meta.failing = false;
+            meta.enabled = true;
+            Ok::<_, crate::Error>(allowlist)
+        })();
+        match validated {
+            Ok(allowlist) => Ok(Prepared {
+                child,
+                handle,
+                meta: *meta,
+                allowlist,
+            }),
+            Err(e) => {
+                child.drop_handle(handle);
+                Err(e)
+            }
+        }
+    }
 }
 
 /// Manages all loaded plugins.
 ///
 /// The plugin list sits behind an `RwLock` that is only ever held long enough
-/// to find a plugin and clone the handles execution needs. Plugin JS runs on
-/// tokio's blocking pool (`spawn_blocking`), never on an async worker, and
-/// never while the list lock is held — so `list_plugins` / `match_url` stay
-/// responsive while a plugin is mid-`resolve()`, and different plugins run
-/// concurrently, each in its own QuickJS runtime under its own deadline.
+/// to find a plugin and clone the handles execution needs. Plugin JS runs in
+/// the plugin host process, never while the list lock is held — so
+/// `list_plugins` / `match_url` stay responsive while a plugin is
+/// mid-`resolve()`, and different plugins run concurrently, each in its own
+/// QuickJS runtime under its own deadline.
 pub struct PluginLoader {
     plugin_dir: PathBuf,
     plugins: Arc<RwLock<Vec<LoadedPlugin>>>,
     host_api: HostApi,
-    sandbox_limits: SandboxLimits,
-    engine: Arc<PluginEngine>,
-    bytecode_cache: Option<BytecodeCache>,
+    runtime: Arc<Runtime>,
 }
 
 impl PluginLoader {
@@ -63,28 +185,50 @@ impl PluginLoader {
         sandbox_limits: SandboxLimits,
         host_api: HostApi,
     ) -> Result<Self, crate::Error> {
-        let engine = PluginEngine::new(EngineConfig {
-            max_memory: sandbox_limits.max_memory_bytes as usize,
-            load_timeout: Duration::from_secs(sandbox_limits.max_load_secs.max(1)),
-            ..Default::default()
-        })?;
-
         Ok(Self {
             plugin_dir,
             plugins: Arc::new(RwLock::new(Vec::new())),
             host_api,
-            sandbox_limits,
-            engine: Arc::new(engine),
-            bytecode_cache: None,
+            runtime: Arc::new(Runtime {
+                process: ProcessHost::new(None),
+                sandbox_limits,
+                bytecode_cache: None,
+            }),
         })
+    }
+
+    fn runtime_mut(&mut self) -> &mut Runtime {
+        Arc::get_mut(&mut self.runtime).expect("builder methods run before the loader is shared")
     }
 
     /// Persist compiled plugin bytecode in `cache` so later starts skip the
     /// transpile + compile step. See [`crate::bytecode_cache`] for the
     /// constraints on where the cache may live.
     pub fn with_bytecode_cache(mut self, cache: BytecodeCache) -> Self {
-        self.bytecode_cache = Some(cache);
+        self.runtime_mut().bytecode_cache = Some(cache);
         self
+    }
+
+    /// Run plugins with the `amigo-plugin-host` binary at `path` instead of
+    /// looking it up (`$AMIGO_PLUGIN_HOST_BIN`, then next to the current
+    /// executable).
+    pub fn with_plugin_host_binary(mut self, path: PathBuf) -> Self {
+        self.runtime_mut().process = ProcessHost::new(Some(path));
+        self
+    }
+
+    /// PID of the running plugin host process, if any. For tests and
+    /// diagnostics.
+    #[doc(hidden)]
+    pub async fn plugin_host_pid(&self) -> Option<u32> {
+        self.runtime.process.pid().await
+    }
+
+    /// Override the grace the liveness watchdog adds to a call's budget
+    /// before it kills an unresponsive plugin host. For tests.
+    #[doc(hidden)]
+    pub fn set_watchdog_grace(&self, grace: Duration) {
+        self.runtime.process.set_watchdog_grace(grace);
     }
 
     /// Scan plugin directory and load all plugins.
@@ -134,7 +278,7 @@ impl PluginLoader {
 
     /// Load a single .js/.ts plugin file, extract metadata, and register it.
     ///
-    /// Module evaluation runs on the blocking pool under the load deadline, so
+    /// Module evaluation runs in the plugin host under the load deadline, so
     /// a plugin whose module body never returns fails to load instead of
     /// hanging `discover()`.
     pub async fn load_plugin(&self, path: &Path) -> Result<PluginMeta, crate::Error> {
@@ -147,73 +291,56 @@ impl PluginLoader {
     /// candidate (identity, version, permissions) before it is written into
     /// the plugin directory.
     pub async fn inspect_plugin(&self, path: &Path) -> Result<PluginMeta, crate::Error> {
-        Ok(self.prepare(path).await?.meta)
+        let (source, file_path) = read_source(path)?;
+        let prepared = self.runtime.load(&source).await?;
+        prepared.child.drop_handle(prepared.handle);
+        let mut meta = prepared.meta;
+        meta.file_path = file_path;
+        Ok(meta)
     }
 
     /// Evaluate a plugin file into a ready-to-register [`LoadedPlugin`].
     async fn prepare(&self, path: &Path) -> Result<LoadedPlugin, crate::Error> {
-        let source_code = std::fs::read_to_string(path)
-            .map_err(|e| crate::Error::Other(format!("Failed to read {}: {e}", path.display())))?;
+        let (source, file_path) = read_source(path)?;
+        let Prepared {
+            child,
+            handle,
+            mut meta,
+            allowlist,
+        } = self.runtime.load(&source).await?;
+        meta.file_path = file_path;
+        let id = meta.id.clone();
 
-        let filename = path
-            .file_name()
-            .and_then(|s| s.to_str())
-            .unwrap_or("plugin.js")
-            .to_string();
-        let file_path = path.display().to_string();
-        let is_ts = crate::transpiler::is_typescript(path);
-        let engine = Arc::clone(&self.engine);
-        let cache = self.bytecode_cache.clone();
-        let base_host = self.host_api.clone();
-
-        let (meta, context, host, url_regex) = tokio::task::spawn_blocking(move || {
-            let mut context = engine.create_context()?;
-            match eval_cached(&context, cache.as_ref(), &source_code, &filename) {
-                CachedEval::Loaded => {}
-                CachedEval::Miss => {
-                    eval_from_source(&context, cache.as_ref(), &source_code, &filename, is_ts)?
-                }
-                CachedEval::Failed(e @ crate::Error::Timeout(_)) => return Err(e),
-                CachedEval::Failed(_) => {
-                    // Start over in a clean context; a genuinely broken module
-                    // body fails again here and is reported as such.
-                    context = engine.create_context()?;
-                    eval_from_source(&context, cache.as_ref(), &source_code, &filename, is_ts)?
-                }
+        let url_regex = match Regex::new(&meta.url_pattern) {
+            Ok(re) => re,
+            Err(e) => {
+                child.drop_handle(handle);
+                return Err(crate::Error::Execution(format!(
+                    "Invalid urlPattern in plugin {id}: {e}"
+                )));
             }
-            let (meta, allowlist) = read_manifest(&context, file_path)?;
-            let id = meta.id.clone();
+        };
+        if allowlist.is_none() {
+            warn!("Plugin {id} declares no permissions.domains — it may reach any public host");
+        }
 
-            // Register the host API bound to the plugin's *declared* id and
-            // declared domain allowlist. This happens after evaluating the
-            // module (so we know the real id and permissions) but before
-            // `resolve()` or any callback runs — the module body itself only
-            // defines exports and never touches `amigo`. Binding to the
-            // declared id (rather than the file stem, which is always
-            // "plugin") is what isolates each plugin's cookie jar and storage
-            // namespace from every other plugin; binding the allowlist here is
-            // what keeps JS from choosing which list applies.
-            let host = base_host.scoped(allowlist);
-            context.with(|ctx| host_api::register_host_api(&ctx, Arc::new(host.clone()), &id))?;
-
-            // Validate required function: resolve
-            context
-                .require_export_function("resolve")
-                .map_err(|e| crate::Error::Execution(format!("Plugin {id}: {e}")))?;
-
-            let url_regex = Regex::new(&meta.url_pattern).map_err(|e| {
-                crate::Error::Execution(format!("Invalid urlPattern in plugin {id}: {e}"))
-            })?;
-            Ok::<_, crate::Error>((meta, context, host, url_regex))
-        })
-        .await
-        .map_err(|e| crate::Error::Execution(format!("plugin load task failed: {e}")))??;
+        // Bind the host API to the plugin's *declared* id and declared domain
+        // allowlist. Binding to the declared id (rather than the file stem,
+        // which is always "plugin") is what isolates each plugin's cookie jar
+        // and storage namespace from every other plugin; binding the
+        // allowlist here, daemon-side, is what keeps JS — and the plugin
+        // host — from choosing which list applies.
+        let host = self.host_api.scoped(allowlist);
+        child.register(handle, &id, host.clone());
 
         Ok(LoadedPlugin {
             meta,
-            context: Arc::new(context),
+            source: Arc::new(source),
             host,
-            exec: Arc::new(Mutex::new(())),
+            slot: Arc::new(Mutex::new(Slot {
+                generation: child.generation,
+                handle,
+            })),
             url_regex,
         })
     }
@@ -222,9 +349,23 @@ impl PluginLoader {
     /// id (hot-reload).
     async fn commit(&self, plugin: LoadedPlugin) -> PluginMeta {
         let meta = plugin.meta.clone();
-        let mut plugins = self.plugins.write().await;
-        plugins.retain(|p| p.meta.id != meta.id);
-        plugins.push(plugin);
+        let replaced: Vec<Arc<Mutex<Slot>>> = {
+            let mut plugins = self.plugins.write().await;
+            let (old, keep): (Vec<_>, Vec<_>) =
+                plugins.drain(..).partition(|p| p.meta.id == meta.id);
+            *plugins = keep;
+            plugins.push(plugin);
+            old.into_iter().map(|p| p.slot).collect()
+        };
+        // Free the replaced contexts once their in-flight calls finish.
+        for slot in replaced {
+            let slot = slot.lock().await;
+            if let Some(child) = self.runtime.process.live().await
+                && child.generation == slot.generation
+            {
+                child.drop_handle(slot.handle);
+            }
+        }
         meta
     }
 
@@ -270,39 +411,103 @@ impl PluginLoader {
         None
     }
 
-    /// Run `f` against plugin `plugin_id`'s context on the blocking pool.
+    /// Run one request against plugin `plugin_id` in the plugin host.
     ///
     /// The plugin-list lock is released before execution starts; only this
-    /// plugin's own `exec` lock is held for the duration, and it is moved into
-    /// the blocking task so it stays held even if the caller's future is
-    /// dropped mid-call.
-    async fn execute<T, F>(&self, plugin_id: &str, f: F) -> Result<T, crate::Error>
-    where
-        T: Send + 'static,
-        F: FnOnce(&PluginContext) -> Result<T, crate::Error> + Send + 'static,
-    {
-        let (context, host, exec) = {
+    /// plugin's own slot lock is held for the duration. The call runs in its
+    /// own task that owns the lock, so it stays held until the plugin host
+    /// answers even if the caller's future is dropped mid-call. A plugin
+    /// whose host died is re-loaded into the new one first.
+    async fn execute(
+        &self,
+        plugin_id: &str,
+        budget: Duration,
+        request: impl FnOnce(Handle) -> Request + Send + 'static,
+    ) -> Result<Payload, crate::Error> {
+        let (slot, host, source) = {
             let plugins = self.plugins.read().await;
             let plugin = plugins
                 .iter()
                 .find(|p| p.meta.id == plugin_id)
                 .ok_or_else(|| crate::Error::NotFound(plugin_id.to_string()))?;
             (
-                Arc::clone(&plugin.context),
+                Arc::clone(&plugin.slot),
                 plugin.host.clone(),
-                Arc::clone(&plugin.exec),
+                Arc::clone(&plugin.source),
             )
         };
 
-        let guard = exec.lock_owned().await;
+        let mut slot = slot.lock_owned().await;
         host.reset_request_count().await;
 
-        tokio::task::spawn_blocking(move || {
-            let _guard = guard;
-            f(&context)
+        let runtime = Arc::clone(&self.runtime);
+        let id = plugin_id.to_string();
+        let result = tokio::spawn(async move {
+            let child = runtime.process.child().await?;
+            if slot.generation != child.generation {
+                debug!(
+                    "Re-loading plugin {id} into plugin host generation {}",
+                    child.generation
+                );
+                let prepared = runtime.load(&source).await?;
+                if prepared.meta.id != id {
+                    prepared.child.drop_handle(prepared.handle);
+                    return Err(crate::Error::Execution(format!(
+                        "plugin {id} re-loaded as {:?}",
+                        prepared.meta.id
+                    )));
+                }
+                prepared.child.register(prepared.handle, &id, host);
+                slot.generation = prepared.child.generation;
+                slot.handle = prepared.handle;
+            }
+            let grace = runtime.process.watchdog_grace();
+            let child = runtime.process.child().await?;
+            if child.generation != slot.generation {
+                return Err(crate::Error::HostCrashed(format!(
+                    "plugin host restarted while re-loading plugin {id}"
+                )));
+            }
+            child
+                .request(request(slot.handle), &id, budget, grace)
+                .await
         })
         .await
-        .map_err(|e| crate::Error::Execution(format!("plugin task failed: {e}")))?
+        .map_err(|e| crate::Error::Execution(format!("plugin task failed: {e}")))?;
+
+        self.record_health(plugin_id, &result).await;
+        result
+    }
+
+    /// Mark a plugin `failing` when the plugin host died under it; clear the
+    /// mark on its next successful call.
+    async fn record_health(&self, plugin_id: &str, result: &Result<Payload, crate::Error>) {
+        let crashed = matches!(result, Err(crate::Error::HostCrashed(_)));
+        let changed = {
+            let plugins = self.plugins.read().await;
+            plugins
+                .iter()
+                .find(|p| p.meta.id == plugin_id)
+                .is_some_and(|p| p.meta.failing != crashed)
+        };
+        if crashed && let Err(e) = result {
+            self.host_api.notify(
+                plugin_id,
+                "Plugin crashed",
+                &format!("{e}. The plugin host was restarted."),
+            );
+        }
+        if !changed || (!crashed && result.is_err()) {
+            return;
+        }
+        let mut plugins = self.plugins.write().await;
+        if let Some(p) = plugins.iter_mut().find(|p| p.meta.id == plugin_id) {
+            p.meta.failing = crashed;
+        }
+    }
+
+    fn execution_timeout(&self) -> Duration {
+        Duration::from_secs(self.runtime.sandbox_limits.max_execution_secs)
     }
 
     /// Execute a plugin's resolve() function for a URL.
@@ -312,11 +517,16 @@ impl PluginLoader {
         plugin_id: &str,
         url: &str,
     ) -> Result<DownloadPackage, crate::Error> {
-        let timeout = Duration::from_secs(self.sandbox_limits.max_execution_secs);
+        let timeout = self.execution_timeout();
         let url = url.to_string();
-        let json_result = self
-            .execute(plugin_id, move |ctx| ctx.call_resolve(&url, timeout))
+        let payload = self
+            .execute(plugin_id, timeout, move |handle| Request::Resolve {
+                handle,
+                url,
+                timeout_ms: timeout.as_millis() as u64,
+            })
             .await?;
+        let json_result = expect_json(payload)?.unwrap_or_default();
 
         let pkg: DownloadPackage = serde_json::from_str(&json_result).map_err(|e| {
             crate::Error::Execution(format!(
@@ -341,18 +551,17 @@ impl PluginLoader {
         let context_json = serde_json::to_string(context).map_err(|e| {
             crate::Error::Execution(format!("Failed to serialize PostProcessContext: {e}"))
         })?;
-        let timeout = Duration::from_secs(self.sandbox_limits.max_execution_secs);
+        let timeout = self.execution_timeout();
 
-        let json_result = self
-            .execute(plugin_id, move |ctx| {
-                if !ctx.has_post_process() {
-                    return Ok(None);
-                }
-                ctx.call_post_process(&context_json, timeout).map(Some)
+        let payload = self
+            .execute(plugin_id, timeout, move |handle| Request::PostProcess {
+                handle,
+                context_json,
+                timeout_ms: timeout.as_millis() as u64,
             })
             .await?;
 
-        let Some(json_result) = json_result else {
+        let Some(json_result) = expect_json(payload)? else {
             return Ok(PostProcessResult {
                 success: true,
                 files_created: None,
@@ -456,27 +665,33 @@ impl PluginLoader {
         let spec_source = std::fs::read_to_string(&spec_path).map_err(|e| {
             crate::Error::Other(format!("Failed to read {}: {e}", spec_path.display()))
         })?;
-
-        let spec_source = if crate::transpiler::is_typescript(&spec_path) {
-            let filename = spec_path
-                .file_name()
-                .and_then(|s| s.to_str())
-                .unwrap_or("spec.ts");
-            crate::transpiler::transpile(&spec_source, filename)?
-        } else {
-            spec_source
-        };
-
+        let is_typescript = crate::transpiler::is_typescript(&spec_path);
         let filename = spec_path
             .file_name()
             .and_then(|s| s.to_str())
-            .unwrap_or("spec.js")
+            .unwrap_or(if is_typescript { "spec.ts" } else { "spec.js" })
             .to_string();
-        let timeout = Duration::from_secs(self.sandbox_limits.max_execution_secs);
-        self.execute(plugin_id, move |ctx| {
-            Ok(ctx.run_tests(&spec_source, &filename, timeout))
-        })
-        .await
+
+        let timeout = self.execution_timeout();
+        // The harness and spec body evaluate under the load deadline before
+        // the tests run under `timeout`.
+        let load = Duration::from_secs(self.runtime.sandbox_limits.max_load_secs.max(1));
+        let budget = timeout.saturating_add(load * 2);
+        let payload = self
+            .execute(plugin_id, budget, move |handle| Request::RunSpec {
+                handle,
+                spec_source,
+                filename,
+                is_typescript,
+                timeout_ms: timeout.as_millis() as u64,
+            })
+            .await?;
+        match payload {
+            Payload::Spec { results } => Ok(results),
+            _ => Err(crate::Error::Execution(
+                "plugin host answered a spec run with the wrong payload".into(),
+            )),
+        }
     }
 
     async fn try_load_plugin(&self, path: &Path, metas: &mut Vec<PluginMeta>) {
@@ -492,179 +707,33 @@ impl PluginLoader {
     }
 }
 
-/// Outcome of trying to evaluate a plugin's module body from cached bytecode.
-enum CachedEval {
-    /// No usable entry — evaluate from source.
-    Miss,
-    /// Module body evaluated from bytecode.
-    Loaded,
-    /// The entry existed but failed; the context may be half-initialised.
-    Failed(crate::Error),
-}
-
-/// Evaluate a plugin's module body from the bytecode cache, if it has an
-/// entry for exactly this source under the current engine.
-fn eval_cached(
-    context: &PluginContext,
-    cache: Option<&BytecodeCache>,
-    source_code: &str,
-    filename: &str,
-) -> CachedEval {
-    let Some(cache) = cache else {
-        return CachedEval::Miss;
-    };
-    // The key covers the raw file contents, so a hit skips SWC as well as the
-    // QuickJS compile.
-    let key = cache.key(filename, source_code);
-    let Some(bytecode) = cache.get(&key) else {
-        return CachedEval::Miss;
-    };
-    // SAFETY: the entry was produced by `compile_to_bytecode` on this machine,
-    // under a key that pins the engine version, and its checksum was verified
-    // by `BytecodeCache::get`.
-    match unsafe { context.eval_bytecode(&bytecode, filename) } {
-        Ok(()) => {
-            debug!("Loaded {filename} from bytecode cache");
-            CachedEval::Loaded
-        }
-        Err(e) => {
-            if !matches!(e, crate::Error::Timeout(_)) {
-                warn!("Cached bytecode for {filename} failed ({e}); dropping the entry");
-                cache.remove(&key);
-            }
-            CachedEval::Failed(e)
-        }
+fn expect_json(payload: Payload) -> Result<Option<String>, crate::Error> {
+    match payload {
+        Payload::Json { json } => Ok(json),
+        _ => Err(crate::Error::Execution(
+            "plugin host answered with the wrong payload".into(),
+        )),
     }
 }
 
-/// Evaluate a plugin's module body from source: transpile (TS), wrap, compile
-/// and run — storing the bytecode in `cache` for the next load.
-fn eval_from_source(
-    context: &PluginContext,
-    cache: Option<&BytecodeCache>,
-    source_code: &str,
-    filename: &str,
-    is_ts: bool,
-) -> Result<(), crate::Error> {
-    // TypeScript → JS: transpile via SWC
-    let js_source = if is_ts {
-        crate::transpiler::transpile(source_code, filename)?
-    } else {
-        source_code.to_string()
-    };
-
-    // Inject `module.exports` for CommonJS-style default export.
-    // Plugin writes: module.exports = { pluginId() {}, resolve(url) {}, ... }
-    // After eval, __plugin_exports points to module.exports.
-    let wrapped = format!(
-        r#"var module = {{ exports: {{}} }};
-{js_source}
-var __plugin_exports = module.exports;
-"#
-    );
-
-    if let Some(cache) = cache {
-        match context.compile_to_bytecode(&wrapped, filename) {
-            Ok(bytecode) => {
-                // SAFETY: produced just now by this engine, from checked source.
-                unsafe { context.eval_bytecode(&bytecode, filename) }?;
-                cache.put(&cache.key(filename, source_code), &bytecode);
-                return Ok(());
-            }
-            Err(e @ crate::Error::Timeout(_)) => return Err(e),
-            Err(e) => debug!("Bytecode compile of {filename} failed ({e}); evaluating source"),
-        }
-    }
-
-    context.eval_source(&wrapped, filename)
-}
-
-/// Read and validate a plugin's manifest exports after its module body ran.
-fn read_manifest(
-    context: &PluginContext,
-    file_path: String,
-) -> Result<(PluginMeta, Option<DomainAllowlist>), crate::Error> {
-    // Extract required metadata — supports both properties and functions
-    let id = context.get_export_string("id")?;
-    let name = context.get_export_string("name")?;
-    let version = context.get_export_string("version")?;
-    let url_pattern = context.get_export_string("urlPattern")?;
-
-    // Only a genuinely absent export gets the legacy fallback; a getter that
-    // throws or times out is an error, never "assume v1".
-    let api_version = if context.has_export("apiVersion")? {
-        let v = context.get_export_string("apiVersion")?;
-        v.trim().parse::<u32>().map_err(|_| {
-            crate::Error::Execution(format!(
-                "Plugin {id}: apiVersion must be a positive integer major version, got {v:?}"
-            ))
-        })?
-    } else {
-        warn!(
-            "Plugin {id} does not declare apiVersion; assuming 1. \
-                 Declare `apiVersion: {}` — this fallback will be removed.",
-            crate::HOST_API_VERSION
-        );
-        1
-    };
-    if !crate::is_supported_api_version(api_version) {
-        return Err(crate::Error::IncompatibleVersion {
-            required: format!("host API {api_version}"),
-            current: format!(
-                "host API {} (supports {}..={})",
-                crate::HOST_API_VERSION,
-                crate::MIN_SUPPORTED_API_VERSION,
-                crate::HOST_API_VERSION
-            ),
-        });
-    }
-
-    let permissions: PluginPermissions = match context.get_export_json("permissions")? {
-        Some(json) => serde_json::from_str(&json).map_err(|e| {
-            crate::Error::Execution(format!("Plugin {id}: invalid permissions: {e}"))
-        })?,
-        None => PluginPermissions::default(),
-    };
-    let allowlist = permissions
-        .domains
-        .as_deref()
-        .map(DomainAllowlist::parse)
-        .transpose()
-        .map_err(|e| crate::Error::Execution(format!("Plugin {id}: {e}")))?;
-    if allowlist.is_none() {
-        warn!("Plugin {id} declares no permissions.domains — it may reach any public host");
-    }
-
-    // Optional metadata
-    let description = context.get_export_string("description").ok();
-    let author = context.get_export_string("author").ok();
-
-    // Plugin type determines matching priority
-    let plugin_type = context
-        .get_export_string("pluginType")
-        .ok()
-        .and_then(|t| match t.as_str() {
-            "multi-hoster" => Some(PluginType::MultiHoster),
-            "hoster" => Some(PluginType::Hoster),
-            "generic" => Some(PluginType::Generic),
-            _ => None,
-        })
-        .unwrap_or_default();
-
-    let meta = PluginMeta {
-        id,
-        name,
-        version,
-        url_pattern,
-        file_path,
-        enabled: true,
-        description,
-        author,
-        plugin_type,
-        api_version,
-        permissions,
-    };
-    Ok((meta, allowlist))
+/// Read a plugin file for loading. Returns the source and its display path.
+fn read_source(path: &Path) -> Result<(PluginSource, String), crate::Error> {
+    let source = std::fs::read_to_string(path)
+        .map_err(|e| crate::Error::Other(format!("Failed to read {}: {e}", path.display())))?;
+    let filename = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("plugin.js")
+        .to_string();
+    Ok((
+        PluginSource {
+            label: path.display().to_string(),
+            source,
+            filename,
+            is_typescript: crate::transpiler::is_typescript(path),
+        },
+        path.display().to_string(),
+    ))
 }
 
 /// Find plugin.ts or plugin.js in a directory.

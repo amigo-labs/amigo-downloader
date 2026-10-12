@@ -7,6 +7,12 @@ license.workspace = true
 [lints]
 workspace = true
 
+# Runs plugin JavaScript out of the daemon process (#79). Spawned by
+# `PluginLoader`; ships next to `amigo-server` and `amigo-dl`.
+[[bin]]
+name = "amigo-plugin-host"
+path = "src/bin/amigo-plugin-host.rs"
+
 [dependencies]
 tokio = { workspace = true }
 serde = { workspace = true }
@@ -50,4 +56,5 @@ swc_ecma_visit = "29"
 ed25519-dalek = { workspace = true, features = ["rand_core"] }
 rand = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
+libc = "0.2"
 wiremock = "0.6"

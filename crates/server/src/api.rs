@@ -188,6 +188,8 @@ struct PluginResponse {
     api_version: u32,
     /// Declared permissions; `permissions.domains == null` = unscoped.
     permissions: amigo_plugin_runtime::types::PluginPermissions,
+    /// The plugin host crashed during this plugin's last call.
+    failing: bool,
 }
 
 impl From<amigo_plugin_runtime::types::PluginMeta> for PluginResponse {
@@ -200,6 +202,7 @@ impl From<amigo_plugin_runtime::types::PluginMeta> for PluginResponse {
             enabled: p.enabled,
             api_version: p.api_version,
             permissions: p.permissions,
+            failing: p.failing,
         }
     }
 }
@@ -1525,6 +1528,7 @@ mod plugin_response_tests {
             plugin_type: Default::default(),
             api_version: 1,
             permissions: PluginPermissions { domains },
+            failing: false,
         }
     }
 

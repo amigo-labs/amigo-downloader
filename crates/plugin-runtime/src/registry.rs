@@ -794,6 +794,7 @@ mod tests {
             plugin_type: crate::types::PluginType::default(),
             api_version: 1,
             permissions: Default::default(),
+            failing: false,
         }];
 
         let updates = check_plugin_updates(&index, &installed);
@@ -835,6 +836,7 @@ mod tests {
             plugin_type: crate::types::PluginType::default(),
             api_version: 1,
             permissions: Default::default(),
+            failing: false,
         }];
 
         let updates = check_plugin_updates(&index, &installed);
@@ -1180,6 +1182,7 @@ mod tests {
             permissions: crate::types::PluginPermissions {
                 domains: Some(vec!["a.com".into()]),
             },
+            failing: false,
         }];
         let updates = check_plugin_updates(&index, &installed);
         assert_eq!(updates.len(), 1, "incompatible plugin must not be offered");
