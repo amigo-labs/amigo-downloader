@@ -36,6 +36,9 @@ unrar = "0.5"
 # ppmd/bzip2 cover the common non-LZMA 7z codecs.
 sevenz-rust2 = { version = "0.23", default-features = false, features = ["util", "ppmd", "bzip2"] }
 zip = "2"
+# Self-update archives (`updater.rs`).
+tar = "0.4"
+flate2 = "1"
 async-trait = { workspace = true }
 rand = "0.10"
 base64 = "0.22"

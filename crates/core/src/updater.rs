@@ -1,11 +1,15 @@
 //! Core binary self-update via GitHub Releases.
 //!
-//! Checks for new releases, downloads the correct binary for the current
-//! platform, verifies SHA256, and performs an atomic self-replace.
+//! Checks for new releases, downloads the release archive of the running
+//! product for the current platform, verifies its signature and SHA256,
+//! extracts the binaries and performs an atomic self-replace. See
+//! `docs/specs/self-update.md`.
 
-use std::path::PathBuf;
+use std::fs::{self, File};
+use std::io::{self, Read, Seek, SeekFrom};
+use std::path::{Component, Path, PathBuf};
 
-use ed25519_dalek::{Signature, Verifier, VerifyingKey};
+use ed25519_dalek::{Signature, VerifyingKey};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use tracing::{debug, info, warn};
@@ -90,7 +94,7 @@ pub fn verify_ed25519(
     let sig = Signature::from_bytes(&sig_arr);
     let vk = VerifyingKey::from_bytes(pubkey)
         .map_err(|e| crate::Error::Update(format!("bad update pubkey: {e}")))?;
-    vk.verify(payload, &sig).map_err(|_| {
+    vk.verify_strict(payload, &sig).map_err(|_| {
         crate::Error::Update("update signature did not verify against the trusted key".into())
     })
 }
@@ -150,6 +154,38 @@ pub enum Distribution {
     Tauri,
 }
 
+/// Name of the plugin host binary that ships next to the CLI and the server.
+pub const PLUGIN_HOST_NAME: &str = "amigo-plugin-host";
+
+/// The release product a binary updates itself from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Product {
+    /// `amigo-server`
+    Server,
+    /// `amigo-dl`
+    Cli,
+}
+
+impl Product {
+    pub fn binary_name(self) -> &'static str {
+        match self {
+            Product::Server => "amigo-server",
+            Product::Cli => "amigo-dl",
+        }
+    }
+
+    /// Release archive of this product for the running platform, e.g.
+    /// `amigo-dl-linux-x86_64.tar.gz`.
+    pub fn archive_name(self) -> String {
+        archive_name(self, std::env::consts::OS, std::env::consts::ARCH)
+    }
+}
+
+fn archive_name(product: Product, os: &str, arch: &str) -> String {
+    let ext = if os == "windows" { "zip" } else { "tar.gz" };
+    format!("{}-{os}-{arch}.{ext}", product.binary_name())
+}
+
 /// Information about a GitHub release.
 #[derive(Debug, Clone, Deserialize)]
 pub struct ReleaseInfo {
@@ -196,6 +232,7 @@ pub fn detect_distribution() -> Distribution {
 pub async fn check_for_update(
     client: &reqwest::Client,
     github_repo: &str,
+    product: Product,
 ) -> Result<CoreUpdateStatus, crate::Error> {
     let url = format!("https://api.github.com/repos/{github_repo}/releases/latest");
     debug!("Checking for core update: {url}");
@@ -236,9 +273,10 @@ pub async fn check_for_update(
 
     if latest > current {
         let dist = detect_distribution();
-        let can_self_update = dist == Distribution::Cli || dist == Distribution::Server;
+        let asset = select_asset(&release, product);
+        let can_self_update =
+            (dist == Distribution::Cli || dist == Distribution::Server) && asset.is_some();
 
-        let asset = select_asset(&release);
         let download_url = asset
             .map(|a| a.browser_download_url.clone())
             .unwrap_or_default();
@@ -275,31 +313,22 @@ pub async fn check_for_update(
     }
 }
 
-/// Select the correct asset for the current platform.
-pub fn select_asset(release: &ReleaseInfo) -> Option<&ReleaseAsset> {
-    let os = std::env::consts::OS;
-    let arch = std::env::consts::ARCH;
-
-    let target = format!("amigo-server-{os}-{arch}");
-    debug!("Looking for asset matching: {target}");
-
-    release.assets.iter().find(|a| {
-        a.name.starts_with(&target)
-            // Exclude the sibling checksum and signature assets: they share the
-            // binary's name prefix, so picking one as the binary would break
-            // verification and derive bogus `.sha256` / `.sig` URLs.
-            && !a.name.ends_with(".sha256")
-            && !a.name.ends_with(".sig")
-    })
+/// Select the release archive of `product` for the current platform. Only
+/// the exact archive name matches, so the sibling `.sha256` / `.sig` assets
+/// and the other product's archive are never picked.
+pub fn select_asset(release: &ReleaseInfo, product: Product) -> Option<&ReleaseAsset> {
+    let target = product.archive_name();
+    debug!("Looking for asset: {target}");
+    release.assets.iter().find(|a| a.name == target)
 }
 
 /// Download a release asset and verify it before returning the temp path.
 ///
-/// Verification is layered: an Ed25519 signature over the binary (when a key
-/// is pinned into the build) proves the binary was produced by the offline
-/// publisher, and a SHA256 checksum guards integrity. Both must pass. The
-/// signature is the trust anchor — SHA256 alone only binds the binary to
-/// whoever served the release, not to the publisher.
+/// Verification is layered: an Ed25519 signature over the archive (when a
+/// key is pinned into the build) proves it was produced by the publisher,
+/// and a SHA256 checksum guards integrity. Both must pass. The signature is
+/// the trust anchor — SHA256 alone only binds the archive to whoever served
+/// the release, not to the publisher.
 pub async fn download_and_verify(
     client: &reqwest::Client,
     asset: &ReleaseAsset,
@@ -361,7 +390,7 @@ async fn download_and_verify_with_key(
         .map_err(|e| crate::Error::Update(format!("Download failed: {e}")))?;
 
     // Verify the Ed25519 signature over the downloaded bytes before anything
-    // else — it's the strongest check and binds the binary to the publisher.
+    // else — it's the strongest check and binds the archive to the publisher.
     match signing_key {
         Some(key) => {
             let sig_url = sig_url.expect("sig_url presence checked above when key is pinned");
@@ -427,9 +456,13 @@ async fn download_and_verify_with_key(
     Ok(path)
 }
 
-/// Apply the update by replacing the current binary.
-/// Returns Ok(()) — a restart is needed to run the new version.
-pub fn apply_update(new_binary: &std::path::Path) -> Result<(), crate::Error> {
+/// Largest binary accepted from an update archive.
+const MAX_BINARY_BYTES: u64 = 512 * 1024 * 1024;
+
+/// Install a downloaded, verified release archive of `product` next to the
+/// running executable. Returns Ok(()) — a restart is needed to run the new
+/// version.
+pub fn apply_update(archive: &Path, product: Product) -> Result<(), crate::Error> {
     let dist = detect_distribution();
 
     match dist {
@@ -442,11 +475,225 @@ pub fn apply_update(new_binary: &std::path::Path) -> Result<(), crate::Error> {
         _ => {}
     }
 
-    info!("Applying self-update from {:?}", new_binary);
-    self_replace::self_replace(new_binary)
-        .map_err(|e| crate::Error::Update(format!("Self-replace failed: {e}")))?;
+    let exe = std::env::current_exe()
+        .and_then(fs::canonicalize)
+        .map_err(|e| crate::Error::Update(format!("cannot locate the running executable: {e}")))?;
+    let dir = exe.parent().ok_or_else(|| {
+        crate::Error::Update(format!("{} has no parent directory", exe.display()))
+    })?;
+
+    info!("Applying self-update from {:?} to {:?}", archive, dir);
+    // Stage next to the executable so the installs below are same-filesystem
+    // renames.
+    let staging = tempfile::Builder::new()
+        .prefix(".amigo-update-")
+        .tempdir_in(dir)
+        .map_err(|e| crate::Error::Update(format!("cannot stage the update in {dir:?}: {e}")))?;
+    let staged = extract_update(archive, staging.path(), product)?;
+    install(&staged, dir, |binary| self_replace::self_replace(binary))?;
 
     info!("Update applied successfully — restart to use new version");
+    Ok(())
+}
+
+/// Binaries extracted from an update archive.
+#[derive(Debug)]
+struct Staged {
+    binary: PathBuf,
+    plugin_host: Option<PathBuf>,
+}
+
+fn plugin_host_file_name() -> String {
+    format!("{PLUGIN_HOST_NAME}{}", std::env::consts::EXE_SUFFIX)
+}
+
+/// Extract the product binary and, when present, the plugin host from
+/// `archive` into `dest`. Nothing but those two names is ever written.
+fn extract_update(archive: &Path, dest: &Path, product: Product) -> Result<Staged, crate::Error> {
+    let binary_name = format!("{}{}", product.binary_name(), std::env::consts::EXE_SUFFIX);
+    let host_name = plugin_host_file_name();
+    let wanted = [binary_name.as_str(), host_name.as_str()];
+
+    let mut file = File::open(archive)?;
+    let mut magic = [0u8; 4];
+    let read = file.read(&mut magic)?;
+    file.seek(SeekFrom::Start(0))?;
+
+    let mut written = Vec::new();
+    if read >= 2 && magic[..2] == [0x1f, 0x8b] {
+        extract_tar_gz(file, dest, &wanted, &mut written)?;
+    } else if read == 4 && magic == *b"PK\x03\x04" {
+        extract_zip(file, dest, &wanted, &mut written)?;
+    } else {
+        return Err(crate::Error::Update(
+            "update is neither a .tar.gz nor a .zip archive".into(),
+        ));
+    }
+
+    if !written.contains(&binary_name) {
+        return Err(crate::Error::Update(format!(
+            "update archive does not contain {binary_name}"
+        )));
+    }
+    Ok(Staged {
+        binary: dest.join(&binary_name),
+        plugin_host: written.contains(&host_name).then(|| dest.join(&host_name)),
+    })
+}
+
+/// The whitelisted name `path` refers to, if it is a single file name at
+/// the archive root (an optional `./` prefix is allowed).
+fn wanted_name<'a>(path: &Path, wanted: &[&'a str]) -> Option<&'a str> {
+    let mut normal = path.components().filter(|c| *c != Component::CurDir);
+    let Some(Component::Normal(name)) = normal.next() else {
+        return None;
+    };
+    if normal.next().is_some() {
+        return None;
+    }
+    wanted.iter().copied().find(|w| name == *w)
+}
+
+fn extract_tar_gz(
+    file: File,
+    dest: &Path,
+    wanted: &[&str],
+    written: &mut Vec<String>,
+) -> Result<(), crate::Error> {
+    let bad = |e: io::Error| crate::Error::Update(format!("corrupt update archive: {e}"));
+    let mut archive = tar::Archive::new(flate2::read::GzDecoder::new(file));
+    for entry in archive.entries().map_err(bad)? {
+        let entry = entry.map_err(bad)?;
+        let path = entry.path().map_err(bad)?.into_owned();
+        let Some(name) = wanted_name(&path, wanted) else {
+            debug!("Skipping update archive entry {path:?}");
+            continue;
+        };
+        if !entry.header().entry_type().is_file() {
+            return Err(crate::Error::Update(format!(
+                "{name} in the update archive is not a regular file"
+            )));
+        }
+        write_binary(entry, dest, name, written)?;
+    }
+    Ok(())
+}
+
+fn extract_zip(
+    file: File,
+    dest: &Path,
+    wanted: &[&str],
+    written: &mut Vec<String>,
+) -> Result<(), crate::Error> {
+    let bad =
+        |e: zip::result::ZipError| crate::Error::Update(format!("corrupt update archive: {e}"));
+    let mut archive = zip::ZipArchive::new(file).map_err(bad)?;
+    for i in 0..archive.len() {
+        let entry = archive.by_index(i).map_err(bad)?;
+        let Some(name) = entry
+            .enclosed_name()
+            .and_then(|path| wanted_name(&path, wanted))
+        else {
+            debug!("Skipping update archive entry {:?}", entry.name());
+            continue;
+        };
+        if !entry.is_file() || entry.is_symlink() {
+            return Err(crate::Error::Update(format!(
+                "{name} in the update archive is not a regular file"
+            )));
+        }
+        write_binary(entry, dest, name, written)?;
+    }
+    Ok(())
+}
+
+fn write_binary(
+    reader: impl Read,
+    dest: &Path,
+    name: &str,
+    written: &mut Vec<String>,
+) -> Result<(), crate::Error> {
+    if written.iter().any(|n| n == name) {
+        return Err(crate::Error::Update(format!(
+            "update archive contains {name} more than once"
+        )));
+    }
+    let path = dest.join(name);
+    let mut out = fs::OpenOptions::new()
+        .write(true)
+        .create_new(true)
+        .open(&path)?;
+    let copied = io::copy(&mut reader.take(MAX_BINARY_BYTES + 1), &mut out)?;
+    if copied > MAX_BINARY_BYTES {
+        return Err(crate::Error::Update(format!(
+            "{name} in the update archive exceeds {MAX_BINARY_BYTES} bytes"
+        )));
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755))?;
+    }
+    written.push(name.to_string());
+    Ok(())
+}
+
+/// Install `staged` into `dir`: the plugin host first, then the product
+/// binary through `replace_binary`. If that fails, the plugin host is rolled
+/// back so the pair on disk stays consistent.
+fn install(
+    staged: &Staged,
+    dir: &Path,
+    replace_binary: impl FnOnce(&Path) -> io::Result<()>,
+) -> Result<(), crate::Error> {
+    let host_target = dir.join(plugin_host_file_name());
+    let backup = dir.join(format!("{PLUGIN_HOST_NAME}.old"));
+
+    let mut had_previous = false;
+    if let Some(new_host) = &staged.plugin_host {
+        // Left by an earlier update when Windows could not delete it while
+        // an old plugin host was still running.
+        if backup.exists()
+            && let Err(e) = fs::remove_file(&backup)
+        {
+            return Err(crate::Error::Update(format!(
+                "cannot remove {backup:?} from an earlier update (restart and retry): {e}"
+            )));
+        }
+        if host_target.exists() {
+            fs::rename(&host_target, &backup).map_err(|e| {
+                crate::Error::Update(format!("cannot move the current plugin host aside: {e}"))
+            })?;
+            had_previous = true;
+        }
+        if let Err(e) = fs::rename(new_host, &host_target) {
+            if had_previous && let Err(e) = fs::rename(&backup, &host_target) {
+                warn!("Could not restore the previous plugin host from {backup:?}: {e}");
+            }
+            return Err(crate::Error::Update(format!(
+                "cannot install the new plugin host: {e}"
+            )));
+        }
+    }
+
+    if let Err(e) = replace_binary(&staged.binary) {
+        if staged.plugin_host.is_some() {
+            let rollback = if had_previous {
+                fs::rename(&backup, &host_target)
+            } else {
+                fs::remove_file(&host_target)
+            };
+            if let Err(e) = rollback {
+                warn!("Could not roll back the plugin host at {host_target:?}: {e}");
+            }
+        }
+        return Err(crate::Error::Update(format!("Self-replace failed: {e}")));
+    }
+
+    if had_previous && let Err(e) = fs::remove_file(&backup) {
+        // Windows: an old plugin host may still be running from it.
+        debug!("Left {backup:?} for the next update: {e}");
+    }
     Ok(())
 }
 
@@ -462,18 +709,24 @@ pub async fn download_and_apply(
     sha256_url: Option<&str>,
     sig_url: Option<&str>,
     expected_version: &str,
+    product: Product,
 ) -> Result<(), crate::Error> {
     verify_upgrade_only(expected_version)?;
     let asset = ReleaseAsset {
-        name: "update".into(),
+        name: product.archive_name(),
         browser_download_url: download_url.to_string(),
         size: 0,
     };
     let path = download_and_verify(client, &asset, sha256_url, sig_url).await?;
-    apply_update(&path)?;
+    let applied = tokio::task::spawn_blocking({
+        let path = path.clone();
+        move || apply_update(&path, product)
+    })
+    .await
+    .map_err(|e| crate::Error::Update(format!("update task failed: {e}")));
     // Clean up temp file
-    let _ = std::fs::remove_file(&path);
-    Ok(())
+    let _ = fs::remove_file(&path);
+    applied?
 }
 
 #[cfg(test)]
@@ -548,43 +801,60 @@ mod tests {
         semver::Version::parse(CURRENT_VERSION).expect("CURRENT_VERSION should be valid semver");
     }
 
+    fn asset(name: &str) -> ReleaseAsset {
+        ReleaseAsset {
+            name: name.into(),
+            browser_download_url: format!("https://github.com/x/{name}"),
+            size: 1,
+        }
+    }
+
     #[test]
-    fn test_select_asset() {
-        let binary_name = format!(
-            "amigo-server-{}-{}",
-            std::env::consts::OS,
-            std::env::consts::ARCH
-        );
-        // Put the sibling `.sig` and `.sha256` assets *before* the binary so a
-        // naive first-match that only excludes `.sha256` would wrongly pick the
-        // `.sig` — this guards against that ordering bug.
+    fn select_asset_picks_the_products_archive() {
+        let server = Product::Server.archive_name();
+        let cli = Product::Cli.archive_name();
+        // Siblings and the other product come first, so a prefix match or a
+        // first-match on the platform suffix would pick the wrong asset.
         let release = ReleaseInfo {
             tag_name: "v0.2.0".into(),
             name: None,
             body: None,
             assets: vec![
-                ReleaseAsset {
-                    name: format!("{binary_name}.sig"),
-                    browser_download_url: "https://example.com/binary.sig".into(),
-                    size: 64,
-                },
-                ReleaseAsset {
-                    name: format!("{binary_name}.sha256"),
-                    browser_download_url: "https://example.com/binary.sha256".into(),
-                    size: 64,
-                },
-                ReleaseAsset {
-                    name: binary_name.clone(),
-                    browser_download_url: "https://example.com/binary".into(),
-                    size: 1024,
-                },
+                asset(&format!("{server}.sig")),
+                asset(&format!("{server}.sha256")),
+                asset(&format!("{cli}.sig")),
+                asset(&server),
+                asset(&cli),
             ],
         };
 
-        let asset = select_asset(&release).expect("binary asset must be selected");
-        assert_eq!(asset.name, binary_name);
-        assert!(!asset.name.ends_with(".sha256"));
-        assert!(!asset.name.ends_with(".sig"));
+        assert_eq!(
+            select_asset(&release, Product::Server).unwrap().name,
+            server
+        );
+        assert_eq!(select_asset(&release, Product::Cli).unwrap().name, cli);
+
+        let server_only = ReleaseInfo {
+            assets: vec![asset(&server)],
+            ..release
+        };
+        assert!(select_asset(&server_only, Product::Cli).is_none());
+    }
+
+    #[test]
+    fn archive_names_match_the_release_workflow() {
+        assert_eq!(
+            archive_name(Product::Server, "linux", "x86_64"),
+            "amigo-server-linux-x86_64.tar.gz"
+        );
+        assert_eq!(
+            archive_name(Product::Cli, "macos", "aarch64"),
+            "amigo-dl-macos-aarch64.tar.gz"
+        );
+        assert_eq!(
+            archive_name(Product::Cli, "windows", "x86_64"),
+            "amigo-dl-windows-x86_64.zip"
+        );
     }
 
     #[tokio::test]
@@ -659,6 +929,19 @@ mod tests {
             verify_ed25519(b"x", "abcd", &pk).is_err(),
             "short sig must fail"
         );
+    }
+
+    #[test]
+    fn signatures_from_the_release_script_verify() {
+        // Produced by `scripts/sign-update-archives.sh` with the seed of
+        // `test_keypair` over a file holding exactly this payload. Pins the
+        // script's output format (hex of the raw 64-byte signature) to what
+        // the updater verifies.
+        let (_sk, pk) = test_keypair();
+        let sig = "ae059b1733a2e7d7dd4ec8a45c11d2d461593784b7ae84c6c1319b76889c0b65\
+                   fe6774a7374e460216a2ed88313088d7288171d2c6b9410d7673b88fb6ba5609";
+        verify_ed25519(b"amigo update archive fixture", sig, &pk)
+            .expect("script signature must verify");
     }
 
     // ---- Host pinning ----
@@ -745,5 +1028,246 @@ mod tests {
         .await
         .expect_err("must reject a non-GitHub download host");
         assert_matches!(err, crate::Error::Update(_));
+    }
+
+    // ---- Archive extraction ----
+
+    fn exe(stem: &str) -> String {
+        format!("{stem}{}", std::env::consts::EXE_SUFFIX)
+    }
+
+    fn tar_header(name: &str, size: usize, kind: tar::EntryType) -> tar::Header {
+        let mut header = tar::Header::new_gnu();
+        header.set_size(size as u64);
+        header.set_mode(0o755);
+        header.set_entry_type(kind);
+        // Raw name, so tests can also write `../` paths that `set_path` rejects.
+        header.as_old_mut().name[..name.len()].copy_from_slice(name.as_bytes());
+        header.set_cksum();
+        header
+    }
+
+    fn tar_gz(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(
+            Vec::new(),
+            flate2::Compression::fast(),
+        ));
+        for (name, data) in entries {
+            let header = tar_header(name, data.len(), tar::EntryType::Regular);
+            builder.append(&header, *data).unwrap();
+        }
+        builder.into_inner().unwrap().finish().unwrap()
+    }
+
+    fn zip_archive(entries: &[(&str, &[u8])]) -> Vec<u8> {
+        use std::io::Write;
+        let mut writer = zip::ZipWriter::new(io::Cursor::new(Vec::new()));
+        for (name, data) in entries {
+            writer
+                .start_file(*name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            writer.write_all(data).unwrap();
+        }
+        writer.finish().unwrap().into_inner()
+    }
+
+    /// Extract `bytes` as an `amigo-dl` update. The staging directory is
+    /// `<tmp>/staging`, so a `../evil` entry would land at `<tmp>/evil`.
+    fn extract(bytes: &[u8]) -> (tempfile::TempDir, Result<Staged, crate::Error>) {
+        let tmp = tempfile::tempdir().unwrap();
+        let archive = tmp.path().join("update");
+        fs::write(&archive, bytes).unwrap();
+        let dest = tmp.path().join("staging");
+        fs::create_dir(&dest).unwrap();
+        let staged = extract_update(&archive, &dest, Product::Cli);
+        (tmp, staged)
+    }
+
+    fn staged_names(tmp: &tempfile::TempDir) -> Vec<String> {
+        let mut names: Vec<String> = fs::read_dir(tmp.path().join("staging"))
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect();
+        names.sort();
+        names
+    }
+
+    #[test]
+    fn extracts_binaries_from_tar_gz() {
+        let bin = exe("amigo-dl");
+        let host = exe(PLUGIN_HOST_NAME);
+        let (_tmp, staged) = extract(&tar_gz(&[
+            (bin.as_str(), b"new-cli"),
+            (host.as_str(), b"new-host"),
+        ]));
+        let staged = staged.unwrap();
+        assert_eq!(fs::read(&staged.binary).unwrap(), b"new-cli");
+        assert_eq!(
+            fs::read(staged.plugin_host.as_ref().unwrap()).unwrap(),
+            b"new-host"
+        );
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&staged.binary).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o755);
+        }
+    }
+
+    #[test]
+    fn extracts_binaries_from_zip() {
+        let bin = exe("amigo-dl");
+        let host = exe(PLUGIN_HOST_NAME);
+        let (_tmp, staged) = extract(&zip_archive(&[
+            (bin.as_str(), b"new-cli"),
+            (host.as_str(), b"new-host"),
+        ]));
+        let staged = staged.unwrap();
+        assert_eq!(fs::read(&staged.binary).unwrap(), b"new-cli");
+        assert_eq!(
+            fs::read(staged.plugin_host.as_ref().unwrap()).unwrap(),
+            b"new-host"
+        );
+    }
+
+    #[test]
+    fn unknown_entries_are_ignored_and_never_written() {
+        let bin = exe("amigo-dl");
+        let nested = format!("sub/{bin}");
+        let dotted = format!("./{bin}");
+        let entries: [(&str, &[u8]); 5] = [
+            ("../evil", b"x"),
+            (nested.as_str(), b"nested"),
+            ("README.md", b"readme"),
+            (&exe("amigo-server"), b"server"),
+            (dotted.as_str(), b"new-cli"),
+        ];
+
+        for bytes in [tar_gz(&entries), zip_archive(&entries[1..])] {
+            let (tmp, staged) = extract(&bytes);
+            let staged = staged.unwrap();
+            assert_eq!(fs::read(&staged.binary).unwrap(), b"new-cli");
+            assert!(staged.plugin_host.is_none(), "host is optional");
+            assert_eq!(staged_names(&tmp), std::slice::from_ref(&bin));
+            assert!(!tmp.path().join("evil").exists());
+        }
+
+        // zip's own traversal entry: skipped via `enclosed_name`.
+        let (tmp, staged) = extract(&zip_archive(&[("../evil", b"x"), (bin.as_str(), b"b")]));
+        staged.unwrap();
+        assert!(!tmp.path().join("evil").exists());
+    }
+
+    #[test]
+    fn symlink_with_a_whitelisted_name_is_rejected() {
+        let bin = exe("amigo-dl");
+        let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(
+            Vec::new(),
+            flate2::Compression::fast(),
+        ));
+        let mut header = tar_header(&bin, 0, tar::EntryType::Symlink);
+        header.set_link_name("/bin/sh").unwrap();
+        header.set_cksum();
+        builder.append(&header, io::empty()).unwrap();
+        let bytes = builder.into_inner().unwrap().finish().unwrap();
+
+        let (tmp, staged) = extract(&bytes);
+        let err = staged.unwrap_err();
+        assert!(err.to_string().contains("not a regular file"), "{err}");
+        assert!(staged_names(&tmp).is_empty());
+    }
+
+    #[test]
+    fn duplicate_entries_are_rejected() {
+        let bin = exe("amigo-dl");
+        let (_tmp, staged) = extract(&tar_gz(&[(bin.as_str(), b"one"), (bin.as_str(), b"two")]));
+        let err = staged.unwrap_err();
+        assert!(err.to_string().contains("more than once"), "{err}");
+    }
+
+    #[test]
+    fn missing_product_binary_is_an_error() {
+        // The server archive does not update the CLI.
+        let (_tmp, staged) = extract(&tar_gz(&[
+            (exe("amigo-server").as_str(), b"server"),
+            (exe(PLUGIN_HOST_NAME).as_str(), b"host"),
+        ]));
+        let err = staged.unwrap_err();
+        assert!(err.to_string().contains("does not contain"), "{err}");
+    }
+
+    #[test]
+    fn raw_binary_is_not_an_archive() {
+        let (_tmp, staged) = extract(b"\x7fELF\x02\x01\x01 not an archive");
+        let err = staged.unwrap_err();
+        assert!(err.to_string().contains("neither"), "{err}");
+    }
+
+    // ---- Installing the pair ----
+
+    fn stage(root: &Path, host: Option<&[u8]>) -> Staged {
+        let staging = root.join("staging");
+        fs::create_dir_all(&staging).unwrap();
+        let binary = staging.join(exe("amigo-dl"));
+        fs::write(&binary, b"new-cli").unwrap();
+        let plugin_host = host.map(|bytes| {
+            let path = staging.join(exe(PLUGIN_HOST_NAME));
+            fs::write(&path, bytes).unwrap();
+            path
+        });
+        Staged {
+            binary,
+            plugin_host,
+        }
+    }
+
+    #[test]
+    fn install_replaces_plugin_host_then_binary() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("bin");
+        fs::create_dir(&dir).unwrap();
+        let host_target = dir.join(exe(PLUGIN_HOST_NAME));
+        let backup = dir.join(format!("{PLUGIN_HOST_NAME}.old"));
+        fs::write(&host_target, b"old-host").unwrap();
+        fs::write(&backup, b"stale backup").unwrap();
+        let staged = stage(tmp.path(), Some(b"new-host"));
+
+        install(&staged, &dir, |binary| {
+            assert_eq!(fs::read(&host_target).unwrap(), b"new-host", "host first");
+            fs::copy(binary, dir.join(exe("amigo-dl"))).map(|_| ())
+        })
+        .unwrap();
+
+        assert_eq!(fs::read(&host_target).unwrap(), b"new-host");
+        assert_eq!(fs::read(dir.join(exe("amigo-dl"))).unwrap(), b"new-cli");
+        assert!(!backup.exists());
+    }
+
+    #[test]
+    fn failed_binary_replace_restores_the_old_plugin_host() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("bin");
+        fs::create_dir(&dir).unwrap();
+        let host_target = dir.join(exe(PLUGIN_HOST_NAME));
+        fs::write(&host_target, b"old-host").unwrap();
+        let staged = stage(tmp.path(), Some(b"new-host"));
+
+        let err = install(&staged, &dir, |_| Err(io::Error::other("busy"))).unwrap_err();
+
+        assert!(err.to_string().contains("busy"), "{err}");
+        assert_eq!(fs::read(&host_target).unwrap(), b"old-host");
+        assert!(!dir.join(format!("{PLUGIN_HOST_NAME}.old")).exists());
+    }
+
+    #[test]
+    fn failed_binary_replace_removes_a_new_plugin_host() {
+        let tmp = tempfile::tempdir().unwrap();
+        let dir = tmp.path().join("bin");
+        fs::create_dir(&dir).unwrap();
+        let staged = stage(tmp.path(), Some(b"new-host"));
+
+        install(&staged, &dir, |_| Err(io::Error::other("busy"))).unwrap_err();
+
+        assert!(!dir.join(exe(PLUGIN_HOST_NAME)).exists());
     }
 }

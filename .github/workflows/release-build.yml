@@ -297,6 +297,15 @@ jobs:
       - name: List artifacts
         run: find artifacts -type f | sort
 
+      # The self-updater (amigo-server, amigo-dl) refuses a release without a
+      # `.sig` next to its archive. The secret holds the private seed matching
+      # AMIGO_UPDATE_PUBKEY_HEX; the script fails if they differ.
+      # See docs/specs/self-update.md.
+      - name: Sign CLI and server archives
+        env:
+          AMIGO_UPDATE_SIGNING_KEY: ${{ secrets.AMIGO_UPDATE_SIGNING_KEY }}
+        run: scripts/sign-update-archives.sh artifacts
+
       - name: Generate Tauri updater JSON
         run: |
           VERSION="${{ inputs.version }}"

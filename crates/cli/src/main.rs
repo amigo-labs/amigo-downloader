@@ -1265,8 +1265,12 @@ async fn main() -> anyhow::Result<()> {
 
                 println!("Checking for updates...");
 
-                match amigo_core::updater::check_for_update(&client, &config.update.github_repo)
-                    .await
+                match amigo_core::updater::check_for_update(
+                    &client,
+                    &config.update.github_repo,
+                    amigo_core::updater::Product::Cli,
+                )
+                .await
                 {
                     Ok(amigo_core::updater::CoreUpdateStatus::UpdateAvailable {
                         current,
@@ -1293,9 +1297,12 @@ async fn main() -> anyhow::Result<()> {
                     .build()?;
                 let config = Config::load_auto();
 
-                let status =
-                    amigo_core::updater::check_for_update(&client, &config.update.github_repo)
-                        .await?;
+                let status = amigo_core::updater::check_for_update(
+                    &client,
+                    &config.update.github_repo,
+                    amigo_core::updater::Product::Cli,
+                )
+                .await?;
 
                 match status {
                     amigo_core::updater::CoreUpdateStatus::UpdateAvailable {
@@ -1318,6 +1325,7 @@ async fn main() -> anyhow::Result<()> {
                             sha256_url.as_deref(),
                             sig_url.as_deref(),
                             &latest,
+                            amigo_core::updater::Product::Cli,
                         )
                         .await?;
                         println!("Update applied! Restart amigo-dl to use v{latest}.");

@@ -102,6 +102,7 @@ async fn check_updates(
     let core_status = updater::check_for_update(
         &state.http_client,
         &state.coordinator.config().await.update.github_repo,
+        updater::Product::Server,
     )
     .await;
 
@@ -159,6 +160,7 @@ async fn apply_core_update(
     let status = updater::check_for_update(
         &state.http_client,
         &state.coordinator.config().await.update.github_repo,
+        updater::Product::Server,
     )
     .await
     .map_err(|e| {
@@ -203,6 +205,7 @@ async fn apply_core_update(
                     sha256_url.as_deref(),
                     sig_url.as_deref(),
                     &ver,
+                    updater::Product::Server,
                 )
                 .await
                 {

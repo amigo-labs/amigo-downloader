@@ -206,9 +206,11 @@ network reach as the daemon until SH-7b lands.
   cache starts empty, so "cold" no longer benefits from an earlier run. A
   daemon pays this once at startup. Each host call costs ~0.2 ms of IPC,
   which is noise next to the network latency of a real resolve.
-- The self-updater replaces only the daemon binary. A new daemon refuses an
-  `amigo-plugin-host` that speaks another protocol version (handshake), so
-  plugins fail closed with a clear error until the plugin host is updated too.
+- The self-updater installs `amigo-plugin-host` together with the binary from
+  the same release archive (`docs/specs/self-update.md`). A daemon still
+  running the old version after an update refuses a respawned host that
+  speaks another protocol version (handshake), so plugins fail closed with a
+  clear error until the restart the update asks for.
 - A compromised child could return poisoned bytecode for the cache. That
   bytecode is only ever evaluated in a child again, so it adds persistence but
   no new reach. The parent re-validates everything it trusts from a manifest
