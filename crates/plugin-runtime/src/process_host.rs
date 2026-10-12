@@ -405,8 +405,15 @@ impl Child {
             );
         }
 
-        let frame = ipc::encode_frame(&ToChild::Request { id, body })
-            .map_err(|e| crate::Error::Execution(format!("cannot encode request: {e}")))?;
+        let frame = match ipc::encode_frame(&ToChild::Request { id, body }) {
+            Ok(frame) => frame,
+            Err(e) => {
+                self.shared.lock().pending.remove(&id);
+                return Err(crate::Error::Execution(format!(
+                    "cannot encode request: {e}"
+                )));
+            }
+        };
         if self.writer.send(frame).is_err() {
             self.shared.lock().pending.remove(&id);
             return Err(crate::Error::HostCrashed("plugin host input closed".into()));

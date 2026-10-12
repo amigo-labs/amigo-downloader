@@ -441,69 +441,49 @@ impl PluginLoader {
         host.reset_request_count().await;
 
         let runtime = Arc::clone(&self.runtime);
+        let plugins = Arc::clone(&self.plugins);
+        let notifier = self.host_api.clone();
         let id = plugin_id.to_string();
-        let result = tokio::spawn(async move {
-            let child = runtime.process.child().await?;
-            if slot.generation != child.generation {
-                debug!(
-                    "Re-loading plugin {id} into plugin host generation {}",
-                    child.generation
-                );
-                let prepared = runtime.load(&source).await?;
-                if prepared.meta.id != id {
-                    prepared.child.drop_handle(prepared.handle);
-                    return Err(crate::Error::Execution(format!(
-                        "plugin {id} re-loaded as {:?}",
-                        prepared.meta.id
+        tokio::spawn(async move {
+            let result = async {
+                let child = runtime.process.child().await?;
+                if slot.generation != child.generation {
+                    debug!(
+                        "Re-loading plugin {id} into plugin host generation {}",
+                        child.generation
+                    );
+                    let prepared = runtime.load(&source).await?;
+                    if prepared.meta.id != id {
+                        prepared.child.drop_handle(prepared.handle);
+                        return Err(crate::Error::Execution(format!(
+                            "plugin {id} re-loaded as {:?}",
+                            prepared.meta.id
+                        )));
+                    }
+                    prepared.child.register(prepared.handle, &id, host);
+                    slot.generation = prepared.child.generation;
+                    slot.handle = prepared.handle;
+                }
+                let grace = runtime.process.watchdog_grace();
+                let child = runtime.process.child().await?;
+                if child.generation != slot.generation {
+                    return Err(crate::Error::HostCrashed(format!(
+                        "plugin host restarted while re-loading plugin {id}"
                     )));
                 }
-                prepared.child.register(prepared.handle, &id, host);
-                slot.generation = prepared.child.generation;
-                slot.handle = prepared.handle;
+                child
+                    .request(request(slot.handle), &id, budget, grace)
+                    .await
             }
-            let grace = runtime.process.watchdog_grace();
-            let child = runtime.process.child().await?;
-            if child.generation != slot.generation {
-                return Err(crate::Error::HostCrashed(format!(
-                    "plugin host restarted while re-loading plugin {id}"
-                )));
-            }
-            child
-                .request(request(slot.handle), &id, budget, grace)
-                .await
+            .await;
+            // Still holding the slot: health updates stay in call order, and
+            // a dropped caller does not skip them.
+            record_health(&plugins, &notifier, &id, &result).await;
+            drop(slot);
+            result
         })
         .await
-        .map_err(|e| crate::Error::Execution(format!("plugin task failed: {e}")))?;
-
-        self.record_health(plugin_id, &result).await;
-        result
-    }
-
-    /// Mark a plugin `failing` when the plugin host died under it; clear the
-    /// mark on its next successful call.
-    async fn record_health(&self, plugin_id: &str, result: &Result<Payload, crate::Error>) {
-        let crashed = matches!(result, Err(crate::Error::HostCrashed(_)));
-        let changed = {
-            let plugins = self.plugins.read().await;
-            plugins
-                .iter()
-                .find(|p| p.meta.id == plugin_id)
-                .is_some_and(|p| p.meta.failing != crashed)
-        };
-        if crashed && let Err(e) = result {
-            self.host_api.notify(
-                plugin_id,
-                "Plugin crashed",
-                &format!("{e}. The plugin host was restarted."),
-            );
-        }
-        if !changed || (!crashed && result.is_err()) {
-            return;
-        }
-        let mut plugins = self.plugins.write().await;
-        if let Some(p) = plugins.iter_mut().find(|p| p.meta.id == plugin_id) {
-            p.meta.failing = crashed;
-        }
+        .map_err(|e| crate::Error::Execution(format!("plugin task failed: {e}")))?
     }
 
     fn execution_timeout(&self) -> Duration {
@@ -704,6 +684,41 @@ impl PluginLoader {
                 warn!("Failed to load plugin {:?}: {e}", path);
             }
         }
+    }
+}
+
+/// Mark a plugin `failing` when the plugin host died under it; clear the
+/// mark on its next successful call.
+async fn record_health(
+    plugins: &RwLock<Vec<LoadedPlugin>>,
+    notifier: &HostApi,
+    plugin_id: &str,
+    result: &Result<Payload, crate::Error>,
+) {
+    let crashed = matches!(result, Err(crate::Error::HostCrashed(_)));
+    if crashed && let Err(e) = result {
+        notifier.notify(
+            plugin_id,
+            "Plugin crashed",
+            &format!("{e}. The plugin host restarts on the next plugin call."),
+        );
+    }
+    if !crashed && result.is_err() {
+        return;
+    }
+    let changed = {
+        let plugins = plugins.read().await;
+        plugins
+            .iter()
+            .find(|p| p.meta.id == plugin_id)
+            .is_some_and(|p| p.meta.failing != crashed)
+    };
+    if !changed {
+        return;
+    }
+    let mut plugins = plugins.write().await;
+    if let Some(p) = plugins.iter_mut().find(|p| p.meta.id == plugin_id) {
+        p.meta.failing = crashed;
     }
 }
 

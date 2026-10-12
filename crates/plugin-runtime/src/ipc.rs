@@ -23,9 +23,15 @@ use crate::types::PluginMeta;
 /// refuses a child that reports a different version.
 pub const PROTOCOL_VERSION: u32 = 1;
 
-/// Largest accepted frame. Covers a 32 MiB HTTP body (the host-side cap)
-/// after JSON escaping, or a base64 `httpGetBinary` payload of the same size.
-pub const MAX_FRAME_BYTES: usize = 64 * 1024 * 1024;
+/// Largest accepted frame. An HTTP body (up to the host-side cap of 32 MiB)
+/// is JSON-escaped twice on its way to the plugin: once inside the response
+/// object `HostApi::dispatch` returns, once more inside the frame. A control
+/// byte grows to `\\u00XX` (7 bytes) that way, so the worst case is 7× the
+/// body, plus headers. Readers grow their buffer as bytes arrive, so the cap
+/// bounds a runaway or lying peer without pre-allocating it.
+pub const MAX_FRAME_BYTES: usize = 256 * 1024 * 1024;
+
+const _: () = assert!(MAX_FRAME_BYTES >= 7 * crate::host_api::MAX_RESPONSE_BODY_BYTES + (1 << 20));
 
 /// Opaque id of one loaded plugin context inside the child.
 pub type Handle = u64;
@@ -168,8 +174,11 @@ fn read_body<R: Read>(r: &mut R, len: u32) -> io::Result<Vec<u8>> {
             format!("frame of {len} bytes exceeds {MAX_FRAME_BYTES}"),
         ));
     }
-    let mut body = vec![0u8; len];
-    r.read_exact(&mut body)?;
+    let mut body = Vec::new();
+    r.take(len as u64).read_to_end(&mut body)?;
+    if body.len() != len {
+        return Err(io::ErrorKind::UnexpectedEof.into());
+    }
     Ok(body)
 }
 
@@ -194,8 +203,11 @@ where
             format!("frame of {len} bytes exceeds {MAX_FRAME_BYTES}"),
         ));
     }
-    let mut body = vec![0u8; len];
-    r.read_exact(&mut body).await?;
+    let mut body = Vec::new();
+    r.take(len as u64).read_to_end(&mut body).await?;
+    if body.len() != len {
+        return Err(io::ErrorKind::UnexpectedEof.into());
+    }
     serde_json::from_slice(&body)
         .map(Some)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))
@@ -254,6 +266,16 @@ mod tests {
         let len = u32::try_from(MAX_FRAME_BYTES + 1).unwrap().to_be_bytes();
         let err = read_frame::<_, ToChild>(&mut len.as_slice()).unwrap_err();
         assert_eq!(err.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn a_large_length_header_does_not_preallocate() {
+        // Claims 200 MiB (within the cap) but carries 3 bytes: the reader
+        // grows its buffer with the data and fails on the short body.
+        let mut buf = (200u32 * 1024 * 1024).to_be_bytes().to_vec();
+        buf.extend_from_slice(b"{}x");
+        let err = read_frame::<_, ToChild>(&mut buf.as_slice()).unwrap_err();
+        assert_eq!(err.kind(), io::ErrorKind::UnexpectedEof);
     }
 
     #[test]

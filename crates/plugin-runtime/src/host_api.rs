@@ -80,7 +80,7 @@ const MAX_PLUGIN_REDIRECTS: usize = 10;
 /// Cap on a plugin HTTP response body buffered on the host heap. The 64 MiB
 /// QuickJS memory limit does not cover bytes allocated Rust-side (in `String` /
 /// `Bytes`) before they reach JS, so we bound them here.
-const MAX_RESPONSE_BODY_BYTES: usize = 32 * 1024 * 1024;
+pub(crate) const MAX_RESPONSE_BODY_BYTES: usize = 32 * 1024 * 1024;
 
 fn enforce_input_limit(field: &str, len: usize, max: usize) -> Result<(), String> {
     (len <= max).ok_or_else(|| format!("{field} too large ({len} bytes; limit {max} bytes)"))

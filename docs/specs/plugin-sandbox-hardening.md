@@ -168,7 +168,9 @@ network reach as the daemon until SH-7b lands.
   parent route; no engine type appears in a signature.
   Test: `table_covers_every_function_the_shim_uses`.
 - [x] Protocol: length-prefixed (u32 BE) JSON over the child's stdin/stdout,
-  max frame 64 MiB, a `hello` handshake that pins the protocol version.
+  max frame 256 MiB (a 32 MiB HTTP body JSON-escaped twice is at worst 7×;
+  readers grow their buffer with the data instead of pre-allocating), a
+  `hello` handshake that pins the protocol version.
   Tests: `ipc::tests::*`.
 - [x] Every existing plugin test passes unchanged against the new boundary.
 - [x] A child that exits (crash, abort, `SIGKILL`) fails only the in-flight

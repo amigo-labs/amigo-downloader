@@ -1,7 +1,7 @@
 //! Tests for the out-of-process plugin host (issue #79, SH-7a): plugin JS
 //! runs in `amigo-plugin-host`, a dying child fails only the calls it was
 //! running, and the daemon keeps every piece of state that must survive it.
-#![cfg(unix)]
+//! Tests that kill or stop the child use Unix signals and are Unix-only.
 
 use std::path::Path;
 use std::sync::Arc;
@@ -49,6 +49,7 @@ fn limits(exec_secs: u64) -> SandboxLimits {
     }
 }
 
+#[cfg(unix)]
 fn signal(pid: u32, sig: libc::c_int) {
     let pid = libc::pid_t::try_from(pid).unwrap();
     // SAFETY: plain kill(2) on a child process this test spawned.
@@ -84,6 +85,7 @@ async fn daemon_runs_plugins_in_a_child_process() {
     );
 }
 
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn killed_child_fails_the_call_and_marks_the_plugin_failing() {
     let tmp = tempfile::tempdir().unwrap();
@@ -138,6 +140,7 @@ async fn killed_child_fails_the_call_and_marks_the_plugin_failing() {
     assert!(!loader.get_plugin_meta("flaky").await.unwrap().failing);
 }
 
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn plugin_state_survives_a_child_restart() {
     let tmp = tempfile::tempdir().unwrap();
@@ -185,6 +188,7 @@ async fn plugin_state_survives_a_child_restart() {
     assert_ne!(loader.plugin_host_pid().await, Some(pid));
 }
 
+#[cfg(unix)]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn stopped_child_is_killed_by_the_watchdog() {
     let tmp = tempfile::tempdir().unwrap();
