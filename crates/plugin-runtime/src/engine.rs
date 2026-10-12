@@ -711,7 +711,7 @@ JSON.stringify(__test_results);
 }
 
 /// Results from running a plugin spec file.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct TestResults {
     pub passed: u32,
     pub failed: u32,
@@ -719,7 +719,7 @@ pub struct TestResults {
     pub results: Vec<SingleTestResult>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SingleTestResult {
     pub name: String,
     pub passed: bool,

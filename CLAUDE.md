@@ -138,7 +138,12 @@ amigo-downloader/
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── engine.rs        # QuickJS VM execution
-│   │       ├── host_api.rs      # amigo.* host functions
+│   │       ├── host_api.rs      # amigo.* host functions (daemon side)
+│   │       ├── host_fns.rs      # Host-function table + QuickJS adapter
+│   │       ├── ipc.rs           # Daemon ↔ plugin host wire protocol
+│   │       ├── plugin_host.rs   # Child process that runs plugin JS
+│   │       ├── process_host.rs  # Spawns/supervises the plugin host
+│   │       ├── bin/amigo-plugin-host.rs
 │   │       ├── loader.rs
 │   │       ├── registry.rs      # Plugin marketplace
 │   │       ├── sandbox.rs
@@ -393,7 +398,7 @@ module.exports = {
 } satisfies AmigoPlugin;
 ```
 
-Wichtig: `resolve()` und alle Plugin-Callbacks sind **synchron**. Die Host-API blockiert intern (via `spawn_blocking` in der Runtime). Kein `await`, kein `async`.
+Wichtig: `resolve()` und alle Plugin-Callbacks sind **synchron**. Host-Calls blockieren im Plugin-Host-Prozess, bis der Daemon antwortet. Kein `await`, kein `async`.
 
 ### Host-API (`amigo.*`)
 
@@ -479,7 +484,7 @@ Für komplexere Plugins existiert das separate Package `@amigo/plugin-sdk` mit h
 - Kein direkter Netzwerk/Filesystem/Prozess-Zugang
 - Resource Limits: 30s Timeout (5s für Modul-Load), 64MB RAM pro Plugin (eigene QuickJS-Runtime pro Plugin), 20 HTTP-Requests, 1MB Storage
 - Netzwerk: optionale Domain-Allowlist `permissions.domains`, pro Request und Redirect-Hop erzwungen; Install/erweiternde Updates brauchen Bestätigung
-- Kein Sandbox-Boundary gegen QuickJS-Speicherfehler (läuft im Daemon-Prozess) — Prozess-Isolation: #79, siehe `docs/specs/plugin-sandbox-hardening.md`
+- Plugin-JS läuft im separaten Prozess `amigo-plugin-host` (liegt neben `amigo-server`/`amigo-dl`, Override: `AMIGO_PLUGIN_HOST_BIN`); ein QuickJS-Crash beendet nur diesen, die Queue läuft weiter. Noch keine OS-Sandbox um den Child (Landlock/seccomp etc.) — offen in #79, siehe `docs/specs/plugin-sandbox-hardening.md` (SH-7b)
 - Reload: Laden eines Plugins mit bekannter `id` ersetzt die alte Version (genutzt von Plugin-Updates); kein Filesystem-Watcher — nach manuellen Änderungen Server neu starten oder `amigo-dl plugins test` zum Iterieren nutzen
 
 ---

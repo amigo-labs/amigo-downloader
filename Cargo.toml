@@ -59,9 +59,9 @@ unchecked_time_subtraction = "warn"      # Instant - Duration can panic on under
 
 [workspace.dependencies]
 # Async runtime. Feature set is the union of what the member crates actually
-# use (rt-multi-thread is mandatory: plugin-runtime relies on block_in_place,
-# which panics on a current-thread runtime). This drops `process` and `io-std`
-# from the old `full`. Test builds restore `full` via dev-dependencies.
+# use. `process` spawns the out-of-process plugin host (#79). This drops
+# `io-std` from the old `full`. Test builds restore `full` via
+# dev-dependencies.
 tokio = { version = "1", features = [
     "rt",
     "rt-multi-thread",
@@ -72,6 +72,7 @@ tokio = { version = "1", features = [
     "time",
     "net",
     "signal",
+    "process",
 ] }
 
 # Serialization

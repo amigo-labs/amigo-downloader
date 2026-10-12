@@ -2,16 +2,17 @@
 //!
 //! All network/filesystem access is proxied through these functions.
 //! Plugins have NO direct access to the network or filesystem.
-//! Functions are registered under `globalThis.amigo.*` in each plugin context.
+//! [`crate::host_fns`] registers them under `globalThis.amigo.*`; the stateful
+//! ones run here, in the daemon, via [`HostApi::dispatch`].
 
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use std::sync::atomic::{AtomicU32, Ordering};
 
-use rquickjs::{Ctx, Function, Object, Value as JsValue};
 use tokio::sync::Mutex;
 
+use crate::host_fns::HostResult;
 use crate::permissions::DomainAllowlist;
 use tracing::{debug, error, info, warn};
 
@@ -79,7 +80,7 @@ const MAX_PLUGIN_REDIRECTS: usize = 10;
 /// Cap on a plugin HTTP response body buffered on the host heap. The 64 MiB
 /// QuickJS memory limit does not cover bytes allocated Rust-side (in `String` /
 /// `Bytes`) before they reach JS, so we bound them here.
-const MAX_RESPONSE_BODY_BYTES: usize = 32 * 1024 * 1024;
+pub(crate) const MAX_RESPONSE_BODY_BYTES: usize = 32 * 1024 * 1024;
 
 fn enforce_input_limit(field: &str, len: usize, max: usize) -> Result<(), String> {
     (len <= max).ok_or_else(|| format!("{field} too large ({len} bytes; limit {max} bytes)"))
@@ -495,7 +496,7 @@ impl HostApi {
 
     // --- Parsing helpers ---
 
-    pub fn regex_match(&self, pattern: &str, text: &str) -> Option<String> {
+    pub fn regex_match(pattern: &str, text: &str) -> Option<String> {
         if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
             return None;
         }
@@ -506,7 +507,7 @@ impl HostApi {
             .map(|m| m.as_str().to_string())
     }
 
-    pub fn regex_match_all(&self, pattern: &str, text: &str) -> Vec<String> {
+    pub fn regex_match_all(pattern: &str, text: &str) -> Vec<String> {
         if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
             return Vec::new();
         }
@@ -522,43 +523,43 @@ impl HostApi {
             .collect()
     }
 
-    pub fn json_parse(&self, text: &str) -> Result<serde_json::Value, String> {
+    pub fn json_parse(text: &str) -> Result<serde_json::Value, String> {
         serde_json::from_str(text).map_err(|e| e.to_string())
     }
 
-    pub fn base64_decode(&self, input: &str) -> Result<String, String> {
+    pub fn base64_decode(input: &str) -> Result<String, String> {
         let bytes = base64_decode_bytes(input)?;
         String::from_utf8(bytes).map_err(|e| e.to_string())
     }
 
-    pub fn base64_encode(&self, input: &str) -> String {
+    pub fn base64_encode(input: &str) -> String {
         base64_encode_bytes(input.as_bytes())
     }
 
     // --- Crypto functions ---
 
-    pub fn md5(&self, input: &str) -> String {
+    pub fn md5(input: &str) -> String {
         use md5::Digest;
         let mut hasher = md5::Md5::new();
         hasher.update(input.as_bytes());
         hex::encode(hasher.finalize())
     }
 
-    pub fn sha1(&self, input: &str) -> String {
+    pub fn sha1(input: &str) -> String {
         use sha1::Digest;
         let mut hasher = sha1::Sha1::new();
         hasher.update(input.as_bytes());
         hex::encode(hasher.finalize())
     }
 
-    pub fn sha256(&self, input: &str) -> String {
+    pub fn sha256(input: &str) -> String {
         use sha2::Digest;
         let mut hasher = sha2::Sha256::new();
         hasher.update(input.as_bytes());
         hex::encode(hasher.finalize())
     }
 
-    pub fn hmac_sha256(&self, key: &str, data: &str) -> Result<String, String> {
+    pub fn hmac_sha256(key: &str, data: &str) -> Result<String, String> {
         use hmac::{Hmac, Mac};
         type HmacSha256 = Hmac<sha2::Sha256>;
         let mut mac =
@@ -567,12 +568,7 @@ impl HostApi {
         Ok(hex::encode(mac.finalize().into_bytes()))
     }
 
-    pub fn aes_decrypt_cbc(
-        &self,
-        data_b64: &str,
-        key_hex: &str,
-        iv_hex: &str,
-    ) -> Result<String, String> {
+    pub fn aes_decrypt_cbc(data_b64: &str, key_hex: &str, iv_hex: &str) -> Result<String, String> {
         use aes::cipher::{BlockDecryptMut, KeyIvInit};
         type Aes128CbcDec = cbc::Decryptor<aes::Aes128>;
 
@@ -597,12 +593,7 @@ impl HostApi {
         Ok(base64_encode_bytes(decrypted))
     }
 
-    pub fn aes_encrypt_cbc(
-        &self,
-        data_b64: &str,
-        key_hex: &str,
-        iv_hex: &str,
-    ) -> Result<String, String> {
+    pub fn aes_encrypt_cbc(data_b64: &str, key_hex: &str, iv_hex: &str) -> Result<String, String> {
         use aes::cipher::{BlockEncryptMut, KeyIvInit};
         type Aes128CbcEnc = cbc::Encryptor<aes::Aes128>;
 
@@ -730,7 +721,7 @@ impl HostApi {
 
     // --- URL helpers ---
 
-    pub fn url_resolve(&self, base: &str, relative: &str) -> Result<String, String> {
+    pub fn url_resolve(base: &str, relative: &str) -> Result<String, String> {
         let base_url = url::Url::parse(base).map_err(|e| format!("Invalid base URL: {e}"))?;
         let resolved = base_url
             .join(relative)
@@ -738,7 +729,7 @@ impl HostApi {
         Ok(resolved.to_string())
     }
 
-    pub fn url_parse(&self, raw: &str) -> Result<serde_json::Value, String> {
+    pub fn url_parse(raw: &str) -> Result<serde_json::Value, String> {
         let u = url::Url::parse(raw).map_err(|e| format!("Invalid URL: {e}"))?;
         Ok(serde_json::json!({
             "protocol": u.scheme(),
@@ -751,7 +742,7 @@ impl HostApi {
         }))
     }
 
-    pub fn url_filename(&self, raw: &str) -> Option<String> {
+    pub fn url_filename(raw: &str) -> Option<String> {
         let path = raw.split('?').next().unwrap_or(raw);
         let segment = path.rsplit('/').next()?;
         if segment.is_empty() {
@@ -766,7 +757,7 @@ impl HostApi {
 
     // --- HTML helpers ---
 
-    pub fn html_query_all(&self, html: &str, selector: &str) -> Result<Vec<String>, String> {
+    pub fn html_query_all(html: &str, selector: &str) -> Result<Vec<String>, String> {
         use scraper::{Html, Selector};
         enforce_input_limit("html", html.len(), MAX_HTML_BYTES)?;
         let doc = Html::parse_document(html);
@@ -774,7 +765,7 @@ impl HostApi {
         Ok(doc.select(&sel).map(|el| el.html()).collect())
     }
 
-    pub fn html_query_text(&self, html: &str, selector: &str) -> Result<Option<String>, String> {
+    pub fn html_query_text(html: &str, selector: &str) -> Result<Option<String>, String> {
         use scraper::{Html, Selector};
         enforce_input_limit("html", html.len(), MAX_HTML_BYTES)?;
         let doc = Html::parse_document(html);
@@ -786,7 +777,6 @@ impl HostApi {
     }
 
     pub fn html_query_attr(
-        &self,
         html: &str,
         selector: &str,
         attr: &str,
@@ -801,7 +791,7 @@ impl HostApi {
             .and_then(|el| el.value().attr(attr).map(|s| s.to_string())))
     }
 
-    pub fn html_search_meta(&self, html: &str, names: &[String]) -> Option<String> {
+    pub fn html_search_meta(html: &str, names: &[String]) -> Option<String> {
         use scraper::{Html, Selector};
         if enforce_input_limit("html", html.len(), MAX_HTML_BYTES).is_err() {
             return None;
@@ -824,7 +814,7 @@ impl HostApi {
         None
     }
 
-    pub fn html_extract_title(&self, html: &str) -> Option<String> {
+    pub fn html_extract_title(html: &str) -> Option<String> {
         use scraper::{Html, Selector};
         if enforce_input_limit("html", html.len(), MAX_HTML_BYTES).is_err() {
             return None;
@@ -836,7 +826,7 @@ impl HostApi {
             .map(|el| el.text().collect::<String>())
     }
 
-    pub fn html_hidden_inputs(&self, html: &str) -> HashMap<String, String> {
+    pub fn html_hidden_inputs(html: &str) -> HashMap<String, String> {
         use scraper::{Html, Selector};
         if enforce_input_limit("html", html.len(), MAX_HTML_BYTES).is_err() {
             return HashMap::new();
@@ -854,7 +844,7 @@ impl HostApi {
             .collect()
     }
 
-    pub fn search_json(&self, start_pattern: &str, html: &str) -> Option<String> {
+    pub fn search_json(start_pattern: &str, html: &str) -> Option<String> {
         if enforce_input_limit("search_json html", html.len(), MAX_HTML_BYTES).is_err() {
             return None;
         }
@@ -908,7 +898,7 @@ impl HostApi {
 
     // --- Additional regex helpers ---
 
-    pub fn regex_replace(&self, pattern: &str, text: &str, replacement: &str) -> Option<String> {
+    pub fn regex_replace(pattern: &str, text: &str, replacement: &str) -> Option<String> {
         if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
             return None;
         }
@@ -916,14 +906,14 @@ impl HostApi {
         Some(re.replace_all(text, replacement).into_owned())
     }
 
-    pub fn regex_test(&self, pattern: &str, text: &str) -> bool {
+    pub fn regex_test(pattern: &str, text: &str) -> bool {
         if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
             return false;
         }
         compile_plugin_regex(pattern).is_ok_and(|re| re.is_match(text))
     }
 
-    pub fn regex_split(&self, pattern: &str, text: &str) -> Vec<String> {
+    pub fn regex_split(pattern: &str, text: &str) -> Vec<String> {
         if enforce_input_limit("regex text", text.len(), MAX_REGEX_TEXT_BYTES).is_err() {
             return vec![text.to_string()];
         }
@@ -935,7 +925,7 @@ impl HostApi {
 
     // --- Utility helpers ---
 
-    pub fn parse_duration(&self, input: &str) -> Option<f64> {
+    pub fn parse_duration(input: &str) -> Option<f64> {
         let input = input.trim();
 
         // ISO 8601: PT1H23M45S
@@ -964,7 +954,7 @@ impl HostApi {
         }
     }
 
-    pub fn sanitize_filename(&self, name: &str) -> String {
+    pub fn sanitize_filename(name: &str) -> String {
         let mut result: String = name
             .chars()
             .map(|c| match c {
@@ -1058,7 +1048,6 @@ impl HostApi {
 
     /// Get an attribute value from ALL elements matching a CSS selector.
     pub fn html_query_all_attrs(
-        &self,
         html: &str,
         selector: &str,
         attr: &str,
@@ -1126,894 +1115,125 @@ fn parse_iso8601_duration(input: &str) -> Option<f64> {
     Some(total)
 }
 
-/// JavaScript shim that wraps raw JSON-returning functions into object-returning ones.
-/// This is injected after all Rust functions are registered.
-const JS_SHIM: &str = r#"
-(function() {
-    var a = amigo;
+impl HostApi {
+    /// Execute one [`Route::Parent`](crate::host_fns::Route::Parent) host
+    /// function for `plugin_id`. Arguments and result follow the string
+    /// encoding of [`crate::host_fns`]; arity has already been checked against
+    /// the table by the caller.
+    ///
+    /// `self` must be scoped to the plugin (see [`HostApi::scoped`]) and
+    /// `plugin_id` bound by the daemon, never taken from the plugin: together
+    /// they select the request budget, domain allowlist, cookie jar and
+    /// storage namespace.
+    pub async fn dispatch(
+        &self,
+        plugin_id: &str,
+        name: &str,
+        args: &[Option<String>],
+    ) -> HostResult {
+        let arg = |i: usize| -> Result<&str, String> {
+            args.get(i)
+                .and_then(|a| a.as_deref())
+                .ok_or_else(|| format!("{name}: missing argument {i}"))
+        };
+        let headers = |i: usize| -> Option<HashMap<String, String>> {
+            args.get(i)
+                .and_then(|a| a.as_deref())
+                .and_then(|s| serde_json::from_str(s).ok())
+        };
+        let response = |status: u16, body: Option<String>, headers: HashMap<String, String>| {
+            let value = match body {
+                Some(body) => {
+                    serde_json::json!({ "status": status, "body": body, "headers": headers })
+                }
+                None => serde_json::json!({ "status": status, "headers": headers }),
+            };
+            Some(value.to_string())
+        };
 
-    // HTTP: wrap raw JSON-string returns into parsed objects
-    a.httpGet = function(url, opts) {
-        var hdr = (opts && opts.headers) ? JSON.stringify(opts.headers) : null;
-        return JSON.parse(a.__rawHttpGet(url, hdr));
-    };
-    a.httpPost = function(url, body, contentType, opts) {
-        var hdr = (opts && opts.headers) ? JSON.stringify(opts.headers) : null;
-        return JSON.parse(a.__rawHttpPost(url, body, contentType, hdr));
-    };
-    a.httpHead = function(url, opts) {
-        var hdr = (opts && opts.headers) ? JSON.stringify(opts.headers) : null;
-        return JSON.parse(a.__rawHttpHead(url, hdr));
-    };
-
-    // Convenience: GET and parse body as JSON
-    a.httpGetJson = function(url, opts) {
-        var resp = a.httpGet(url, opts);
-        resp.data = JSON.parse(resp.body);
-        return resp;
-    };
-
-    // HTTP extensions
-    a.httpPostForm = function(url, fields, opts) {
-        var hdr = (opts && opts.headers) ? JSON.stringify(opts.headers) : null;
-        return JSON.parse(a.__rawHttpPostForm(url, JSON.stringify(fields), hdr));
-    };
-    a.httpGetBinary = function(url, opts) {
-        var hdr = (opts && opts.headers) ? JSON.stringify(opts.headers) : null;
-        return a.__rawHttpGetBinary(url, hdr);
-    };
-    a.httpFollowRedirects = function(url, opts) {
-        var hdr = (opts && opts.headers) ? JSON.stringify(opts.headers) : null;
-        return a.__rawHttpFollowRedirects(url, hdr);
-    };
-
-    // HTML: batch attribute extraction
-    a.htmlQueryAllAttrs = function(html, selector, attr) {
-        return JSON.parse(a.__rawHtmlQueryAllAttrs(html, selector, attr));
-    };
-
-    // URL: parse returns object
-    a.urlParse = function(url) {
-        return JSON.parse(a.__rawUrlParse(url));
-    };
-
-    // HTML: arrays and objects
-    a.htmlQueryAll = function(html, selector) {
-        return JSON.parse(a.__rawHtmlQueryAll(html, selector));
-    };
-    a.htmlSearchMeta = function(html, names) {
-        var arr = Array.isArray(names) ? names : [names];
-        return a.__rawHtmlSearchMeta(html, JSON.stringify(arr));
-    };
-    a.htmlHiddenInputs = function(html) {
-        return JSON.parse(a.__rawHtmlHiddenInputs(html));
-    };
-    a.searchJson = function(startPattern, html) {
-        var s = a.__rawSearchJson(startPattern, html);
-        return s ? JSON.parse(s) : null;
-    };
-
-    // Regex: split returns array
-    a.regexSplit = function(pattern, text) {
-        return JSON.parse(a.__rawRegexSplit(pattern, text));
-    };
-
-    // Captcha: wraps raw function
-    a.solveCaptcha = function(imageUrl, captchaType) {
-        return a.__rawSolveCaptcha(imageUrl, captchaType || "image");
-    };
-
-    // Safe deep property access: amigo.traverse(obj, ["a", "b", "c"]) or amigo.traverse(obj, "a.b.c")
-    a.traverse = function(obj, path) {
-        if (typeof path === "string") path = path.split(".");
-        var cur = obj;
-        for (var i = 0; i < path.length; i++) {
-            if (cur == null) return null;
-            cur = cur[path[i]];
+        match name {
+            "__rawHttpGet" => {
+                let (status, body, hdrs) = self.http_get(arg(0)?, headers(1)).await?;
+                Ok(response(status, Some(body), hdrs))
+            }
+            "__rawHttpPost" => {
+                let (status, body, hdrs) = self
+                    .http_post(arg(0)?, arg(1)?, arg(2)?, headers(3))
+                    .await?;
+                Ok(response(status, Some(body), hdrs))
+            }
+            "__rawHttpHead" => {
+                let (status, hdrs) = self.http_head(arg(0)?, headers(1)).await?;
+                Ok(response(status, None, hdrs))
+            }
+            "__rawHttpPostForm" => {
+                let fields: HashMap<String, String> = serde_json::from_str(arg(1)?)
+                    .map_err(|e| format!("Invalid fields JSON: {e}"))?;
+                let (status, body, hdrs) =
+                    self.http_post_form(arg(0)?, &fields, headers(2)).await?;
+                Ok(response(status, Some(body), hdrs))
+            }
+            "__rawHttpGetBinary" => self.http_get_binary(arg(0)?, headers(1)).await.map(Some),
+            "__rawHttpFollowRedirects" => self
+                .http_follow_redirects(arg(0)?, headers(1))
+                .await
+                .map(Some),
+            "setCookie" => {
+                self.set_cookie(plugin_id, arg(0)?, arg(1)?, arg(2)?).await;
+                Ok(None)
+            }
+            "getCookie" => Ok(self.get_cookie(plugin_id, arg(0)?, arg(1)?).await),
+            "clearCookies" => {
+                self.clear_cookies(plugin_id, arg(0)?).await;
+                Ok(None)
+            }
+            "storageGet" => Ok(self.storage_get(plugin_id, arg(0)?).await),
+            "storageSet" => self
+                .storage_set(plugin_id, arg(0)?, arg(1)?)
+                .await
+                .map(|()| None),
+            "storageDelete" => {
+                self.storage_delete(plugin_id, arg(0)?).await;
+                Ok(None)
+            }
+            "logInfo" | "console.log" => {
+                self.log_info(plugin_id, arg(0)?);
+                Ok(None)
+            }
+            "logWarn" | "console.warn" => {
+                self.log_warn(plugin_id, arg(0)?);
+                Ok(None)
+            }
+            "logError" | "console.error" => {
+                self.log_error(plugin_id, arg(0)?);
+                Ok(None)
+            }
+            "logDebug" => {
+                self.log_debug(plugin_id, arg(0)?);
+                Ok(None)
+            }
+            "notify" => {
+                self.notify(plugin_id, arg(0)?, arg(1)?);
+                Ok(None)
+            }
+            "__rawSolveCaptcha" => {
+                let captcha_type = args
+                    .get(1)
+                    .cloned()
+                    .flatten()
+                    .unwrap_or_else(|| "image".into());
+                self.solve_captcha(plugin_id, "", arg(0)?, &captcha_type)
+                    .await
+                    .map(Some)
+            }
+            other => Err(format!("unknown host function: {other}")),
         }
-        return cur == null ? null : cur;
-    };
-})();
-"#;
-
-/// Register host API functions into a QuickJS context under `globalThis.amigo`.
-///
-/// Since QuickJS is synchronous, async host functions (HTTP) are exposed as
-/// synchronous blocking calls. The plugin JS code can call them directly
-/// without await — they block until the result is ready.
-///
-/// `PluginLoader` runs every plugin invocation on tokio's blocking pool
-/// (`spawn_blocking`), so these calls block a blocking-pool thread, never an
-/// async worker. On such a thread `block_in_place` is a no-op passthrough and
-/// `Handle::block_on` drives the future; the `block_in_place` wrapper keeps
-/// the bindings correct when a test drives a context directly from a
-/// multi-threaded runtime worker.
-///
-/// `host` must already be scoped to this plugin (see [`HostApi::scoped`]):
-/// its domain allowlist and request counter are captured here, like
-/// `plugin_id`, and are not reachable from JS.
-pub fn register_host_api(
-    ctx: &Ctx<'_>,
-    host: Arc<HostApi>,
-    plugin_id: &str,
-) -> Result<(), crate::Error> {
-    let global = ctx.globals();
-    let amigo = Object::new(ctx.clone())
-        .map_err(|e| crate::Error::Execution(format!("Failed to create amigo object: {e}")))?;
-
-    // --- Synchronous network wrappers ---
-    // We use tokio::runtime::Handle to block on async functions from sync
-    // QuickJS callbacks; see the function docs for why this is safe.
-    //
-    // Raw functions return JSON strings. A JS shim (injected below) wraps them
-    // into `amigo.httpGet(url, opts?)` that returns parsed objects directly.
-
-    let h = host.clone();
-    amigo
-        .set(
-            "__rawHttpGet",
-            Function::new(
-                ctx.clone(),
-                move |url: String, headers_json: Option<String>| -> rquickjs::Result<String> {
-                    let h = h.clone();
-                    let headers: Option<HashMap<String, String>> = headers_json
-                        .as_deref()
-                        .and_then(|s| serde_json::from_str(s).ok());
-                    let rt = tokio::runtime::Handle::current();
-                    let result = tokio::task::block_in_place(|| {
-                        rt.block_on(async { h.http_get(&url, headers).await })
-                    });
-                    match result {
-                        Ok((status, body, resp_headers)) => {
-                            let resp = serde_json::json!({
-                                "status": status,
-                                "body": body,
-                                "headers": resp_headers,
-                            });
-                            Ok(resp.to_string())
-                        }
-                        Err(e) => Err(rquickjs::Error::new_from_js_message("string", "Error", &e)),
-                    }
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "__rawHttpPost",
-            Function::new(
-                ctx.clone(),
-                move |url: String,
-                      body: String,
-                      content_type: String,
-                      headers_json: Option<String>|
-                      -> rquickjs::Result<String> {
-                    let h = h.clone();
-                    let headers: Option<HashMap<String, String>> = headers_json
-                        .as_deref()
-                        .and_then(|s| serde_json::from_str(s).ok());
-                    let rt = tokio::runtime::Handle::current();
-                    let result = tokio::task::block_in_place(|| {
-                        rt.block_on(async {
-                            h.http_post(&url, &body, &content_type, headers).await
-                        })
-                    });
-                    match result {
-                        Ok((status, body, resp_headers)) => {
-                            let resp = serde_json::json!({
-                                "status": status,
-                                "body": body,
-                                "headers": resp_headers,
-                            });
-                            Ok(resp.to_string())
-                        }
-                        Err(e) => Err(rquickjs::Error::new_from_js_message("string", "Error", &e)),
-                    }
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "__rawHttpHead",
-            Function::new(
-                ctx.clone(),
-                move |url: String, headers_json: Option<String>| -> rquickjs::Result<String> {
-                    let h = h.clone();
-                    let headers: Option<HashMap<String, String>> = headers_json
-                        .as_deref()
-                        .and_then(|s| serde_json::from_str(s).ok());
-                    let rt = tokio::runtime::Handle::current();
-                    let result = tokio::task::block_in_place(|| {
-                        rt.block_on(async { h.http_head(&url, headers).await })
-                    });
-                    match result {
-                        Ok((status, resp_headers)) => {
-                            let resp = serde_json::json!({
-                                "status": status,
-                                "headers": resp_headers,
-                            });
-                            Ok(resp.to_string())
-                        }
-                        Err(e) => Err(rquickjs::Error::new_from_js_message("string", "Error", &e)),
-                    }
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    // --- Cookies ---
-    // plugin_id is captured at register-time and is NOT exposed to JS, so a
-    // plugin's setCookie / getCookie / clearCookies always operate on its
-    // own private cookie jar.
-    let pid = plugin_id.to_string();
-    let h = host.clone();
-    amigo
-        .set(
-            "setCookie",
-            Function::new(
-                ctx.clone(),
-                move |domain: String, name: String, value: String| {
-                    let h = h.clone();
-                    let pid = pid.clone();
-                    let rt = tokio::runtime::Handle::current();
-                    tokio::task::block_in_place(|| {
-                        rt.block_on(async { h.set_cookie(&pid, &domain, &name, &value).await })
-                    });
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let pid = plugin_id.to_string();
-    let h = host.clone();
-    amigo
-        .set(
-            "getCookie",
-            Function::new(
-                ctx.clone(),
-                move |domain: String, name: String| -> rquickjs::Result<Option<String>> {
-                    let h = h.clone();
-                    let pid = pid.clone();
-                    let rt = tokio::runtime::Handle::current();
-                    Ok(tokio::task::block_in_place(|| {
-                        rt.block_on(async { h.get_cookie(&pid, &domain, &name).await })
-                    }))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let pid = plugin_id.to_string();
-    let h = host.clone();
-    amigo
-        .set(
-            "clearCookies",
-            Function::new(ctx.clone(), move |domain: String| {
-                let h = h.clone();
-                let pid = pid.clone();
-                let rt = tokio::runtime::Handle::current();
-                tokio::task::block_in_place(|| {
-                    rt.block_on(async { h.clear_cookies(&pid, &domain).await })
-                });
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    // --- Parsing helpers ---
-    let h = host.clone();
-    amigo
-        .set(
-            "regexMatch",
-            Function::new(
-                ctx.clone(),
-                move |pattern: String, text: String| -> Option<String> {
-                    h.regex_match(&pattern, &text)
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "regexMatchAll",
-            Function::new(
-                ctx.clone(),
-                move |pattern: String, text: String| -> Vec<String> {
-                    h.regex_match_all(&pattern, &text)
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "base64Decode",
-            Function::new(
-                ctx.clone(),
-                move |input: String| -> rquickjs::Result<String> {
-                    h.base64_decode(&input)
-                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "base64Encode",
-            Function::new(ctx.clone(), move |input: String| -> String {
-                h.base64_encode(&input)
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    // --- Crypto ---
-    let h = host.clone();
-    amigo
-        .set(
-            "md5",
-            Function::new(ctx.clone(), move |input: String| -> String {
-                h.md5(&input)
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "sha1",
-            Function::new(ctx.clone(), move |input: String| -> String {
-                h.sha1(&input)
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "sha256",
-            Function::new(ctx.clone(), move |input: String| -> String {
-                h.sha256(&input)
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "hmacSha256",
-            Function::new(
-                ctx.clone(),
-                move |key: String, data: String| -> rquickjs::Result<String> {
-                    h.hmac_sha256(&key, &data)
-                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "aesDecryptCbc",
-            Function::new(
-                ctx.clone(),
-                move |data: String, key: String, iv: String| -> rquickjs::Result<String> {
-                    h.aes_decrypt_cbc(&data, &key, &iv)
-                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "aesEncryptCbc",
-            Function::new(
-                ctx.clone(),
-                move |data: String, key: String, iv: String| -> rquickjs::Result<String> {
-                    h.aes_encrypt_cbc(&data, &key, &iv)
-                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    // --- Logging ---
-    let pid = plugin_id.to_string();
-    let h = host.clone();
-    amigo
-        .set(
-            "logInfo",
-            Function::new(ctx.clone(), move |msg: String| {
-                h.log_info(&pid, &msg);
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let pid = plugin_id.to_string();
-    let h = host.clone();
-    amigo
-        .set(
-            "logWarn",
-            Function::new(ctx.clone(), move |msg: String| {
-                h.log_warn(&pid, &msg);
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let pid = plugin_id.to_string();
-    let h = host.clone();
-    amigo
-        .set(
-            "logError",
-            Function::new(ctx.clone(), move |msg: String| {
-                h.log_error(&pid, &msg);
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let pid = plugin_id.to_string();
-    let h = host.clone();
-    amigo
-        .set(
-            "logDebug",
-            Function::new(ctx.clone(), move |msg: String| {
-                h.log_debug(&pid, &msg);
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    // --- Storage ---
-    let pid = plugin_id.to_string();
-    let h = host.clone();
-    amigo
-        .set(
-            "storageGet",
-            Function::new(
-                ctx.clone(),
-                move |key: String| -> rquickjs::Result<Option<String>> {
-                    let h = h.clone();
-                    let pid = pid.clone();
-                    let rt = tokio::runtime::Handle::current();
-                    Ok(tokio::task::block_in_place(|| {
-                        rt.block_on(async { h.storage_get(&pid, &key).await })
-                    }))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let pid = plugin_id.to_string();
-    let h = host.clone();
-    amigo
-        .set(
-            "storageSet",
-            Function::new(
-                ctx.clone(),
-                move |key: String, value: String| -> rquickjs::Result<()> {
-                    let h = h.clone();
-                    let pid = pid.clone();
-                    let rt = tokio::runtime::Handle::current();
-                    tokio::task::block_in_place(|| {
-                        rt.block_on(async { h.storage_set(&pid, &key, &value).await })
-                    })
-                    .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let pid = plugin_id.to_string();
-    let h = host.clone();
-    amigo
-        .set(
-            "storageDelete",
-            Function::new(ctx.clone(), move |key: String| {
-                let h = h.clone();
-                let pid = pid.clone();
-                let rt = tokio::runtime::Handle::current();
-                tokio::task::block_in_place(|| {
-                    rt.block_on(async { h.storage_delete(&pid, &key).await })
-                });
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    // --- URL helpers ---
-    let h = host.clone();
-    amigo
-        .set(
-            "urlResolve",
-            Function::new(
-                ctx.clone(),
-                move |base: String, relative: String| -> rquickjs::Result<String> {
-                    h.url_resolve(&base, &relative)
-                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "__rawUrlParse",
-            Function::new(
-                ctx.clone(),
-                move |url: String| -> rquickjs::Result<String> {
-                    h.url_parse(&url)
-                        .map(|v| v.to_string())
-                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "urlFilename",
-            Function::new(ctx.clone(), move |url: String| -> Option<String> {
-                h.url_filename(&url)
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    // --- HTML helpers ---
-    let h = host.clone();
-    amigo
-        .set(
-            "__rawHtmlQueryAll",
-            Function::new(
-                ctx.clone(),
-                move |html: String, selector: String| -> rquickjs::Result<String> {
-                    h.html_query_all(&html, &selector)
-                        .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()))
-                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "htmlQueryText",
-            Function::new(
-                ctx.clone(),
-                move |html: String, selector: String| -> rquickjs::Result<Option<String>> {
-                    h.html_query_text(&html, &selector)
-                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "htmlQueryAttr",
-            Function::new(
-                ctx.clone(),
-                move |html: String,
-                      selector: String,
-                      attr: String|
-                      -> rquickjs::Result<Option<String>> {
-                    h.html_query_attr(&html, &selector, &attr)
-                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "__rawHtmlSearchMeta",
-            Function::new(
-                ctx.clone(),
-                move |html: String, names_json: String| -> Option<String> {
-                    let names: Vec<String> = serde_json::from_str(&names_json).ok()?;
-                    h.html_search_meta(&html, &names)
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "htmlExtractTitle",
-            Function::new(ctx.clone(), move |html: String| -> Option<String> {
-                h.html_extract_title(&html)
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "__rawHtmlHiddenInputs",
-            Function::new(
-                ctx.clone(),
-                move |html: String| -> rquickjs::Result<String> {
-                    let inputs = h.html_hidden_inputs(&html);
-                    Ok(serde_json::to_string(&inputs).unwrap_or_else(|_| "{}".into()))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "__rawSearchJson",
-            Function::new(
-                ctx.clone(),
-                move |start_pattern: String, html: String| -> Option<String> {
-                    h.search_json(&start_pattern, &html)
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    // --- Additional regex helpers ---
-    let h = host.clone();
-    amigo
-        .set(
-            "regexReplace",
-            Function::new(
-                ctx.clone(),
-                move |pattern: String, text: String, replacement: String| -> Option<String> {
-                    h.regex_replace(&pattern, &text, &replacement)
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "regexTest",
-            Function::new(ctx.clone(), move |pattern: String, text: String| -> bool {
-                h.regex_test(&pattern, &text)
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "__rawRegexSplit",
-            Function::new(
-                ctx.clone(),
-                move |pattern: String, text: String| -> String {
-                    serde_json::to_string(&h.regex_split(&pattern, &text))
-                        .unwrap_or_else(|_| "[]".into())
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    // --- Utility helpers ---
-    let h = host.clone();
-    amigo
-        .set(
-            "parseDuration",
-            Function::new(ctx.clone(), move |input: String| -> Option<f64> {
-                h.parse_duration(&input)
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "sanitizeFilename",
-            Function::new(ctx.clone(), move |name: String| -> String {
-                h.sanitize_filename(&name)
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    // --- Notifications ---
-    let pid = plugin_id.to_string();
-    let h = host.clone();
-    amigo
-        .set(
-            "notify",
-            Function::new(ctx.clone(), move |title: String, message: String| {
-                h.notify(&pid, &title, &message);
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    // --- New HTTP extensions ---
-    let h = host.clone();
-    amigo
-        .set(
-            "__rawHttpPostForm",
-            Function::new(
-                ctx.clone(),
-                move |url: String,
-                      fields_json: String,
-                      headers_json: Option<String>|
-                      -> rquickjs::Result<String> {
-                    let h = h.clone();
-                    let fields: HashMap<String, String> = serde_json::from_str(&fields_json)
-                        .map_err(|e| {
-                            rquickjs::Error::new_from_js_message(
-                                "string",
-                                "Error",
-                                &format!("Invalid fields JSON: {e}"),
-                            )
-                        })?;
-                    let headers: Option<HashMap<String, String>> = headers_json
-                        .as_deref()
-                        .and_then(|s| serde_json::from_str(s).ok());
-                    let rt = tokio::runtime::Handle::current();
-                    let result = tokio::task::block_in_place(|| {
-                        rt.block_on(async { h.http_post_form(&url, &fields, headers).await })
-                    });
-                    match result {
-                        Ok((status, body, resp_headers)) => {
-                            let resp = serde_json::json!({
-                                "status": status,
-                                "body": body,
-                                "headers": resp_headers,
-                            });
-                            Ok(resp.to_string())
-                        }
-                        Err(e) => Err(rquickjs::Error::new_from_js_message("string", "Error", &e)),
-                    }
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "__rawHttpGetBinary",
-            Function::new(
-                ctx.clone(),
-                move |url: String, headers_json: Option<String>| -> rquickjs::Result<String> {
-                    let h = h.clone();
-                    let headers: Option<HashMap<String, String>> = headers_json
-                        .as_deref()
-                        .and_then(|s| serde_json::from_str(s).ok());
-                    let rt = tokio::runtime::Handle::current();
-                    let result = tokio::task::block_in_place(|| {
-                        rt.block_on(async { h.http_get_binary(&url, headers).await })
-                    });
-                    result.map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "__rawHttpFollowRedirects",
-            Function::new(
-                ctx.clone(),
-                move |url: String, headers_json: Option<String>| -> rquickjs::Result<String> {
-                    let h = h.clone();
-                    let headers: Option<HashMap<String, String>> = headers_json
-                        .as_deref()
-                        .and_then(|s| serde_json::from_str(s).ok());
-                    let rt = tokio::runtime::Handle::current();
-                    let result = tokio::task::block_in_place(|| {
-                        rt.block_on(async { h.http_follow_redirects(&url, headers).await })
-                    });
-                    result.map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let h = host.clone();
-    amigo
-        .set(
-            "__rawHtmlQueryAllAttrs",
-            Function::new(
-                ctx.clone(),
-                move |html: String, selector: String, attr: String| -> rquickjs::Result<String> {
-                    h.html_query_all_attrs(&html, &selector, &attr)
-                        .map(|v| serde_json::to_string(&v).unwrap_or_else(|_| "[]".into()))
-                        .map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    // --- Captcha ---
-    let pid = plugin_id.to_string();
-    let h = host.clone();
-    amigo
-        .set(
-            "__rawSolveCaptcha",
-            Function::new(
-                ctx.clone(),
-                move |image_url: String,
-                      captcha_type: Option<String>|
-                      -> rquickjs::Result<String> {
-                    let h = h.clone();
-                    let pid = pid.clone();
-                    let ct = captcha_type.unwrap_or_else(|| "image".to_string());
-                    let rt = tokio::runtime::Handle::current();
-                    let result = tokio::task::block_in_place(|| {
-                        rt.block_on(async { h.solve_captcha(&pid, "", &image_url, &ct).await })
-                    });
-                    result.map_err(|e| rquickjs::Error::new_from_js_message("string", "Error", &e))
-                },
-            ),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    // --- Console bridge ---
-    let console = Object::new(ctx.clone())
-        .map_err(|e| crate::Error::Execution(format!("Failed to create console: {e}")))?;
-
-    let pid = plugin_id.to_string();
-    console
-        .set(
-            "log",
-            Function::new(ctx.clone(), move |msg: String| {
-                info!("[plugin:{pid}] {msg}");
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let pid = plugin_id.to_string();
-    console
-        .set(
-            "warn",
-            Function::new(ctx.clone(), move |msg: String| {
-                warn!("[plugin:{pid}] {msg}");
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    let pid = plugin_id.to_string();
-    console
-        .set(
-            "error",
-            Function::new(ctx.clone(), move |msg: String| {
-                error!("[plugin:{pid}] {msg}");
-            }),
-        )
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    global
-        .set("amigo", amigo)
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-    global
-        .set("console", console)
-        .map_err(|e| crate::Error::Execution(e.to_string()))?;
-
-    // Inject JS shim layer: wraps __raw* functions to return objects instead of JSON strings.
-    // This keeps the Rust→JS boundary simple (string returns) while giving plugins a clean API.
-    ctx.eval::<JsValue<'_>, _>(JS_SHIM)
-        .map_err(|e| crate::Error::Execution(format!("Failed to inject JS shim: {e}")))?;
-
-    Ok(())
+    }
 }
 
 // --- Base64 helpers ---
 
-fn base64_decode_bytes(input: &str) -> Result<Vec<u8>, String> {
+pub(crate) fn base64_decode_bytes(input: &str) -> Result<Vec<u8>, String> {
     enforce_input_limit("base64 input", input.len(), MAX_BASE64_INPUT_BYTES)?;
     let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     // 0xFF marks "not a base64 symbol" so we can reject invalid input instead
@@ -2053,7 +1273,7 @@ fn base64_decode_bytes(input: &str) -> Result<Vec<u8>, String> {
     Ok(buf)
 }
 
-fn base64_encode_bytes(input: &[u8]) -> String {
+pub(crate) fn base64_encode_bytes(input: &[u8]) -> String {
     let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut result = String::new();
 
@@ -2227,58 +1447,54 @@ mod tests {
 
     #[test]
     fn test_regex_match() {
-        let api = HostApi::new(20);
-        let result = api.regex_match(r"/file/([a-zA-Z0-9]+)", "/file/abc123");
+        let result = HostApi::regex_match(r"/file/([a-zA-Z0-9]+)", "/file/abc123");
         assert_eq!(result, Some("abc123".to_string()));
     }
 
     #[test]
     fn test_regex_match_all() {
-        let api = HostApi::new(20);
-        let result = api.regex_match_all(r#"href="([^"]+)""#, r#"<a href="url1"> <a href="url2">"#);
+        let result =
+            HostApi::regex_match_all(r#"href="([^"]+)""#, r#"<a href="url1"> <a href="url2">"#);
         assert_eq!(result, vec!["url1", "url2"]);
     }
 
     #[test]
     fn test_base64_roundtrip() {
-        let api = HostApi::new(20);
-        let encoded = api.base64_encode("Hello, World!");
-        let decoded = api.base64_decode(&encoded).unwrap();
+        let encoded = HostApi::base64_encode("Hello, World!");
+        let decoded = HostApi::base64_decode(&encoded).unwrap();
         assert_eq!(decoded, "Hello, World!");
     }
 
     #[test]
     fn base64_decode_rejects_invalid_characters() {
-        let api = HostApi::new(20);
         // '*' and '#' are not in the base64 alphabet — must error instead of
         // silently mapping to 'A' and producing garbage bytes.
-        let err = api
-            .base64_decode("SGVsbG8*#")
-            .expect_err("invalid base64 must be rejected");
+        let err = HostApi::base64_decode("SGVsbG8*#").expect_err("invalid base64 must be rejected");
         assert!(err.contains("invalid base64 character"), "msg: {err}");
     }
 
     #[test]
     fn base64_decode_tolerates_whitespace_and_padding() {
-        let api = HostApi::new(20);
         // Standard encoders wrap lines and pad; these must still decode.
-        let encoded = api.base64_encode("The quick brown fox");
+        let encoded = HostApi::base64_encode("The quick brown fox");
         let wrapped = format!("{}\n {}", &encoded[..8], &encoded[8..]);
-        assert_eq!(api.base64_decode(&wrapped).unwrap(), "The quick brown fox");
+        assert_eq!(
+            HostApi::base64_decode(&wrapped).unwrap(),
+            "The quick brown fox"
+        );
     }
 
     #[test]
     fn regex_cache_returns_consistent_results() {
-        let api = HostApi::new(20);
         // Same pattern used repeatedly must keep matching correctly whether or
         // not it was served from the compile cache.
         for _ in 0..3 {
             assert_eq!(
-                api.regex_match(r"\d+", "abc123def"),
+                HostApi::regex_match(r"\d+", "abc123def"),
                 Some("123".to_string())
             );
         }
-        assert!(api.regex_test(r"^foo", "foobar"));
+        assert!(HostApi::regex_test(r"^foo", "foobar"));
     }
 
     #[tokio::test]
@@ -2412,33 +1628,29 @@ mod tests {
 
     #[test]
     fn test_md5() {
-        let api = HostApi::new(20);
-        assert_eq!(api.md5("hello"), "5d41402abc4b2a76b9719d911017c592");
-        assert_eq!(api.md5(""), "d41d8cd98f00b204e9800998ecf8427e");
+        assert_eq!(HostApi::md5("hello"), "5d41402abc4b2a76b9719d911017c592");
+        assert_eq!(HostApi::md5(""), "d41d8cd98f00b204e9800998ecf8427e");
     }
 
     #[test]
     fn test_sha1() {
-        let api = HostApi::new(20);
         assert_eq!(
-            api.sha1("hello"),
+            HostApi::sha1("hello"),
             "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d"
         );
     }
 
     #[test]
     fn test_sha256() {
-        let api = HostApi::new(20);
         assert_eq!(
-            api.sha256("hello"),
+            HostApi::sha256("hello"),
             "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
         );
     }
 
     #[test]
     fn test_hmac_sha256() {
-        let api = HostApi::new(20);
-        let result = api.hmac_sha256("key", "hello").unwrap();
+        let result = HostApi::hmac_sha256("key", "hello").unwrap();
         assert_eq!(
             result,
             "9307b3b915efb5171ff14d8cb55fbcc798c6c0ef1456d66ded1a6aa723a58b7b"
@@ -2447,66 +1659,63 @@ mod tests {
 
     #[test]
     fn test_aes_cbc_roundtrip() {
-        let api = HostApi::new(20);
         let key = "00112233445566778899aabbccddeeff";
         let iv = "00112233445566778899aabbccddeeff";
-        let plaintext_b64 = api.base64_encode("Hello AES-CBC!");
+        let plaintext_b64 = HostApi::base64_encode("Hello AES-CBC!");
 
-        let encrypted = api.aes_encrypt_cbc(&plaintext_b64, key, iv).unwrap();
-        let decrypted_b64 = api.aes_decrypt_cbc(&encrypted, key, iv).unwrap();
-        let decrypted = api.base64_decode(&decrypted_b64).unwrap();
+        let encrypted = HostApi::aes_encrypt_cbc(&plaintext_b64, key, iv).unwrap();
+        let decrypted_b64 = HostApi::aes_decrypt_cbc(&encrypted, key, iv).unwrap();
+        let decrypted = HostApi::base64_decode(&decrypted_b64).unwrap();
 
         assert_eq!(decrypted, "Hello AES-CBC!");
     }
 
     #[test]
     fn test_sanitize_filename() {
-        let api = HostApi::new(20);
         assert_eq!(
-            api.sanitize_filename("My Video: \"Best\" <2024>"),
+            HostApi::sanitize_filename("My Video: \"Best\" <2024>"),
             "My Video_ _Best_ _2024_"
         );
-        assert_eq!(api.sanitize_filename("..."), "download");
-        assert_eq!(api.sanitize_filename("normal.txt"), "normal.txt");
+        assert_eq!(HostApi::sanitize_filename("..."), "download");
+        assert_eq!(HostApi::sanitize_filename("normal.txt"), "normal.txt");
     }
 
     #[test]
     fn test_parse_duration() {
-        let api = HostApi::new(20);
-        assert_eq!(api.parse_duration("1:23:45"), Some(5025.0));
-        assert_eq!(api.parse_duration("12:34"), Some(754.0));
-        assert_eq!(api.parse_duration("PT1H23M45S"), Some(5025.0));
-        assert_eq!(api.parse_duration("PT2H30M"), Some(9000.0));
+        assert_eq!(HostApi::parse_duration("1:23:45"), Some(5025.0));
+        assert_eq!(HostApi::parse_duration("12:34"), Some(754.0));
+        assert_eq!(HostApi::parse_duration("PT1H23M45S"), Some(5025.0));
+        assert_eq!(HostApi::parse_duration("PT2H30M"), Some(9000.0));
     }
 
     #[test]
     fn test_url_helpers() {
-        let api = HostApi::new(20);
         assert_eq!(
-            api.url_resolve("https://example.com/page/", "../file.zip")
-                .unwrap(),
+            HostApi::url_resolve("https://example.com/page/", "../file.zip").unwrap(),
             "https://example.com/file.zip"
         );
         assert_eq!(
-            api.url_filename("https://cdn.example.com/files/doc%20v2.pdf?token=abc"),
+            HostApi::url_filename("https://cdn.example.com/files/doc%20v2.pdf?token=abc"),
             Some("doc v2.pdf".to_string())
         );
     }
 
     #[test]
     fn test_html_helpers() {
-        let api = HostApi::new(20);
         let html = r#"<html><head><title>Test Page</title>
             <meta property="og:title" content="OG Title">
             </head><body><a href="/file.zip">Download</a></body></html>"#;
 
-        assert_eq!(api.html_extract_title(html), Some("Test Page".to_string()));
         assert_eq!(
-            api.html_search_meta(html, &["og:title".to_string()]),
+            HostApi::html_extract_title(html),
+            Some("Test Page".to_string())
+        );
+        assert_eq!(
+            HostApi::html_search_meta(html, &["og:title".to_string()]),
             Some("OG Title".to_string())
         );
         assert_eq!(
-            api.html_query_attr(html, "a", "href").unwrap(),
+            HostApi::html_query_attr(html, "a", "href").unwrap(),
             Some("/file.zip".to_string())
         );
     }
@@ -2515,25 +1724,24 @@ mod tests {
 
     #[test]
     fn regex_helpers_reject_oversize_text() {
-        let api = HostApi::new(20);
         let huge = "a".repeat(MAX_REGEX_TEXT_BYTES + 1);
         assert_eq!(huge.len(), MAX_REGEX_TEXT_BYTES + 1, "sanity");
         // Match returns None instead of grinding through gigabytes.
-        assert!(api.regex_match(r"a+", &huge).is_none());
+        assert!(HostApi::regex_match(r"a+", &huge).is_none());
         // match_all degrades gracefully to an empty result.
-        assert!(api.regex_match_all(r"a+", &huge).is_empty());
+        assert!(HostApi::regex_match_all(r"a+", &huge).is_empty());
         // replace returns None when the text is oversized. Arg order is
         // regex_replace(pattern, text, replacement) — putting the huge
         // string in the replacement slot is a different test.
-        let replaced = api.regex_replace(r"a", &huge, "b");
+        let replaced = HostApi::regex_replace(r"a", &huge, "b");
         assert!(
             replaced.is_none(),
             "regex_replace must short-circuit on oversize input"
         );
         // test returns false.
-        assert!(!api.regex_test(r"a", &huge));
+        assert!(!HostApi::regex_test(r"a", &huge));
         // split returns the input untouched.
-        let split = api.regex_split(r"a", &huge);
+        let split = HostApi::regex_split(r"a", &huge);
         assert_eq!(split.len(), 1);
         assert_eq!(split[0].len(), huge.len());
     }
@@ -2542,27 +1750,24 @@ mod tests {
     fn regex_helpers_reject_oversize_pattern() {
         // A pathologically long pattern is rejected at compile time so we
         // never even try to run it.
-        let api = HostApi::new(20);
         let pattern = "a".repeat(MAX_REGEX_PATTERN_BYTES + 1);
-        assert_eq!(api.regex_match(&pattern, "aaaa"), None);
+        assert_eq!(HostApi::regex_match(&pattern, "aaaa"), None);
     }
 
     #[test]
     fn html_helpers_reject_oversize_input() {
-        let api = HostApi::new(20);
         let huge = "<p>".repeat(MAX_HTML_BYTES); // > 8 MiB
-        assert!(api.html_query_all(&huge, "p").is_err());
-        assert!(api.html_query_text(&huge, "p").is_err());
-        assert!(api.html_query_attr(&huge, "p", "x").is_err());
-        assert_eq!(api.html_extract_title(&huge), None);
-        assert!(api.html_hidden_inputs(&huge).is_empty());
+        assert!(HostApi::html_query_all(&huge, "p").is_err());
+        assert!(HostApi::html_query_text(&huge, "p").is_err());
+        assert!(HostApi::html_query_attr(&huge, "p", "x").is_err());
+        assert_eq!(HostApi::html_extract_title(&huge), None);
+        assert!(HostApi::html_hidden_inputs(&huge).is_empty());
     }
 
     #[test]
     fn base64_decode_rejects_oversize_input() {
-        let api = HostApi::new(20);
         let huge = "A".repeat(MAX_BASE64_INPUT_BYTES + 1);
-        let err = api.base64_decode(&huge).expect_err("must reject");
+        let err = HostApi::base64_decode(&huge).expect_err("must reject");
         assert!(err.contains("base64 input too large"), "msg: {err}");
     }
 }
