@@ -233,7 +233,8 @@ amigo-downloader/
 │   ├── en.json
 │   └── de.json
 ├── scripts/
-│   └── install.sh
+│   ├── install.sh
+│   └── sign-update-archives.sh  # Ed25519 .sig for self-update archives
 ├── docker/
 │   ├── Dockerfile
 │   ├── Dockerfile.dev
