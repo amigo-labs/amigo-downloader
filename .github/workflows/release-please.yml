@@ -1,3 +1,14 @@
+# Version bumps are driven by `release-please-config.json`, which uses the
+# `simple` release type plus explicit `extra-files` entries — deliberately NOT
+# `release-type: rust`. The Rust strategy writes a literal `version` into every
+# member's `[package]` table and into the root `Cargo.toml`. This workspace is
+# virtual (no root `[package]`) and every crate inherits its version via
+# `version.workspace = true`, so that strategy aborts with
+# "value at path package.version is not tagged". The TOML/JSON updaters below
+# bump the single source of truth in `[workspace.package]` instead, plus the
+# `amigo-*` entries in `Cargo.lock` (CI builds with `--locked`).
+# `scripts/version-consistency.mjs` guards those invariants.
+
 name: Release Please
 
 on:
