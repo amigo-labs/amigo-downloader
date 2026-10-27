@@ -48,4 +48,24 @@ ignore = [
     # release. Remove once dash-mpd and Tauri move to quick-xml >=0.41.
     "RUSTSEC-2026-0194", # quick-xml quadratic run time on duplicate attrs
     "RUSTSEC-2026-0195", # quick-xml unbounded namespace allocation (NsReader)
+    # zip 4.6.1 extraction advisories (fixed in zip >=9). Our own code is on
+    # zip 9; the remaining copy is pulled only by tauri-plugin-updater (desktop
+    # build, Windows target only), whose latest release (2.14.0) still pins
+    # zip ^4. Upstream already moved to zip 9 (tauri-apps/plugins-workspace
+    # #3698) but has not published it yet (#3712). The updater extracts the
+    # MSI/NSIS zip only after verifying its minisign signature against the
+    # pubkey in tauri.conf.json, so the archive is not attacker-controlled;
+    # the SUID/SGID and Unix-permission issues do not apply on Windows.
+    # Remove once a tauri-plugin-updater release depends on zip >=9.
+    "RUSTSEC-2026-0367", # zip SUID/SGID bits preserved on extraction
+    "RUSTSEC-2026-0368", # zip extract() creates symlinks outside the target
+    "RUSTSEC-2026-0369", # zip extract() applies permissions through symlinks
+    # zvariant / zvariant_derive / zbus_names were merged into zbus 6 and are
+    # unmaintained-only (no vulnerability). They come in via
+    # tauri-plugin-notification -> notify-rust 4 -> zbus 5 (desktop build,
+    # Linux D-Bus notifications); notify-rust 4.18.2 is the latest release and
+    # still uses zbus 5. Remove once notify-rust moves to zbus 6.
+    "RUSTSEC-2026-0370", # zvariant
+    "RUSTSEC-2026-0371", # zbus_names
+    "RUSTSEC-2026-0372", # zvariant_derive
 ]
