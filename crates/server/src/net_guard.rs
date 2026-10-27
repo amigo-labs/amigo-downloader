@@ -134,12 +134,8 @@ fn is_blocked_ip(ip: IpAddr) -> bool {
                 return true;
             }
             let segs = v6.segments();
-            // Unique-local fc00::/7
-            if (segs[0] & 0xfe00) == 0xfc00 {
-                return true;
-            }
-            // Link-local fe80::/10
-            if (segs[0] & 0xffc0) == 0xfe80 {
+            // Unique-local fc00::/7 and link-local fe80::/10
+            if v6.is_unique_local() || v6.is_unicast_link_local() {
                 return true;
             }
             // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d):
@@ -189,13 +185,14 @@ fn embedded_v4(segs: [u16; 8]) -> Option<std::net::Ipv4Addr> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::assert_matches;
 
     #[tokio::test]
     async fn rejects_loopback_literal() {
         let err = validate_outbound_url("http://127.0.0.1/foo", false)
             .await
             .expect_err("loopback must be blocked");
-        assert!(matches!(err, GuardError::BlockedAddress { .. }), "{err}");
+        assert_matches!(err, GuardError::BlockedAddress { .. }, "{err}");
     }
 
     #[tokio::test]
@@ -203,7 +200,7 @@ mod tests {
         let err = validate_outbound_url("http://169.254.169.254/latest/meta-data/", false)
             .await
             .expect_err("AWS metadata IP must be blocked");
-        assert!(matches!(err, GuardError::BlockedAddress { .. }), "{err}");
+        assert_matches!(err, GuardError::BlockedAddress { .. }, "{err}");
     }
 
     #[tokio::test]
@@ -213,7 +210,7 @@ mod tests {
             let err = validate_outbound_url(&url, false)
                 .await
                 .expect_err("RFC1918 must be blocked");
-            assert!(matches!(err, GuardError::BlockedAddress { .. }), "{err}");
+            assert_matches!(err, GuardError::BlockedAddress { .. }, "{err}");
         }
     }
 
@@ -223,10 +220,7 @@ mod tests {
             let err = validate_outbound_url(url, false)
                 .await
                 .expect_err("non-public v6 must be blocked");
-            assert!(
-                matches!(err, GuardError::BlockedAddress { .. }),
-                "{url} → {err}"
-            );
+            assert_matches!(err, GuardError::BlockedAddress { .. }, "{url} → {err}");
         }
     }
 
@@ -241,7 +235,7 @@ mod tests {
             let err = validate_outbound_url(url, false)
                 .await
                 .expect_err("scheme must be blocked");
-            assert!(matches!(err, GuardError::BadScheme(_)), "{url} → {err}");
+            assert_matches!(err, GuardError::BadScheme(_), "{url} → {err}");
         }
     }
 
@@ -255,7 +249,7 @@ mod tests {
         let err = validate_outbound_url("file:///etc/passwd", true)
             .await
             .expect_err("scheme check still applies");
-        assert!(matches!(err, GuardError::BadScheme(_)), "{err}");
+        assert_matches!(err, GuardError::BadScheme(_), "{err}");
     }
 
     #[tokio::test]
@@ -263,7 +257,7 @@ mod tests {
         let err = validate_outbound_url("not a url at all", false)
             .await
             .expect_err("must reject malformed");
-        assert!(matches!(err, GuardError::Malformed(_)), "{err}");
+        assert_matches!(err, GuardError::Malformed(_), "{err}");
     }
 
     #[test]

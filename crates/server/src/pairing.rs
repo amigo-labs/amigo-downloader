@@ -49,12 +49,10 @@ async fn rl_allow(rl: &RateLimiter, ip: &str) -> bool {
     let now = Instant::now();
     let mut map = rl.lock().await;
     let q = map.entry(ip.to_string()).or_default();
-    while let Some(&ts) = q.front() {
-        if now.duration_since(ts) > RL_WINDOW {
-            q.pop_front();
-        } else {
-            break;
-        }
+    while let Some(&ts) = q.front()
+        && now.duration_since(ts) > RL_WINDOW
+    {
+        q.pop_front();
     }
     if q.len() >= RL_MAX {
         return false;
@@ -64,7 +62,10 @@ async fn rl_allow(rl: &RateLimiter, ip: &str) -> bool {
 }
 
 #[derive(Clone)]
-#[allow(dead_code)] // `auth` is captured for future per-endpoint filtering
+#[expect(
+    dead_code,
+    reason = "`auth` is captured for future per-endpoint filtering"
+)]
 struct PairingState {
     app: AppState,
     auth: AuthState,

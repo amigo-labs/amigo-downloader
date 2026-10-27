@@ -80,9 +80,8 @@ pub async fn run_pipeline(
         return Ok(());
     }
 
-    let archive = match archive_type(download_path) {
-        Some(t) => t,
-        None => return Ok(()), // Not an archive, nothing to do
+    let Some(archive) = archive_type(download_path) else {
+        return Ok(()); // Not an archive, nothing to do
     };
 
     let output_dir = download_path.parent().unwrap_or(Path::new("."));
@@ -166,7 +165,10 @@ fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
             .by_index(i)
             .map_err(|e| crate::Error::Other(format!("ZIP entry error: {e}")))?;
 
-        let name = entry.name().to_string();
+        let name = entry
+            .name()
+            .map_err(|e| crate::Error::Other(format!("ZIP entry name error: {e}")))?
+            .into_owned();
 
         // Zip Slip protection (path components):
         //   1. reject `..`, `.`, and empty segments after normalising `\`→`/`
@@ -256,7 +258,7 @@ fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
 /// `false` — Windows does not honour Unix symlink bits in zips, but the
 /// `has_symlink_ancestor` check still protects against real-on-disk
 /// symlinks.
-fn is_symlink_entry(entry: &zip::read::ZipFile<'_>) -> bool {
+fn is_symlink_entry<R: Read + ?Sized>(entry: &zip::read::ZipFile<'_, R>) -> bool {
     const S_IFMT: u32 = 0o170000;
     const S_IFLNK: u32 = 0o120000;
     matches!(entry.unix_mode(), Some(mode) if mode & S_IFMT == S_IFLNK)
@@ -269,10 +271,10 @@ fn is_symlink_entry(entry: &zip::read::ZipFile<'_>) -> bool {
 /// we want to refuse).
 fn has_symlink_ancestor(root: &Path, path: &Path) -> Result<bool, crate::Error> {
     let mut cur = path.parent();
-    while let Some(p) = cur {
-        if p == root || !p.starts_with(root) {
-            break;
-        }
+    while let Some(p) = cur
+        && p != root
+        && p.starts_with(root)
+    {
         match std::fs::symlink_metadata(p) {
             Ok(meta) if meta.file_type().is_symlink() => return Ok(true),
             Ok(_) => {}
@@ -304,19 +306,32 @@ fn is_safe_archive_entry(name: &str) -> bool {
 }
 
 fn extract_7z(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
-    // sevenz_rust::decompress_file has no per-entry hook, so it would happily
-    // write a `../` member outside output_dir. Validate each entry name first.
-    sevenz_rust::decompress_file_with_extract_fn(archive, output_dir, |entry, reader, dest| {
-        if !is_safe_archive_entry(entry.name()) {
-            warn!(
-                "7z entry {:?} escapes output directory — skipping (path traversal blocked)",
-                entry.name()
-            );
-            return Ok(true); // skip this entry, keep going
-        }
-        sevenz_rust::default_entry_extract_fn(entry, reader, dest)
-    })
-    .map_err(|e| crate::Error::Other(format!("7z extraction failed: {e}")))?;
+    // Drive the entry loop ourselves instead of relying on the crate's
+    // `decompress_*` helpers: every entry name goes through
+    // `is_safe_archive_entry` before it is joined onto output_dir, so a `../`
+    // or absolute member is skipped (and logged) rather than written outside
+    // the target directory, and the rest of the archive still extracts.
+    let map_err =
+        |e: sevenz_rust2::Error| crate::Error::Other(format!("7z extraction failed: {e}"));
+    std::fs::create_dir_all(output_dir)?;
+    let mut reader = sevenz_rust2::ArchiveReader::open(archive, sevenz_rust2::Password::empty())
+        .map_err(map_err)?;
+    reader
+        .for_each_entries(|entry, data| {
+            if !is_safe_archive_entry(entry.name()) {
+                warn!(
+                    "7z entry {:?} escapes output directory — skipping (path traversal blocked)",
+                    entry.name()
+                );
+                // In a solid block the next entry's data follows this one in
+                // the same stream, so drain the skipped bytes before moving on.
+                std::io::copy(data, &mut std::io::sink())?;
+                return Ok(true); // skip this entry, keep going
+            }
+            let dest = output_dir.join(entry.name().replace('\\', "/"));
+            sevenz_rust2::default_entry_extract_fn(entry, data, &dest)
+        })
+        .map_err(map_err)?;
     Ok(())
 }
 
@@ -508,9 +523,8 @@ fn count_par2_volumes(dir: &Path) -> usize {
 }
 
 fn find_archives(dir: &Path) -> Vec<std::path::PathBuf> {
-    let entries = match std::fs::read_dir(dir) {
-        Ok(e) => e,
-        Err(_) => return Vec::new(),
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return Vec::new();
     };
     entries
         .filter_map(|e| e.ok())
@@ -571,17 +585,16 @@ fn run_external(cmd: &str, args: &[&str]) -> Result<(), crate::Error> {
         .output()
         .map_err(|e| crate::Error::Other(format!("Failed to run {cmd}: {e}. Is it installed?")))?;
 
-    if output.status.success() {
-        Ok(())
-    } else {
+    output.status.success().ok_or_else(|| {
         let stderr = String::from_utf8_lossy(&output.stderr);
-        Err(crate::Error::Other(format!("{cmd} failed: {stderr}")))
-    }
+        crate::Error::Other(format!("{cmd} failed: {stderr}"))
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::assert_matches;
 
     /// Build a zip in memory containing one symlink entry pointing at an
     /// absolute path outside the output directory, plus a regular file.
@@ -656,30 +669,18 @@ mod tests {
 
     #[test]
     fn test_archive_type_detection() {
-        assert!(matches!(
-            archive_type(Path::new("file.rar")),
-            Some(ArchiveType::Rar)
-        ));
-        assert!(matches!(
-            archive_type(Path::new("file.zip")),
-            Some(ArchiveType::Zip)
-        ));
-        assert!(matches!(
+        assert_matches!(archive_type(Path::new("file.rar")), Some(ArchiveType::Rar));
+        assert_matches!(archive_type(Path::new("file.zip")), Some(ArchiveType::Zip));
+        assert_matches!(
             archive_type(Path::new("file.7z")),
             Some(ArchiveType::SevenZip)
-        ));
-        assert!(matches!(
+        );
+        assert_matches!(
             archive_type(Path::new("file.tar.gz")),
             Some(ArchiveType::Gzip)
-        ));
-        assert!(matches!(
-            archive_type(Path::new("file.r00")),
-            Some(ArchiveType::Rar)
-        ));
-        assert!(matches!(
-            archive_type(Path::new("file.r15")),
-            Some(ArchiveType::Rar)
-        ));
+        );
+        assert_matches!(archive_type(Path::new("file.r00")), Some(ArchiveType::Rar));
+        assert_matches!(archive_type(Path::new("file.r15")), Some(ArchiveType::Rar));
         assert!(archive_type(Path::new("file.txt")).is_none());
         assert!(archive_type(Path::new("file.mkv")).is_none());
     }
@@ -750,6 +751,58 @@ mod tests {
             !std::path::Path::new("/tmp/amigo-evil").exists(),
             "traversing member must not be written outside output_dir"
         );
+    }
+
+    /// Build a solid 7z whose entries try to escape the output directory
+    /// (relative `..`, Windows-style `..\`, and absolute), sandwiched between
+    /// legitimate entries. extract_7z must skip the hostile ones, write
+    /// nothing outside output_dir, and still extract the rest intact — the
+    /// trailing entry proves the skipped bytes were drained from the solid
+    /// stream rather than leaking into the next file.
+    #[test]
+    fn test_extract_7z_skips_path_traversal_entries() {
+        use sevenz_rust2::{ArchiveEntry, ArchiveWriter, SourceReader};
+
+        let dir = tempfile::tempdir().unwrap();
+        let out = dir.path().join("nested").join("out");
+        std::fs::create_dir_all(&out).unwrap();
+        let abs_target = dir.path().join("abs-escape.txt");
+
+        let entries = [
+            ("good.txt".to_string(), b"good".to_vec()),
+            ("../escape.txt".to_string(), b"evil-relative".to_vec()),
+            ("..\\win-escape.txt".to_string(), b"evil-backslash".to_vec()),
+            (
+                abs_target.to_string_lossy().into_owned(),
+                b"evil-absolute".to_vec(),
+            ),
+            ("sub/after.txt".to_string(), b"after".to_vec()),
+        ];
+
+        let archive = dir.path().join("evil.7z");
+        let mut writer = ArchiveWriter::create(&archive).unwrap();
+        writer
+            .push_archive_entries(
+                entries
+                    .iter()
+                    .map(|(name, _)| ArchiveEntry::new_file(name))
+                    .collect(),
+                entries
+                    .iter()
+                    .map(|(_, data)| SourceReader::new(std::io::Cursor::new(data.clone())))
+                    .collect(),
+            )
+            .unwrap();
+        writer.finish().unwrap();
+
+        extract_7z(&archive, &out).expect("hostile entries are skipped, not fatal");
+
+        assert_eq!(std::fs::read(out.join("good.txt")).unwrap(), b"good");
+        assert_eq!(std::fs::read(out.join("sub/after.txt")).unwrap(), b"after");
+        assert!(!out.parent().unwrap().join("escape.txt").exists());
+        assert!(!out.parent().unwrap().join("win-escape.txt").exists());
+        assert!(!out.join("..\\win-escape.txt").exists());
+        assert!(!abs_target.exists());
     }
 
     /// A zip whose declared entry size exceeds the cumulative budget must

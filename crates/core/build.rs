@@ -12,8 +12,8 @@
 //! warning (SHA256 is still enforced).
 
 fn main() {
-    println!("cargo:rerun-if-env-changed=AMIGO_UPDATE_PUBKEY_HEX");
-    println!("cargo:rerun-if-env-changed=PROFILE");
+    println!("cargo::rerun-if-env-changed=AMIGO_UPDATE_PUBKEY_HEX");
+    println!("cargo::rerun-if-env-changed=PROFILE");
 
     let profile = std::env::var("PROFILE").unwrap_or_default();
     let pubkey_hex = std::env::var("AMIGO_UPDATE_PUBKEY_HEX").ok();

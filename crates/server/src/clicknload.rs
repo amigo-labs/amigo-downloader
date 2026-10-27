@@ -165,12 +165,13 @@ fn urlencoding_decode(input: &str) -> String {
         }
     }
 
-    String::from_utf8(bytes).unwrap_or_else(|e| String::from_utf8_lossy(e.as_bytes()).into_owned())
+    String::from_utf8_lossy_owned(bytes)
 }
 
 #[cfg(test)]
 mod tests {
     use crate::net_guard;
+    use std::assert_matches;
 
     #[tokio::test]
     async fn cnl_url_filter_rejects_dangerous_schemes() {
@@ -185,10 +186,7 @@ mod tests {
             let err = net_guard::validate_outbound_url(url, false)
                 .await
                 .expect_err(&format!("scheme must be blocked: {url}"));
-            assert!(
-                matches!(err, net_guard::GuardError::BadScheme(_)),
-                "{url} → {err}"
-            );
+            assert_matches!(err, net_guard::GuardError::BadScheme(_), "{url} → {err}");
         }
     }
 
@@ -202,8 +200,9 @@ mod tests {
             let err = net_guard::validate_outbound_url(url, false)
                 .await
                 .expect_err(&format!("private IP must be blocked: {url}"));
-            assert!(
-                matches!(err, net_guard::GuardError::BlockedAddress { .. }),
+            assert_matches!(
+                err,
+                net_guard::GuardError::BlockedAddress { .. },
                 "{url} → {err}"
             );
         }

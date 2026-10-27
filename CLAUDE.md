@@ -138,7 +138,12 @@ amigo-downloader/
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── engine.rs        # QuickJS VM execution
-│   │       ├── host_api.rs      # amigo.* host functions
+│   │       ├── host_api.rs      # amigo.* host functions (daemon side)
+│   │       ├── host_fns.rs      # Host-function table + QuickJS adapter
+│   │       ├── ipc.rs           # Daemon ↔ plugin host wire protocol
+│   │       ├── plugin_host.rs   # Child process that runs plugin JS
+│   │       ├── process_host.rs  # Spawns/supervises the plugin host
+│   │       ├── bin/amigo-plugin-host.rs
 │   │       ├── loader.rs
 │   │       ├── registry.rs      # Plugin marketplace
 │   │       ├── sandbox.rs
@@ -233,7 +238,8 @@ amigo-downloader/
 │   ├── en.json
 │   └── de.json
 ├── scripts/
-│   └── install.sh
+│   ├── install.sh
+│   └── sign-update-archives.sh  # Ed25519 .sig for self-update archives
 ├── docker/
 │   ├── Dockerfile
 │   ├── Dockerfile.dev
@@ -257,7 +263,7 @@ amigo-downloader/
 
 | Komponente | Technologie | Begründung |
 |---|---|---|
-| Sprache Core | **Rust (2024 edition)** | Performance, Safety, async I/O |
+| Sprache Core | **Rust 1.99.0 (2024 edition, pinned in `rust-toolchain.toml`)** | Performance, Safety, async I/O |
 | Async Runtime | **Tokio** | De-facto Standard |
 | HTTP Client | **reqwest** | Connection Pooling, Cookie-Handling |
 | HLS/DASH | **m3u8-rs, dash-mpd** | Streaming-Manifest-Parsing |
@@ -361,6 +367,7 @@ module.exports = {
     id: "my-hoster",
     name: "My Hoster",
     version: "1.0.0",
+    apiVersion: 1,                        // host-API major (HOST_API_VERSION)
     urlPattern: "https?://my-hoster\\.com/.+",
 
     resolve(url: string): DownloadPackage {
@@ -381,6 +388,7 @@ module.exports = {
     // Optional
     description: "...", author: "...",
     pluginType: "hoster",                 // "multi-hoster" | "hoster" | "generic"
+    permissions: { domains: ["my-hoster.com"] }, // hosts amigo.http* may reach
     checkOnline(url): "online" | "offline" | "unknown" { /* ... */ },
     login(username, password): boolean { /* ... */ },
     supportsPremium(): boolean { /* ... */ },
@@ -390,7 +398,7 @@ module.exports = {
 } satisfies AmigoPlugin;
 ```
 
-Wichtig: `resolve()` und alle Plugin-Callbacks sind **synchron**. Die Host-API blockiert intern (via `spawn_blocking` in der Runtime). Kein `await`, kein `async`.
+Wichtig: `resolve()` und alle Plugin-Callbacks sind **synchron**. Host-Calls blockieren im Plugin-Host-Prozess, bis der Daemon antwortet. Kein `await`, kein `async`.
 
 ### Host-API (`amigo.*`)
 
@@ -474,7 +482,9 @@ Für komplexere Plugins existiert das separate Package `@amigo/plugin-sdk` mit h
 
 ### Sandboxing
 - Kein direkter Netzwerk/Filesystem/Prozess-Zugang
-- Resource Limits: 30s Timeout, 64MB RAM, 20 HTTP-Requests, 1MB Storage
+- Resource Limits: 30s Timeout (5s für Modul-Load), 64MB RAM pro Plugin (eigene QuickJS-Runtime pro Plugin), 20 HTTP-Requests, 1MB Storage
+- Netzwerk: optionale Domain-Allowlist `permissions.domains`, pro Request und Redirect-Hop erzwungen; Install/erweiternde Updates brauchen Bestätigung
+- Plugin-JS läuft im separaten Prozess `amigo-plugin-host` (liegt neben `amigo-server`/`amigo-dl`, Override: `AMIGO_PLUGIN_HOST_BIN`); ein QuickJS-Crash beendet nur diesen, die Queue läuft weiter. Noch keine OS-Sandbox um den Child (Landlock/seccomp etc.) — offen in #79, siehe `docs/specs/plugin-sandbox-hardening.md` (SH-7b)
 - Reload: Laden eines Plugins mit bekannter `id` ersetzt die alte Version (genutzt von Plugin-Updates); kein Filesystem-Watcher — nach manuellen Änderungen Server neu starten oder `amigo-dl plugins test` zum Iterieren nutzen
 
 ---

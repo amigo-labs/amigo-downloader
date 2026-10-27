@@ -129,9 +129,8 @@ fn load_locale(dir: &std::path::Path, lang: &str) -> HashMap<String, String> {
 }
 
 fn parse_locale(json: &str) -> HashMap<String, String> {
-    let value: Value = match serde_json::from_str(json) {
-        Ok(v) => v,
-        Err(_) => return HashMap::new(),
+    let Ok(value) = serde_json::from_str::<Value>(json) else {
+        return HashMap::new();
     };
 
     let mut map = HashMap::new();

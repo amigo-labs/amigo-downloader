@@ -18,10 +18,11 @@ COPY web-ui web-ui
 RUN pnpm --filter amigo-web-ui build
 
 # Stage 2: Build Rust
-# Pinning to a minor + dated tag stops a silent base-image bump from
-# changing the toolchain mid-release. Bump deliberately when the project
-# moves to a new MSRV.
-FROM rust:1.94-bookworm AS rust-builder
+# Pinned to the exact toolchain version so a silent base-image bump can't
+# change the compiler mid-release. Keep in sync with rust-toolchain.toml
+# (the toolchain file is deliberately not copied into the image — the tag
+# is the source of truth here).
+FROM rust:1.99.0-bookworm AS rust-builder
 RUN apt-get update && apt-get install -y protobuf-compiler libclang-dev && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
@@ -39,7 +40,7 @@ ARG AMIGO_REGISTRY_PUBKEY_HEX
 ENV AMIGO_REGISTRY_PUBKEY_HEX=${AMIGO_REGISTRY_PUBKEY_HEX}
 ARG AMIGO_UPDATE_PUBKEY_HEX
 ENV AMIGO_UPDATE_PUBKEY_HEX=${AMIGO_UPDATE_PUBKEY_HEX}
-RUN cargo build --release --bin amigo-server --bin amigo-dl
+RUN cargo build --release --bin amigo-server --bin amigo-dl --bin amigo-plugin-host
 
 # Stage 3: Runtime
 # Stays on the floating bookworm-slim tag so security updates land
@@ -59,6 +60,8 @@ RUN groupadd -r -g 1000 amigo && useradd -r -u 1000 -g amigo -d /config -s /sbin
 
 COPY --from=rust-builder /app/target/release/amigo-server /usr/local/bin/
 COPY --from=rust-builder /app/target/release/amigo-dl /usr/local/bin/
+# Runs plugin JavaScript outside the daemon; found next to amigo-server.
+COPY --from=rust-builder /app/target/release/amigo-plugin-host /usr/local/bin/
 COPY plugins/ /etc/amigo/plugins/
 COPY locales/ /etc/amigo/locales/
 COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh

@@ -63,7 +63,7 @@ fn spawn_plugin_auto_update(coordinator: Arc<Coordinator>, plugin_updater: Arc<P
         // Sleep once before the first tick so we don't collide with startup
         // plugin discovery. Re-read config each iteration so the user can
         // toggle `auto_update_plugins` without a restart.
-        let mut ticker = interval(Duration::from_secs(60 * 60));
+        let mut ticker = interval(Duration::from_hours(1));
         ticker.tick().await; // fires immediately — swallow that
         loop {
             ticker.tick().await;
@@ -72,7 +72,7 @@ fn spawn_plugin_auto_update(coordinator: Arc<Coordinator>, plugin_updater: Arc<P
                 continue;
             }
             // Re-align the interval if the user changed `check_interval_hours`.
-            let desired = Duration::from_secs(cfg.check_interval_hours.max(1) * 3600);
+            let desired = Duration::from_hours(cfg.check_interval_hours.max(1));
             if ticker.period() != desired {
                 ticker = interval(desired);
                 ticker.tick().await;
@@ -130,53 +130,57 @@ async fn check_nzb_watch_folder(coordinator: &Arc<Coordinator>) -> Result<(), am
 
         info!("NZB watch folder: importing {:?}", path);
 
-        match tokio::fs::read_to_string(&path).await {
-            Ok(nzb_data) => {
-                // Validate NZB
-                if let Ok(nzb) = amigo_core::protocol::usenet::nzb::parse_nzb(&nzb_data) {
-                    let filename = path
-                        .file_stem()
-                        .and_then(|s| s.to_str())
-                        .unwrap_or("nzb-import")
-                        .to_string();
-
-                    match coordinator
-                        .add_download("nzb://watch-folder", Some(filename.clone()))
-                        .await
-                    {
-                        Ok(id) => {
-                            // Store NZB metadata
-                            let metadata = serde_json::json!({
-                                "file_count": nzb.files.len(),
-                                "total_bytes": nzb.files.iter().map(|f| f.total_bytes()).sum::<u64>(),
-                                "nzb_data": nzb_data,
-                            });
-                            let _ = coordinator
-                                .storage()
-                                .update_download_metadata(&id, &metadata.to_string())
-                                .await;
-
-                            info!("NZB imported from watch folder: {filename} → {id}");
-
-                            // Move to processed subfolder
-                            tokio::fs::create_dir_all(&processed_dir).await.ok();
-                            let dest = processed_dir.join(entry.file_name());
-                            if let Err(e) = tokio::fs::rename(&path, &dest).await {
-                                // If rename fails (cross-device), copy + delete
-                                if tokio::fs::copy(&path, &dest).await.is_ok() {
-                                    let _ = tokio::fs::remove_file(&path).await;
-                                } else {
-                                    warn!("Failed to move processed NZB: {e}");
-                                }
-                            }
-                        }
-                        Err(e) => warn!("Failed to add NZB from watch folder: {e}"),
-                    }
-                } else {
-                    warn!("Invalid NZB in watch folder: {:?}", path);
-                }
+        let nzb_data = match tokio::fs::read_to_string(&path).await {
+            Ok(data) => data,
+            Err(e) => {
+                warn!("Failed to read NZB from watch folder: {e}");
+                continue;
             }
-            Err(e) => warn!("Failed to read NZB from watch folder: {e}"),
+        };
+        let Ok(nzb) = amigo_core::protocol::usenet::nzb::parse_nzb(&nzb_data) else {
+            warn!("Invalid NZB in watch folder: {path:?}");
+            continue;
+        };
+        let filename = path
+            .file_stem()
+            .and_then(|s| s.to_str())
+            .unwrap_or("nzb-import")
+            .to_string();
+
+        let id = match coordinator
+            .add_download("nzb://watch-folder", Some(filename.clone()))
+            .await
+        {
+            Ok(id) => id,
+            Err(e) => {
+                warn!("Failed to add NZB from watch folder: {e}");
+                continue;
+            }
+        };
+
+        // Store NZB metadata
+        let metadata = serde_json::json!({
+            "file_count": nzb.files.len(),
+            "total_bytes": nzb.files.iter().map(|f| f.total_bytes()).sum::<u64>(),
+            "nzb_data": nzb_data,
+        });
+        let _ = coordinator
+            .storage()
+            .update_download_metadata(&id, &metadata.to_string())
+            .await;
+
+        info!("NZB imported from watch folder: {filename} → {id}");
+
+        // Move to processed subfolder
+        tokio::fs::create_dir_all(&processed_dir).await.ok();
+        let dest = processed_dir.join(entry.file_name());
+        if let Err(e) = tokio::fs::rename(&path, &dest).await {
+            // If rename fails (cross-device), copy + delete
+            if tokio::fs::copy(&path, &dest).await.is_ok() {
+                let _ = tokio::fs::remove_file(&path).await;
+            } else {
+                warn!("Failed to move processed NZB: {e}");
+            }
         }
     }
 

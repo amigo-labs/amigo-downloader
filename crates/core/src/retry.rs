@@ -72,6 +72,12 @@ pub enum RetryOutcome<T> {
 /// Execute an async operation with retries according to the given policy.
 ///
 /// The closure receives the current attempt number (0-based) and returns a `RetryOutcome`.
+///
+/// This deliberately takes `FnMut(u32) -> Fut` rather than `AsyncFnMut`: the
+/// coordinator runs the retry loop inside `tokio::spawn`, and the higher-ranked
+/// future type of an `AsyncFnMut` bound cannot currently be proven `Send`
+/// there ("implementation of `Send` is not general enough"). Async closures
+/// whose futures don't borrow from the closure itself still satisfy this bound.
 pub async fn retry_with_policy<F, Fut, T>(policy: &RetryPolicy, mut f: F) -> Result<T, crate::Error>
 where
     F: FnMut(u32) -> Fut,
@@ -144,8 +150,7 @@ mod tests {
             max_delay: Duration::from_millis(100),
         };
 
-        let result =
-            retry_with_policy(&policy, |_attempt| async { RetryOutcome::Success(42) }).await;
+        let result = retry_with_policy(&policy, async |_attempt| RetryOutcome::Success(42)).await;
 
         assert_eq!(result.unwrap(), 42);
     }
@@ -158,18 +163,14 @@ mod tests {
             max_delay: Duration::from_millis(100),
         };
 
-        let counter = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
-        let c = counter.clone();
+        let counter = std::sync::atomic::AtomicU32::new(0);
 
-        let result = retry_with_policy(&policy, move |_attempt| {
-            let c = c.clone();
-            async move {
-                let n = c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                if n < 2 {
-                    RetryOutcome::Retry(crate::Error::Other("not yet".into()))
-                } else {
-                    RetryOutcome::Success("done")
-                }
+        let result = retry_with_policy(&policy, async |_attempt| {
+            let n = counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            if n < 2 {
+                RetryOutcome::Retry(crate::Error::Other("not yet".into()))
+            } else {
+                RetryOutcome::Success("done")
             }
         })
         .await;
@@ -186,15 +187,11 @@ mod tests {
             max_delay: Duration::from_millis(100),
         };
 
-        let counter = std::sync::Arc::new(std::sync::atomic::AtomicU32::new(0));
-        let c = counter.clone();
+        let counter = std::sync::atomic::AtomicU32::new(0);
 
-        let result: Result<(), _> = retry_with_policy(&policy, move |_attempt| {
-            let c = c.clone();
-            async move {
-                c.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
-                RetryOutcome::Abort(crate::Error::Other("fatal".into()))
-            }
+        let result: Result<(), _> = retry_with_policy(&policy, async |_attempt| {
+            counter.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            RetryOutcome::Abort(crate::Error::Other("fatal".into()))
         })
         .await;
 
@@ -210,7 +207,7 @@ mod tests {
             max_delay: Duration::from_millis(100),
         };
 
-        let result: Result<(), _> = retry_with_policy(&policy, |_attempt| async {
+        let result: Result<(), _> = retry_with_policy(&policy, async |_attempt| {
             RetryOutcome::Retry(crate::Error::Other("always fails".into()))
         })
         .await;

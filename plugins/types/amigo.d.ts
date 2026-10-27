@@ -15,6 +15,11 @@ interface AmigoPlugin {
     version: string;
     /** Regex pattern matching URLs this plugin handles. */
     urlPattern: string;
+    /** Major version of the `amigo.*` host API the plugin is written against.
+     *  Currently `1`. A plugin declaring a major the host does not support is
+     *  refused at load. Omitting it is accepted as `1` for now (with a
+     *  warning) but will become an error. */
+    apiVersion: number;
 
     // ── Required functions ──
 
@@ -33,6 +38,9 @@ interface AmigoPlugin {
      *  "hoster" = default (site-specific),
      *  "generic" = fallback (generic-http etc.). */
     pluginType?: PluginTypeHint;
+    /** Capabilities the plugin requests. Shown to the user before install;
+     *  an update that widens them is never applied automatically. */
+    permissions?: PluginPermissions;
 
     // ── Optional functions ──
 
@@ -48,6 +56,16 @@ interface AmigoPlugin {
     resolveFolder?(url: string): string[];
     /** Post-processing hook called after download completion. */
     postProcess?(context: PostProcessContext): PostProcessResult;
+}
+
+/** Capabilities a plugin declares. */
+interface PluginPermissions {
+    /** Hosts the plugin may reach through `amigo.http*` — exact hosts
+     *  (`"api.real-debrid.com"`) or one leading wildcard label
+     *  (`"*.rdeb.io"`, subdomains only). No schemes, paths, ports or bare
+     *  `"*"`. Every request and every redirect hop outside this list fails.
+     *  Omit the field to stay unscoped (any public host) — flagged in the UI. */
+    domains?: string[];
 }
 
 // ─── Data Types ─────────────────────────────────────────────────────

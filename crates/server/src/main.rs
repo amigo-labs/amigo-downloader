@@ -1,21 +1,3 @@
-mod api;
-mod auth;
-mod background;
-mod clicknload;
-mod feedback;
-mod login;
-mod net_guard;
-mod nzbget_api;
-mod pairing;
-mod password;
-mod resolver;
-mod security_headers;
-mod setup;
-mod static_files;
-mod update_api;
-pub mod webhooks;
-mod ws;
-
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -31,6 +13,17 @@ use amigo_plugin_runtime::loader::PluginLoader;
 use amigo_plugin_runtime::registry::RegistryConfig;
 use amigo_plugin_runtime::sandbox::SandboxLimits;
 use amigo_plugin_runtime::updater::PluginUpdater;
+use amigo_server::{
+    api, auth, background, clicknload, feedback, login, nzbget_api, pairing, password, resolver,
+    security_headers_layer, setup, static_files, update_api, webhooks, ws,
+};
+
+/// Whether a boolean-style environment variable is set to a truthy value
+/// (`1` / `true` / `yes` / `on`, case-insensitive).
+fn env_flag(name: &str) -> bool {
+    std::env::var(name)
+        .is_ok_and(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -51,16 +44,10 @@ async fn main() -> anyhow::Result<()> {
     {
         config.server.bind = bind;
     }
-    if std::env::var("AMIGO_TRUST_PROXY")
-        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-        .unwrap_or(false)
-    {
+    if env_flag("AMIGO_TRUST_PROXY") {
         config.server.trust_proxy = true;
     }
-    if std::env::var("AMIGO_AUTO_UPDATE_PLUGINS")
-        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-        .unwrap_or(false)
-    {
+    if env_flag("AMIGO_AUTO_UPDATE_PLUGINS") {
         config.update.auto_update_plugins = true;
     }
 
@@ -150,10 +137,28 @@ async fn main() -> anyhow::Result<()> {
         ));
     }
 
-    let plugin_loader = Arc::new(
+    let mut plugin_loader =
         PluginLoader::new_with_host_api(PathBuf::from("plugins"), sandbox_limits, plugin_host_api)
-            .expect("Failed to initialize plugin runtime — cannot start server"),
-    );
+            .expect("Failed to initialize plugin runtime — cannot start server");
+    // Locally compiled plugin bytecode, so restarts skip transpile + compile.
+    // Lives next to the config (daemon-writable only — plugin JS has no
+    // filesystem access); see `amigo_plugin_runtime::bytecode_cache`.
+    let bytecode_dir = std::env::var_os("AMIGO_CONFIG_DIR")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join("cache")
+        .join("plugin-bytecode");
+    match amigo_plugin_runtime::bytecode_cache::BytecodeCache::open(
+        &bytecode_dir,
+        amigo_plugin_runtime::bytecode_cache::DEFAULT_MAX_ENTRIES,
+    ) {
+        Ok(cache) => plugin_loader = plugin_loader.with_bytecode_cache(cache),
+        Err(e) => tracing::warn!(
+            "Plugin bytecode cache disabled ({}): {e}",
+            bytecode_dir.display()
+        ),
+    }
+    let plugin_loader = Arc::new(plugin_loader);
     let discovered = plugin_loader.discover().await.unwrap_or_default();
     tracing::info!("Loaded {} plugins", discovered.len());
 
@@ -176,23 +181,16 @@ async fn main() -> anyhow::Result<()> {
     // developer bootstrap override (`AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED=1`)
     // disables verification with a loud warning, for working against a
     // locally-hosted unsigned fork.
-    let dev_unsigned = std::env::var("AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED")
-        .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
-        .unwrap_or(false);
+    let dev_unsigned = env_flag("AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED");
     if dev_unsigned {
         tracing::warn!(
             "AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED is set — plugin registry signatures will NOT be verified. DO NOT use this for production."
         );
     }
-    let registry_config = RegistryConfig {
-        index_url: config.update.plugin_registry_url.clone(),
-        trusted_signing_key: if dev_unsigned {
-            None
-        } else {
-            Some(amigo_plugin_runtime::registry::AMIGO_REGISTRY_PUBLIC_KEY)
-        },
-        ..Default::default()
-    };
+    // Derived from `RegistryConfig::default()`, which never trusts the
+    // all-zero placeholder key of a build without AMIGO_REGISTRY_PUBKEY_HEX.
+    let registry_config =
+        RegistryConfig::for_index(config.update.plugin_registry_url.clone(), dev_unsigned);
     let plugin_updater = Arc::new(PluginUpdater::new(
         registry_config,
         http_client.clone(),
@@ -294,9 +292,7 @@ async fn main() -> anyhow::Result<()> {
         // Options, Referrer-Policy, CSP, Permissions-Policy) on every
         // response. Outermost layer so even error / redirect responses
         // carry them.
-        .layer(axum::middleware::from_fn(
-            security_headers::security_headers,
-        ));
+        .layer(axum::middleware::from_fn(security_headers_layer));
 
     // Start background tasks (NZB watch folder, RSS poller)
     background::spawn_background_tasks(

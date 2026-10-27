@@ -14,7 +14,7 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 use axum::{Json, Router, routing::post};
 use base64::Engine;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use serde_json::{Value, json};
 use tracing::{debug, info, warn};
 
@@ -88,27 +88,6 @@ struct JsonRpcRequest {
     params: Vec<Value>,
 }
 
-#[derive(Serialize)]
-#[allow(dead_code)]
-struct JsonRpcResponse {
-    id: Value,
-    result: Value,
-}
-
-#[derive(Serialize)]
-#[allow(dead_code)]
-struct JsonRpcError {
-    id: Value,
-    error: JsonRpcErrorDetail,
-}
-
-#[derive(Serialize)]
-#[allow(dead_code)]
-struct JsonRpcErrorDetail {
-    code: i32,
-    message: String,
-}
-
 // --- Auth ---
 
 fn check_basic_auth(headers: &HeaderMap, expected_user: &str, expected_pass: &str) -> bool {
@@ -131,7 +110,7 @@ fn check_basic_auth(headers: &HeaderMap, expected_user: &str, expected_pass: &st
     };
 
     let decoded = match base64::engine::general_purpose::STANDARD.decode(encoded.trim()) {
-        Ok(bytes) => String::from_utf8_lossy(&bytes).into_owned(),
+        Ok(bytes) => String::from_utf8_lossy_owned(bytes),
         Err(_) => return false,
     };
 

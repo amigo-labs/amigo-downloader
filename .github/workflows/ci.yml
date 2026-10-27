@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [main]
 
+# Every job only reads the repository; none needs a writable token.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: "0"
@@ -17,7 +21,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.99.0
         with:
           components: rustfmt
       - name: Format check
@@ -44,7 +48,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.99.0
         with:
           components: clippy
 
@@ -59,17 +63,61 @@ jobs:
         run: mkdir -p web-ui/dist
 
       - name: Clippy (includes check)
-        run: cargo clippy --workspace --exclude amigo-desktop --all-targets --locked -- -D warnings
+        # amigo-desktop is included: without the `tauri` feature it builds a
+        # stub that needs no system libraries, and it opts into the workspace
+        # lint table like every other member.
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Test
         run: cargo test --workspace --exclude amigo-desktop --locked
+
+  release-build-guard:
+    # The release profile runs the build.rs key guards (plugin registry and
+    # self-update). `cargo check --release` exercises them without the cost of
+    # a fat-LTO link; release-build.yml must thread the real keys through.
+    name: Release build guard (pinned signing keys)
+    runs-on: ubuntu-latest
+    env:
+      AMIGO_REGISTRY_PUBKEY_HEX: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+      AMIGO_UPDATE_PUBKEY_HEX: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+    steps:
+      - uses: actions/checkout@v4
+      - name: Smoke-test the update signing script
+        # A throwaway key signs a dummy archive; release-build.yml runs the
+        # same script with the real AMIGO_UPDATE_SIGNING_KEY secret.
+        run: |
+          set -euo pipefail
+          work="$(mktemp -d)"
+          hex() { od -An -tx1 -v | tr -d ' \n'; }
+          openssl genpkey -algorithm ed25519 -out "$work/key.pem"
+          seed="$(openssl pkey -in "$work/key.pem" -outform DER | tail -c 32 | hex)"
+          pub="$(openssl pkey -in "$work/key.pem" -pubout -outform DER | tail -c 32 | hex)"
+          head -c 4096 /dev/urandom > "$work/amigo-server-linux-x86_64.tar.gz"
+          AMIGO_UPDATE_SIGNING_KEY="$seed" AMIGO_UPDATE_PUBKEY_HEX="$pub" \
+            scripts/sign-update-archives.sh "$work"
+          test "$(wc -c < "$work/amigo-server-linux-x86_64.tar.gz.sig")" -eq 128
+          # The job's placeholder AMIGO_UPDATE_PUBKEY_HEX does not match.
+          if AMIGO_UPDATE_SIGNING_KEY="$seed" scripts/sign-update-archives.sh "$work"; then
+            echo "a seed that does not match the pinned key was accepted" >&2
+            exit 1
+          fi
+      - uses: dtolnay/rust-toolchain@1.99.0
+      - name: Install protobuf compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+      - name: Create web-ui dist stub
+        run: mkdir -p web-ui/dist
+      - name: cargo check --release (server + CLI + plugin host)
+        run: cargo check --release --locked -p amigo-server -p amigo-cli -p amigo-plugin-runtime
 
   cargo-audit:
     name: Cargo audit (known vulnerabilities)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.99.0
       - name: Install cargo-audit
         run: cargo install --locked cargo-audit
       - name: Run cargo audit

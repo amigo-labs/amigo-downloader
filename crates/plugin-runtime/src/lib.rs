@@ -1,14 +1,40 @@
+pub mod bytecode_cache;
 pub mod engine;
 pub mod host_api;
+pub mod host_fns;
+pub mod ipc;
 pub mod loader;
+pub mod permissions;
+pub mod plugin_host;
+mod process_host;
 pub mod registry;
 pub mod sandbox;
 pub mod transpiler;
 pub mod types;
 pub mod updater;
 
-/// Plugin runtime error type.
-#[derive(Debug, thiserror::Error)]
+/// Major version of the `amigo.*` host API this runtime implements.
+///
+/// Plugins declare the major they were written against as `apiVersion`.
+/// Within a major the surface only grows (new functions, new optional
+/// arguments, new fields on returned objects); renaming or removing a
+/// function, changing a return shape or tightening an argument bumps it.
+/// This constant is the single source of truth — the loader, the registry
+/// filter and the docs all derive from it.
+pub const HOST_API_VERSION: u32 = 1;
+
+/// Oldest host-API major still accepted. The previous major stays supported
+/// for one release after a bump (see `docs/plugin-api.md`).
+pub const MIN_SUPPORTED_API_VERSION: u32 = 1;
+
+/// Whether a plugin declaring host-API major `version` can be loaded.
+pub fn is_supported_api_version(version: u32) -> bool {
+    (MIN_SUPPORTED_API_VERSION..=HOST_API_VERSION).contains(&version)
+}
+
+/// Plugin runtime error type. Serializable, because errors raised in the
+/// plugin host process cross the IPC boundary with their variant intact.
+#[derive(Debug, thiserror::Error, serde::Serialize, serde::Deserialize)]
 pub enum Error {
     #[error("Plugin execution error: {0}")]
     Execution(String),
@@ -28,8 +54,18 @@ pub enum Error {
     #[error("Checksum mismatch for plugin {0}")]
     ChecksumMismatch(String),
 
-    #[error("Incompatible app version: plugin requires {required}, running {current}")]
+    #[error("Incompatible version: plugin requires {required}, running {current}")]
     IncompatibleVersion { required: String, current: String },
+
+    /// Installing or updating would grant the plugin network access the user
+    /// has not approved yet. The message lists the domains.
+    #[error("Permission approval required: {0}")]
+    PermissionApprovalRequired(String),
+
+    /// The plugin host process exited or was killed while this call was in
+    /// flight. The next call starts a new one.
+    #[error("Plugin host crashed: {0}")]
+    HostCrashed(String),
 
     #[error("{0}")]
     Other(String),

@@ -31,7 +31,10 @@ pub struct ExtractedMedia {
 }
 
 /// Trait that all site-specific extractors implement.
-#[async_trait::async_trait]
+///
+/// `extract` is declared as `impl Future + Send` rather than `async fn` so
+/// callers can rely on the future being `Send` (e.g. inside `tokio::spawn`);
+/// implementations still write it as a plain `async fn`.
 pub trait Extractor: Send + Sync {
     /// Human-readable name of the extractor.
     fn name(&self) -> &str;
@@ -40,9 +43,9 @@ pub trait Extractor: Send + Sync {
     fn supports_url(&self, url: &str) -> bool;
 
     /// Extract media streams from the given URL.
-    async fn extract(
+    fn extract(
         &self,
         client: &reqwest::Client,
         url: &str,
-    ) -> Result<ExtractedMedia, ExtractorError>;
+    ) -> impl Future<Output = Result<ExtractedMedia, ExtractorError>> + Send;
 }

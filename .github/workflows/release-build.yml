@@ -22,6 +22,13 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Ed25519 *public* keys pinned into the binaries for plugin-registry and
+  # self-update signature verification. `build.rs` refuses a release build
+  # without them (or with the all-zero placeholder). They are public, so they
+  # are repository variables, not secrets: Settings → Secrets and variables →
+  # Actions → Variables.
+  AMIGO_REGISTRY_PUBKEY_HEX: ${{ vars.AMIGO_REGISTRY_PUBKEY_HEX }}
+  AMIGO_UPDATE_PUBKEY_HEX: ${{ vars.AMIGO_UPDATE_PUBKEY_HEX }}
 
 permissions:
   contents: write
@@ -59,11 +66,21 @@ jobs:
             server_archive: amigo-server-windows-x86_64.zip
 
     steps:
+      - name: Require pinned signing keys
+        shell: bash
+        run: |
+          for var in AMIGO_REGISTRY_PUBKEY_HEX AMIGO_UPDATE_PUBKEY_HEX; do
+            if [ -z "${!var}" ]; then
+              echo "::error::Repository variable $var is not set; release builds must pin a real Ed25519 public key."
+              exit 1
+            fi
+          done
+
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.tag_name }}
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.99.0
         with:
           targets: ${{ matrix.target }}
 
@@ -92,23 +109,25 @@ jobs:
 
       - name: Build CLI and Server
         if: ${{ !matrix.cross }}
-        run: cargo build --release --target ${{ matrix.target }} -p amigo-cli -p amigo-server
+        run: cargo build --release --target ${{ matrix.target }} -p amigo-cli -p amigo-server -p amigo-plugin-runtime
 
       - name: Build CLI and Server (cross)
         if: ${{ matrix.cross }}
-        run: cross build --release --target ${{ matrix.target }} -p amigo-cli -p amigo-server
+        run: cross build --release --target ${{ matrix.target }} -p amigo-cli -p amigo-server -p amigo-plugin-runtime
 
+      # Both archives carry amigo-plugin-host: the CLI and the server each
+      # run plugins in it and look for it next to their own executable.
       - name: Package (Unix)
         if: runner.os != 'Windows'
         run: |
           cd target/${{ matrix.target }}/release
 
-          tar czf ../../../${{ matrix.cli_archive }} amigo-dl
+          tar czf ../../../${{ matrix.cli_archive }} amigo-dl amigo-plugin-host
           cd ../../..
           sha256sum ${{ matrix.cli_archive }} > ${{ matrix.cli_archive }}.sha256
 
           cd target/${{ matrix.target }}/release
-          tar czf ../../../${{ matrix.server_archive }} amigo-server
+          tar czf ../../../${{ matrix.server_archive }} amigo-server amigo-plugin-host
           cd ../../..
           sha256sum ${{ matrix.server_archive }} > ${{ matrix.server_archive }}.sha256
 
@@ -116,10 +135,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path target/${{ matrix.target }}/release/amigo-dl.exe -DestinationPath ${{ matrix.cli_archive }}
+          Compress-Archive -Path target/${{ matrix.target }}/release/amigo-dl.exe, target/${{ matrix.target }}/release/amigo-plugin-host.exe -DestinationPath ${{ matrix.cli_archive }}
           (Get-FileHash ${{ matrix.cli_archive }} -Algorithm SHA256).Hash.ToLower() + "  ${{ matrix.cli_archive }}" | Out-File -Encoding ascii ${{ matrix.cli_archive }}.sha256
 
-          Compress-Archive -Path target/${{ matrix.target }}/release/amigo-server.exe -DestinationPath ${{ matrix.server_archive }}
+          Compress-Archive -Path target/${{ matrix.target }}/release/amigo-server.exe, target/${{ matrix.target }}/release/amigo-plugin-host.exe -DestinationPath ${{ matrix.server_archive }}
           (Get-FileHash ${{ matrix.server_archive }} -Algorithm SHA256).Hash.ToLower() + "  ${{ matrix.server_archive }}" | Out-File -Encoding ascii ${{ matrix.server_archive }}.sha256
 
       - uses: actions/upload-artifact@v4
@@ -173,6 +192,9 @@ jobs:
             ghcr.io/amigo-labs/amigo-downloader:${{ steps.version.outputs.major }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: |
+            AMIGO_REGISTRY_PUBKEY_HEX=${{ vars.AMIGO_REGISTRY_PUBKEY_HEX }}
+            AMIGO_UPDATE_PUBKEY_HEX=${{ vars.AMIGO_UPDATE_PUBKEY_HEX }}
 
   # ─── Desktop Installers (Tauri) ────────────────────────────────────
   installers:
@@ -196,7 +218,7 @@ jobs:
         with:
           ref: ${{ inputs.tag_name }}
 
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@1.99.0
         with:
           targets: ${{ matrix.target }}
 
@@ -274,6 +296,15 @@ jobs:
 
       - name: List artifacts
         run: find artifacts -type f | sort
+
+      # The self-updater (amigo-server, amigo-dl) refuses a release without a
+      # `.sig` next to its archive. The secret holds the private seed matching
+      # AMIGO_UPDATE_PUBKEY_HEX; the script fails if they differ.
+      # See docs/specs/self-update.md.
+      - name: Sign CLI and server archives
+        env:
+          AMIGO_UPDATE_SIGNING_KEY: ${{ secrets.AMIGO_UPDATE_SIGNING_KEY }}
+        run: scripts/sign-update-archives.sh artifacts
 
       - name: Generate Tauri updater JSON
         run: |

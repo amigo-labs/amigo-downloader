@@ -47,12 +47,10 @@ async fn rl_allow(rl: &RateLimiter, ip: &str) -> bool {
             .is_some_and(|&ts| now.duration_since(ts) <= LOGIN_RL_WINDOW)
     });
     let q = map.entry(ip.to_string()).or_default();
-    while let Some(&ts) = q.front() {
-        if now.duration_since(ts) > LOGIN_RL_WINDOW {
-            q.pop_front();
-        } else {
-            break;
-        }
+    while let Some(&ts) = q.front()
+        && now.duration_since(ts) > LOGIN_RL_WINDOW
+    {
+        q.pop_front();
     }
     if q.len() >= LOGIN_RL_MAX {
         return false;

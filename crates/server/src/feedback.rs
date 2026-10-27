@@ -4,7 +4,7 @@
 //! needed for end users. Rate-limited to prevent abuse.
 
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use axum::{
     Json, Router,
@@ -22,6 +22,9 @@ use crate::api::AppState;
 
 // --- Rate limiter ---
 
+/// Rolling window the per-hour submission limit applies to.
+const RATE_LIMIT_WINDOW: Duration = Duration::from_hours(1);
+
 pub struct RateLimiter {
     timestamps: Vec<Instant>,
     max_per_hour: u32,
@@ -36,12 +39,19 @@ impl RateLimiter {
     }
 
     fn check(&mut self) -> bool {
-        let cutoff = Instant::now() - std::time::Duration::from_secs(3600);
-        self.timestamps.retain(|t| *t > cutoff);
+        self.check_at(Instant::now())
+    }
+
+    fn check_at(&mut self, now: Instant) -> bool {
+        // Compare elapsed time instead of computing `now - window`: `Instant`
+        // is monotonic from boot, so that subtraction panics when the host
+        // has been up for less than the window.
+        self.timestamps
+            .retain(|t| now.duration_since(*t) < RATE_LIMIT_WINDOW);
         if self.timestamps.len() as u32 >= self.max_per_hour {
             return false;
         }
-        self.timestamps.push(Instant::now());
+        self.timestamps.push(now);
         true
     }
 }
@@ -58,7 +68,7 @@ pub struct FeedbackRequest {
     error_context: Option<ErrorContext>,
 }
 
-#[derive(Deserialize, Clone, Copy)]
+#[derive(Debug, Deserialize, Clone, Copy)]
 #[serde(rename_all = "lowercase")]
 enum FeedbackType {
     Bug,
@@ -450,7 +460,7 @@ fn urlencoding(s: &str) -> String {
                 result.push(byte as char);
             }
             _ => {
-                result.push_str(&format!("%{:02X}", byte));
+                result.push_str(&format!("%{byte:02X}"));
             }
         }
     }
@@ -511,6 +521,7 @@ fn scrub(input: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::assert_matches;
 
     #[test]
     fn scrub_redacts_bearer_and_headers() {
@@ -568,18 +579,30 @@ mod tests {
     }
 
     #[test]
+    fn test_rate_limiter_window_expires_without_instant_underflow() {
+        // Only adds to `t0`, so this exercises the window logic regardless of
+        // host uptime (the old `Instant::now() - 1h` panicked on fresh boots).
+        let t0 = Instant::now();
+        let mut limiter = RateLimiter::new(1);
+        assert!(limiter.check_at(t0));
+        assert!(!limiter.check_at(t0));
+        assert!(!limiter.check_at(t0 + Duration::from_mins(59)));
+        assert!(limiter.check_at(t0 + RATE_LIMIT_WINDOW + Duration::from_secs(1)));
+    }
+
+    #[test]
     fn test_feedback_type_deserialization() {
         let json = r#"{"type":"bug","title":"test","description":"desc"}"#;
         let req: FeedbackRequest = serde_json::from_str(json).unwrap();
-        assert!(matches!(req.feedback_type, FeedbackType::Bug));
+        assert_matches!(req.feedback_type, FeedbackType::Bug);
 
         let json = r#"{"type":"feature","title":"test","description":"desc"}"#;
         let req: FeedbackRequest = serde_json::from_str(json).unwrap();
-        assert!(matches!(req.feedback_type, FeedbackType::Feature));
+        assert_matches!(req.feedback_type, FeedbackType::Feature);
 
         let json = r#"{"type":"crash","title":"test","description":"desc","error_context":{"download_id":"abc","error_message":"timeout"}}"#;
         let req: FeedbackRequest = serde_json::from_str(json).unwrap();
-        assert!(matches!(req.feedback_type, FeedbackType::Crash));
+        assert_matches!(req.feedback_type, FeedbackType::Crash);
         assert_eq!(req.error_context.unwrap().download_id.unwrap(), "abc");
     }
 

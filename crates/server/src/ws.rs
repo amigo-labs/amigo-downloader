@@ -50,7 +50,7 @@ async fn ws_handler(
 /// see everything; a login session sees only downloads it owns.
 fn can_see(principal: &Option<Principal>, owner: Option<&str>) -> bool {
     match principal {
-        None | Some(Principal::Preshared) | Some(Principal::ApiToken { .. }) => true,
+        None | Some(Principal::Preshared | Principal::ApiToken { .. }) => true,
         Some(Principal::Session { username, .. }) => owner == Some(username.as_str()),
     }
 }
@@ -72,9 +72,7 @@ async fn handle_socket(
                 let deliver = match event.subject_download_id() {
                     None => true,
                     Some(id) => match &principal {
-                        None | Some(Principal::Preshared) | Some(Principal::ApiToken { .. }) => {
-                            true
-                        }
+                        None | Some(Principal::Preshared | Principal::ApiToken { .. }) => true,
                         Some(Principal::Session { .. }) => {
                             let owner = coordinator.download_owner(id).await;
                             can_see(&principal, owner.as_deref())

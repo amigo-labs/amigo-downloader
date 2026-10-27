@@ -10,8 +10,9 @@ name = "${options.id}"
 version = "0.1.0"
 kind = "${options.kind}"
 sdk_version = "${options.sdkVersion}"
+api_version = 1
 match = ["https://${options.id}.example/*"]
-permissions = []
+permissions = { domains = ["${options.id}.example"] }
 `;
 }
 
@@ -22,6 +23,8 @@ export function pluginTs(options: PluginTemplateOptions): string {
 export default plugin.defineDecrypter({
   id: "${options.id}",
   version: "0.1.0",
+  apiVersion: 1,
+  permissions: { domains: ["${options.id}.example"] },
   match: [/${options.id}\\.example/],
   async decrypt(context) {
     const page = await context.browser.getPage(context.url);
@@ -36,6 +39,8 @@ export default plugin.defineDecrypter({
 export default plugin.definePlugin({
   id: "${options.id}",
   version: "0.1.0",
+  apiVersion: 1,
+  permissions: { domains: ["${options.id}.example"] },
   match: [/${options.id}\\.example/],
   async extract(context) {
     const page = await context.browser.getPage(context.url);

@@ -83,14 +83,21 @@ fi
 # Extract and install
 tar xzf "$ARCHIVE"
 
+# amigo-plugin-host runs plugin JavaScript outside amigo-dl; it must sit next
+# to amigo-dl. Archives from before it existed do not contain it.
+BINARIES="amigo-dl"
+[ -f amigo-plugin-host ] && BINARIES="$BINARIES amigo-plugin-host"
+
 if [ -w "$INSTALL_DIR" ]; then
-    mv amigo-dl "$INSTALL_DIR/amigo-dl"
+    SUDO=""
 else
     echo "Installing to ${INSTALL_DIR} (requires sudo)..."
-    sudo mv amigo-dl "$INSTALL_DIR/amigo-dl"
+    SUDO="sudo"
 fi
-
-chmod +x "$INSTALL_DIR/amigo-dl"
+for bin in $BINARIES; do
+    $SUDO mv "$bin" "$INSTALL_DIR/$bin"
+    $SUDO chmod +x "$INSTALL_DIR/$bin"
+done
 
 echo ""
 echo "Installed amigo-dl to ${INSTALL_DIR}/amigo-dl"

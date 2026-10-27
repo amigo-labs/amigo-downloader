@@ -4,6 +4,15 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[lints]
+workspace = true
+
+# Runs plugin JavaScript out of the daemon process (#79). Spawned by
+# `PluginLoader`; ships next to `amigo-server` and `amigo-dl`.
+[[bin]]
+name = "amigo-plugin-host"
+path = "src/bin/amigo-plugin-host.rs"
+
 [dependencies]
 tokio = { workspace = true }
 serde = { workspace = true }
@@ -34,12 +43,12 @@ ed25519-dalek = { workspace = true }
 rquickjs = { workspace = true }
 
 # TypeScript → JavaScript transpilation via SWC
-swc_common = "19"
-swc_ecma_parser = "36"
-swc_ecma_ast = "21"
-swc_ecma_codegen = "24"
-swc_ecma_transforms_typescript = "43"
-swc_ecma_visit = "21"
+swc_common = "26"
+swc_ecma_parser = "45"
+swc_ecma_ast = "29"
+swc_ecma_codegen = "32"
+swc_ecma_transforms_typescript = "55"
+swc_ecma_visit = "29"
 
 [dev-dependencies]
 # Signing keypair for registry-signature tests — `ed25519-dalek` exposes
@@ -47,4 +56,5 @@ swc_ecma_visit = "21"
 ed25519-dalek = { workspace = true, features = ["rand_core"] }
 rand = { workspace = true }
 tokio = { workspace = true, features = ["full"] }
+libc = "0.2"
 wiremock = "0.6"

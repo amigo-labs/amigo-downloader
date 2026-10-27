@@ -1,22 +1,22 @@
-//! amigo-server library — exposes API router and types for integration tests.
-#![allow(dead_code)]
+//! amigo-server library — the API router, middleware and background tasks.
+//! Shared by the `amigo-server` binary (`main.rs`) and the integration tests.
 
 pub mod api;
 pub mod auth;
-mod background;
+pub mod background;
 pub mod clicknload;
-mod feedback;
+pub mod feedback;
 pub mod login;
 pub mod net_guard;
-mod nzbget_api;
+pub mod nzbget_api;
 mod security_headers;
 pub use security_headers::security_headers as security_headers_layer;
 pub mod pairing;
 pub mod password;
-mod resolver;
+pub mod resolver;
 pub mod setup;
-mod static_files;
-mod update_api;
+pub mod static_files;
+pub mod update_api;
 pub mod webhooks;
 pub mod ws;
 

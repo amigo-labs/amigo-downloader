@@ -4,9 +4,15 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SandboxLimits {
-    /// Max execution time per resolve() call in seconds.
+    /// Max execution time per resolve() / postProcess() call in seconds.
     pub max_execution_secs: u64,
-    /// Max memory per plugin instance in bytes.
+    /// Max time for evaluating a plugin's module body (and reading its
+    /// manifest exports) at load, in seconds. A module body only defines
+    /// exports; this keeps a hostile top-level loop from wedging `discover()`.
+    #[serde(default = "default_max_load_secs")]
+    pub max_load_secs: u64,
+    /// Max memory per plugin in bytes. Each plugin runs in its own QuickJS
+    /// runtime, so this is a per-plugin limit.
     pub max_memory_bytes: u64,
     /// Max HTTP requests per call.
     pub max_http_requests: u32,
@@ -24,10 +30,15 @@ impl Default for SandboxLimits {
     fn default() -> Self {
         Self {
             max_execution_secs: 30,
+            max_load_secs: default_max_load_secs(),
             max_memory_bytes: 64 * 1024 * 1024, // 64MB
             max_http_requests: 20,
             max_storage_bytes: 1024 * 1024, // 1MB
             allow_private_network: false,
         }
     }
+}
+
+fn default_max_load_secs() -> u64 {
+    5
 }

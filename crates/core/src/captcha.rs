@@ -212,6 +212,7 @@ impl CaptchaManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::assert_matches;
 
     #[tokio::test]
     async fn test_captcha_solve_flow() {
@@ -256,7 +257,7 @@ mod tests {
         manager.cancel(&pending[0].id).await.unwrap();
 
         let result = solve_task.await.unwrap();
-        assert!(matches!(result, Err(CaptchaError::Cancelled)));
+        assert_matches!(result, Err(CaptchaError::Cancelled));
     }
 
     #[tokio::test]
@@ -271,6 +272,6 @@ mod tests {
             .request_solve("test-plugin", "dl-1", "https://img/captcha.png", "image")
             .await;
 
-        assert!(matches!(result, Err(CaptchaError::Timeout(1))));
+        assert_matches!(result, Err(CaptchaError::Timeout(1)));
     }
 }

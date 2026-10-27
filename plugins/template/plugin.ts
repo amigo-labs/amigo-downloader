@@ -4,6 +4,12 @@ module.exports = {
     id: "my-hoster",
     name: "My Hoster",
     version: "1.0.0",
+    // Host-API major this plugin is written against (see docs/plugin-api.md).
+    apiVersion: 1,
+    // Hosts the plugin may reach via amigo.http*. Requests anywhere else are
+    // rejected. Omit only if the plugin truly must reach arbitrary hosts —
+    // it is then shown as "unscoped" and needs extra trust to install.
+    permissions: { domains: ["my-hoster.com", "*.my-hoster.com"] },
     description: "Plugin for my-hoster.com",
     author: "your-name",
     urlPattern: "https?://(www\\.)?my-hoster\\.com/.+",

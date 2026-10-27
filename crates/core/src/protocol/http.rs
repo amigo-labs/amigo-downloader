@@ -460,7 +460,10 @@ async fn reassemble_chunks(
 }
 
 /// Download a single chunk (byte range) to a temp file.
-#[allow(clippy::too_many_arguments)]
+#[expect(
+    clippy::too_many_arguments,
+    reason = "each chunk worker needs the full download context; a params struct would only regroup the same fields"
+)]
 async fn download_chunk(
     client: &reqwest::Client,
     bandwidth: &BandwidthLimiter,
@@ -840,6 +843,7 @@ impl super::ProtocolBackend for HttpDownloader {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::assert_matches;
 
     #[tokio::test(flavor = "multi_thread")]
     async fn chunk_download_detects_ignored_range() {
@@ -871,8 +875,9 @@ mod tests {
         )
         .await
         .expect_err("a 200 response to a ranged chunk must be rejected");
-        assert!(
-            matches!(err, crate::Error::RangeNotSupported),
+        assert_matches!(
+            err,
+            crate::Error::RangeNotSupported,
             "expected RangeNotSupported, got {err:?}"
         );
     }

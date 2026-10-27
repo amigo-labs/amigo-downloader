@@ -31,7 +31,6 @@ pub struct YoutubeVideo {
 /// YouTube extractor implementing the `Extractor` trait.
 pub struct YoutubeExtractor;
 
-#[async_trait::async_trait]
 impl Extractor for YoutubeExtractor {
     fn name(&self) -> &str {
         "YouTube"

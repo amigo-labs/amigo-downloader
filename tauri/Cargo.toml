@@ -12,6 +12,9 @@ license.workspace = true
 # Plain `cargo build -p amigo-desktop` builds only the stub (no Tauri feature).
 # `cargo tauri build` enables the "tauri" feature automatically.
 
+[lints]
+workspace = true
+
 [features]
 default = []
 tauri = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-shell", "dep:tauri-plugin-notification", "dep:tauri-plugin-deep-link", "dep:tauri-plugin-updater", "dep:amigo-server"]

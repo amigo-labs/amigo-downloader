@@ -49,6 +49,9 @@ module.exports = {
     id: "xfilesharing",
     name: "XFileSharingPro (Generic)",
     version: "1.0.0",
+    apiVersion: 1,
+    // No `permissions.domains`: this plugin serves 50+ XFileSharing sites and
+    // fetches the link the user added, so it is deliberately unscoped.
     description: "Generic plugin for 50+ file hosting sites based on XFileSharingPro",
     author: "amigo-labs",
     urlPattern: buildUrlPattern(),

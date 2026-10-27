@@ -80,6 +80,10 @@ export interface MarketplaceEntry {
   author: string;
   tags: string[];
   installed: boolean;
+  /** Host-API major the plugin targets. */
+  api_version: number;
+  /** Hosts the plugin may reach; `null` = unscoped (any public host). */
+  domains: string[] | null;
 }
 
 export interface CoreUpdateInfo {
@@ -89,9 +93,22 @@ export interface CoreUpdateInfo {
   release_notes: string | null;
 }
 
+export interface PluginUpdate {
+  plugin_id: string;
+  current_version: string | null;
+  available_version: string;
+  is_new: boolean;
+  /** Hosts the new version may reach; `null` = unscoped. */
+  declared_domains: string[] | null;
+  /** Hosts the update adds (`["*"]` = drops its allowlist); `null` = none. */
+  added_domains: string[] | null;
+  /** Never auto-applied; must be confirmed with `approve`. */
+  requires_approval: boolean;
+}
+
 export interface UpdateCheck {
   core: CoreUpdateInfo;
-  plugins: { id: string; current_version: string; latest_version: string }[];
+  plugins: PluginUpdate[];
 }
 
 export const checkUpdates = () => api<UpdateCheck>("GET", "/updates/check");
@@ -103,10 +120,19 @@ export const getSystemInfo = () => api<unknown>("GET", "/system-info");
 // ========================================
 // PLUGIN UPDATES (audit finding #33)
 // ========================================
-export const updatePlugin = (id: string) =>
-  api<unknown>("POST", `/updates/plugins/${encodeURIComponent(id)}`);
-export const installPlugin = (id: string) =>
-  api<{ id: string; version: string }>("POST", `/updates/plugins/${encodeURIComponent(id)}/install`);
+// Installing always, and updating when it widens a plugin's domains, needs
+// the user's explicit approval — the server answers 428 without it. Only pass
+// `approve` after showing the user the domains.
+export const updatePlugin = (id: string, approve = false) =>
+  api<unknown>("POST", `/updates/plugins/${encodeURIComponent(id)}`, {
+    approve_permissions: approve,
+  });
+export const installPlugin = (id: string, approve: boolean) =>
+  api<{ id: string; version: string }>(
+    "POST",
+    `/updates/plugins/${encodeURIComponent(id)}/install`,
+    { approve_permissions: approve },
+  );
 
 // ========================================
 // SETUP / LOGIN / PAIRING
@@ -167,6 +193,9 @@ export interface Plugin {
   version: string;
   url_pattern: string;
   enabled: boolean;
+  api_version?: number;
+  /** `domains: null` (or absent) = unscoped: may reach any public host. */
+  permissions?: { domains?: string[] | null };
 }
 
 export async function importDlc(file: File) {
