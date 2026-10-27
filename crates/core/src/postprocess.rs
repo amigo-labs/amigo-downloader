@@ -165,7 +165,10 @@ fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
             .by_index(i)
             .map_err(|e| crate::Error::Other(format!("ZIP entry error: {e}")))?;
 
-        let name = entry.name().to_string();
+        let name = entry
+            .name()
+            .map_err(|e| crate::Error::Other(format!("ZIP entry name error: {e}")))?
+            .into_owned();
 
         // Zip Slip protection (path components):
         //   1. reject `..`, `.`, and empty segments after normalising `\`→`/`
@@ -255,7 +258,7 @@ fn extract_zip(archive: &Path, output_dir: &Path) -> Result<(), crate::Error> {
 /// `false` — Windows does not honour Unix symlink bits in zips, but the
 /// `has_symlink_ancestor` check still protects against real-on-disk
 /// symlinks.
-fn is_symlink_entry(entry: &zip::read::ZipFile<'_>) -> bool {
+fn is_symlink_entry<R: Read + ?Sized>(entry: &zip::read::ZipFile<'_, R>) -> bool {
     const S_IFMT: u32 = 0o170000;
     const S_IFLNK: u32 = 0o120000;
     matches!(entry.unix_mode(), Some(mode) if mode & S_IFMT == S_IFLNK)
