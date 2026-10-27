@@ -50,6 +50,9 @@ v0.1.0-Release-PR, deren Merge den Tag setzt und den (bewusst leeren)
 - [ ] Entscheiden, ob `@amigo/plugin-sdk` öffentlich auf npm publiziert wird.
       Falls ja: npm-Org/Account + `NPM_TOKEN`-Secret anlegen und
       `"private": true` in `plugin-sdk/package.json` entfernen.
+- [ ] Direkt nach dem v0.1.0-Tag `release-as: 0.1.0` aus
+      `release-please-config.json` entfernen — sonst versucht jeder weitere
+      Lauf erneut 0.1.0 zu releasen.
 - [ ] release-please-Release-PR für v1.0 reviewen und mergen (Tag-Cut).
 - [ ] Erstes signiertes Desktop-Bundle manuell auf je einer Plattform
       (Linux / macOS / Windows) installieren und das Auto-Update von einer

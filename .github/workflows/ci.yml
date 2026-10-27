@@ -23,6 +23,21 @@ jobs:
       - name: Format check
         run: cargo fmt --all -- --check
 
+  version-consistency:
+    name: Version consistency
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # The release pipeline bumps the version in four files by hand (see the
+      # header of .github/workflows/release-please.yml); this keeps them in step.
+      - name: Check versions
+        run: node scripts/version-consistency.mjs
+
   rust:
     name: Rust (clippy, test)
     runs-on: ubuntu-latest
