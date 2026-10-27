@@ -35,7 +35,7 @@ unrar = "0.5"
 # Maintained successor of sevenz-rust (RUSTSEC-2026-0245/-0246). Decompression only;
 # ppmd/bzip2 cover the common non-LZMA 7z codecs.
 sevenz-rust2 = { version = "0.23", default-features = false, features = ["util", "ppmd", "bzip2"] }
-zip = "2"
+zip = "9"
 # Self-update archives (`updater.rs`).
 tar = "0.4"
 flate2 = "1"
