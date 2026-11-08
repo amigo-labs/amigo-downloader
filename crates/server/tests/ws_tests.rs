@@ -235,16 +235,16 @@ async fn test_ws_events_are_scoped_per_session_owner() {
         .expect("seed bob session");
 
     let mut ws_alice =
-        connect_ws_with_header(addr, "cookie", &format!("amigo_session={alice_sid}")).await;
+        connect_ws_with_header(addr, "cookie", &format!("krake_session={alice_sid}")).await;
     let mut ws_bob =
-        connect_ws_with_header(addr, "cookie", &format!("amigo_session={bob_sid}")).await;
+        connect_ws_with_header(addr, "cookie", &format!("krake_session={bob_sid}")).await;
     let mut ws_admin = connect_ws_with_header(addr, "authorization", "Bearer admin-secret").await;
 
     // Alice creates a download (owner = "alice").
     let client = test_client();
     client
         .post(format!("http://{addr}/api/v1/downloads"))
-        .header("cookie", format!("amigo_session={alice_sid}"))
+        .header("cookie", format!("krake_session={alice_sid}"))
         .json(&serde_json::json!({"url": "https://example.com/alice.zip"}))
         .send()
         .await

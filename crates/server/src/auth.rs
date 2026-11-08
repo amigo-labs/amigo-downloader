@@ -2,7 +2,7 @@
 //!
 //! Three credential shapes are accepted on protected routes:
 //!
-//! 1. **Session cookie** (`amigo_session=<id>`) — issued by `POST /login`
+//! 1. **Session cookie** (`krake_session=<id>`) — issued by `POST /login`
 //!    after a successful username/password check. Validated against the
 //!    `sessions` table; expired sessions are rejected.
 //! 2. **API token** (`Authorization: Bearer <token>`) — issued to CLI /
@@ -71,7 +71,11 @@ impl AuthState {
 }
 
 /// Cookie name used for browser session tokens.
-pub const SESSION_COOKIE: &str = "amigo_session";
+pub const SESSION_COOKIE: &str = "krake_session";
+
+/// Pre-rename name of [`SESSION_COOKIE`]. Still accepted so browsers signed
+/// in before the rename stay signed in; never issued, cleared on logout.
+pub const LEGACY_SESSION_COOKIE: &str = "amigo_session";
 
 /// Return the effective client IP as a string. When `trust_proxy` is true,
 /// the first hop from `X-Forwarded-For` (or the RFC 7239 `Forwarded: for=`
@@ -155,13 +159,11 @@ fn extract_query_token(uri: &Uri) -> Option<&str> {
 
 fn extract_session_cookie(headers: &HeaderMap) -> Option<&str> {
     let s = headers.get(header::COOKIE)?.to_str().ok()?;
-    for kv in s.split(';') {
-        let kv = kv.trim();
-        if let Some(v) = kv.strip_prefix(&format!("{SESSION_COOKIE}=")) {
-            return Some(v);
-        }
-    }
-    None
+    let find = |name: &str| {
+        s.split(';')
+            .find_map(|kv| kv.trim().strip_prefix(name)?.strip_prefix('='))
+    };
+    find(SESSION_COOKIE).or_else(|| find(LEGACY_SESSION_COOKIE))
 }
 
 /// Identity returned by [`authenticate`] on success. Fields are read via
@@ -328,9 +330,23 @@ mod tests {
         let mut headers = HeaderMap::new();
         headers.insert(
             header::COOKIE,
-            "other=1; amigo_session=abc; last=z".parse().unwrap(),
+            "other=1; krake_session=abc; last=z".parse().unwrap(),
         );
         assert_eq!(extract_session_cookie(&headers), Some("abc"));
+    }
+
+    #[test]
+    fn extract_session_cookie_accepts_legacy_name() {
+        let mut headers = HeaderMap::new();
+        headers.insert(header::COOKIE, "amigo_session=old".parse().unwrap());
+        assert_eq!(extract_session_cookie(&headers), Some("old"));
+
+        // The new name wins when a browser sends both.
+        headers.insert(
+            header::COOKIE,
+            "amigo_session=old; krake_session=new".parse().unwrap(),
+        );
+        assert_eq!(extract_session_cookie(&headers), Some("new"));
     }
 
     #[test]

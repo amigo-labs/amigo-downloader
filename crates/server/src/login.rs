@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 
 use crate::api::AppState;
-use crate::auth::{self, AuthState, Principal, SESSION_COOKIE};
+use crate::auth::{self, AuthState, LEGACY_SESSION_COOKIE, Principal, SESSION_COOKIE};
 use crate::password;
 
 /// Max `/login` attempts per source-IP per window. Password verification uses
@@ -185,15 +185,22 @@ async fn logout(State(s): State<LoginState>, req: axum::extract::Request) -> Res
         let _ = app.coordinator.storage().delete_session(session_id).await;
     }
     // Clear the cookie regardless; the client may be a stale bearer user.
-    let clear = Cookie::build((SESSION_COOKIE, ""))
-        .http_only(true)
-        .same_site(SameSite::Strict)
-        .path("/")
-        .max_age(cookie::time::Duration::seconds(0))
-        .build();
+    // The pre-rename cookie goes too, so it cannot sign the browser back in.
+    let clear = |name: &'static str| {
+        Cookie::build((name, ""))
+            .http_only(true)
+            .same_site(SameSite::Strict)
+            .path("/")
+            .max_age(cookie::time::Duration::seconds(0))
+            .build()
+            .to_string()
+    };
     (
         StatusCode::OK,
-        [(header::SET_COOKIE, clear.to_string())],
+        [
+            (header::SET_COOKIE, clear(SESSION_COOKIE)),
+            (header::SET_COOKIE, clear(LEGACY_SESSION_COOKIE)),
+        ],
         Json(serde_json::json!({ "ok": true })),
     )
         .into_response()
