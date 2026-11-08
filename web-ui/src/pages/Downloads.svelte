@@ -373,7 +373,7 @@
       <EmptyState icon="search" title={tr($locale, emptyKey)} />
     {:else}
       <EmptyState
-        image="/amigo-logo.png"
+        image="/icon.svg"
         title={tr($locale, "downloads.no_downloads")}
         description={tr($locale, "downloads.add_hint")}
       >

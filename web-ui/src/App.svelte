@@ -299,10 +299,10 @@
     if (document.hasFocus()) return;
     if (typeof Notification === "undefined") return;
     if (Notification.permission === "granted") {
-      new Notification(title, { body, icon: "/amigo-logo.png" });
+      new Notification(title, { body, icon: "/icon-256.png" });
     } else if (Notification.permission !== "denied") {
       Notification.requestPermission().then((p) => {
-        if (p === "granted") new Notification(title, { body, icon: "/amigo-logo.png" });
+        if (p === "granted") new Notification(title, { body, icon: "/icon-256.png" });
       });
     }
   }
@@ -403,7 +403,7 @@
       style="border-color: var(--border-color)"
     >
       <img
-        src="/amigo-logo.png"
+        src="/favicon.svg"
         alt="Krake"
         width="28"
         height="28"
@@ -597,7 +597,7 @@
     >
       <div class="flex items-center gap-3 min-w-0">
         <!-- Mobile brand (no sidebar on small screens) -->
-        <img src="/amigo-logo.png" alt="" width="28" height="28" class="lg:hidden shrink-0 rounded-full" />
+        <img src="/favicon.svg" alt="" width="28" height="28" class="lg:hidden shrink-0" />
         <h2
           class="text-lg md:text-xl font-semibold neon-flicker-text truncate"
           style="color: var(--text-primary)"

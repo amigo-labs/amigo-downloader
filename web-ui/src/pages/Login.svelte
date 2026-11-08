@@ -40,7 +40,7 @@
   <Card padding="lg" elevation={3} class="login-card">
     <form onsubmit={submit} class="grid gap-4">
       <div class="text-center">
-        <img src="/amigo-logo.png" alt="" width="48" height="48" class="mx-auto rounded-full" />
+        <img src="/icon.svg" alt="" width="48" height="48" class="mx-auto" />
         <h1 class="mt-3 text-lg font-bold" style="color: var(--text-primary)">
           {tr($locale, "login.title")}
         </h1>

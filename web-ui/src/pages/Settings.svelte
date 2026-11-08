@@ -78,7 +78,7 @@
     <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">{tr($locale, "settings.about")}</h3>
     <div class="rounded-xl p-5" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
       <div class="flex items-center gap-4">
-        <img src="/amigo-logo.png" alt="Krake" width="40" height="40" class="rounded-lg" />
+        <img src="/icon.svg" alt="Krake" width="40" height="40" />
         <div>
           <p class="font-bold" style="color: var(--text-primary)">Krake</p>
           <p class="text-sm" style="color: var(--text-secondary)">v0.1.0 — Fast, modular download manager</p>

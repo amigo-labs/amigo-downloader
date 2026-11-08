@@ -100,7 +100,7 @@
       class="rounded-3xl border-2 border-dashed p-8 sm:p-16 flex flex-col items-center gap-4 drop-bounce text-center"
       style="border-color: var(--accent); background: var(--bg-surface)"
     >
-      <img src="/amigo-logo.png" alt="" width="64" height="64" class="rounded-lg opacity-60" />
+      <img src="/icon.svg" alt="" width="64" height="64" class="opacity-60" />
       <p class="text-xl font-bold" style="color: var(--accent-ink)">{tr($locale, "drop.title")}</p>
       <p class="text-sm" style="color: var(--text-secondary)">{tr($locale, "drop.hint")}</p>
     </div>

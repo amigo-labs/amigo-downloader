@@ -105,7 +105,7 @@
 <div class="setup-wrap">
   <Card padding="lg" elevation={3} class="setup-card">
     <div class="text-center mb-4">
-      <img src="/amigo-logo.png" alt="" width="48" height="48" class="mx-auto rounded-full" />
+      <img src="/icon.svg" alt="" width="48" height="48" class="mx-auto" />
       <h1 class="mt-3 text-lg font-bold" style="color: var(--text-primary)">
         {tr($locale, "setup.title")}
       </h1>

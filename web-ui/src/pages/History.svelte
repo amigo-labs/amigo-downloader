@@ -137,7 +137,7 @@
     <Banner tone="danger" role="alert">{tr($locale, "history.load_failed")}</Banner>
   {:else if history.length === 0}
     <EmptyState
-      image="/amigo-logo.png"
+      image="/icon.svg"
       title={tr($locale, "history.empty")}
       description={tr($locale, "history.empty_hint")}
     />
