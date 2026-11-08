@@ -318,3 +318,81 @@ async fn pairing_deny_yields_no_token() {
     assert_eq!(status["status"], "denied");
     assert!(status.get("token").is_none() || status["token"].is_null());
 }
+
+/// The session cookie carries `Secure` exactly when the browser came in
+/// over HTTPS through a trusted proxy; a plain-HTTP listener must still be
+/// able to sign in, so it gets none there.
+#[tokio::test]
+async fn session_cookie_is_secure_only_behind_https_proxy() {
+    init_tracing_once();
+    let mut config = Config::default();
+    config.server.bind = "0.0.0.0:0".into();
+    config.server.trust_proxy = true;
+    let state = krake_server::build_test_state(config);
+    let app = krake_server::build_full_test_router(state, None, false).await;
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(
+            listener,
+            app.into_make_service_with_connect_info::<SocketAddr>(),
+        )
+        .await
+        .unwrap();
+    });
+    tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+
+    let c = client();
+    let creds = serde_json::json!({ "username": "admin", "password": "hunter22hunter" });
+    let set_cookie = |res: &reqwest::Response| {
+        res.headers()
+            .get_all("set-cookie")
+            .iter()
+            .map(|v| v.to_str().unwrap().to_string())
+            .collect::<Vec<_>>()
+    };
+
+    let res = c
+        .post(url(addr, "/api/v1/setup/complete"))
+        .header("x-forwarded-proto", "https")
+        .json(&creds)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    assert!(set_cookie(&res).iter().all(|c| c.contains("Secure")));
+
+    let res = c
+        .post(url(addr, "/api/v1/login"))
+        .json(&creds)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    assert!(set_cookie(&res).iter().all(|c| !c.contains("Secure")));
+
+    let res = c
+        .post(url(addr, "/api/v1/login"))
+        .header("x-forwarded-proto", "https")
+        .json(&creds)
+        .send()
+        .await
+        .unwrap();
+    let cookies = set_cookie(&res);
+    assert!(!cookies.is_empty() && cookies.iter().all(|c| c.contains("Secure")));
+    // The cookie store keeps a Secure cookie away from http://, so the test
+    // sends it by hand, as the browser would behind the HTTPS proxy.
+    let session = cookies[0].split(';').next().unwrap().to_string();
+
+    let res = c
+        .post(url(addr, "/api/v1/logout"))
+        .header("x-forwarded-proto", "https")
+        .header("cookie", session)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(res.status(), 200);
+    let cookies = set_cookie(&res);
+    assert_eq!(cookies.len(), 2);
+    assert!(cookies.iter().all(|c| c.contains("Secure")));
+}

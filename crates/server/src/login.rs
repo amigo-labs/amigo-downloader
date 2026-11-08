@@ -13,7 +13,7 @@ use axum::{
     Json, Router,
     extract::{ConnectInfo, State},
     http::{HeaderMap, StatusCode, header},
-    response::{IntoResponse, Response},
+    response::{AppendHeaders, IntoResponse, Response},
     routing::{get, post},
 };
 use axum_extra::extract::cookie::{Cookie, SameSite};
@@ -164,8 +164,11 @@ async fn login(
             return StatusCode::INTERNAL_SERVER_ERROR.into_response();
         }
     };
+    // Secure whenever the browser reached us over HTTPS (behind a trusted
+    // proxy); a plain-HTTP listener on the LAN must still be able to log in.
     let cookie = Cookie::build((SESSION_COOKIE, session_id))
         .http_only(true)
+        .secure(auth::request_is_secure(&headers, cfg.server.trust_proxy))
         .same_site(SameSite::Strict)
         .path("/")
         .max_age(cookie::time::Duration::seconds(cfg.server.session_ttl_secs))
@@ -186,9 +189,15 @@ async fn logout(State(s): State<LoginState>, req: axum::extract::Request) -> Res
     }
     // Clear the cookie regardless; the client may be a stale bearer user.
     // The pre-rename cookie goes too, so it cannot sign the browser back in.
+    // Same attributes as at login (`secure` included), or the browser keeps it.
+    let secure = auth::request_is_secure(
+        req.headers(),
+        app.coordinator.config().await.server.trust_proxy,
+    );
     let clear = |name: &'static str| {
         Cookie::build((name, ""))
             .http_only(true)
+            .secure(secure)
             .same_site(SameSite::Strict)
             .path("/")
             .max_age(cookie::time::Duration::seconds(0))
@@ -197,10 +206,12 @@ async fn logout(State(s): State<LoginState>, req: axum::extract::Request) -> Res
     };
     (
         StatusCode::OK,
-        [
+        // AppendHeaders: a plain array would `insert`, and the second
+        // Set-Cookie would replace the first.
+        AppendHeaders([
             (header::SET_COOKIE, clear(SESSION_COOKIE)),
             (header::SET_COOKIE, clear(LEGACY_SESSION_COOKIE)),
-        ],
+        ]),
         Json(serde_json::json!({ "ok": true })),
     )
         .into_response()

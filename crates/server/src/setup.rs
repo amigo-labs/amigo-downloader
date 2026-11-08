@@ -12,7 +12,7 @@
 use axum::{
     Json, Router,
     extract::State,
-    http::StatusCode,
+    http::{HeaderMap, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, post},
 };
@@ -20,7 +20,7 @@ use axum_extra::extract::cookie::{Cookie, SameSite};
 use serde::{Deserialize, Serialize};
 
 use crate::api::AppState;
-use crate::auth::{AuthState, SESSION_COOKIE};
+use crate::auth::{self, AuthState, SESSION_COOKIE};
 use crate::login;
 use crate::password;
 
@@ -58,6 +58,7 @@ async fn status(State((_app, auth)): State<(AppState, AuthState)>) -> Json<Setup
 
 async fn complete(
     State((app, auth)): State<(AppState, AuthState)>,
+    headers: HeaderMap,
     Json(req): Json<CompleteRequest>,
 ) -> Response {
     if auth.setup_complete().await {
@@ -106,6 +107,7 @@ async fn complete(
     };
     let cookie = Cookie::build((SESSION_COOKIE, session_id))
         .http_only(true)
+        .secure(auth::request_is_secure(&headers, cfg.server.trust_proxy))
         .same_site(SameSite::Strict)
         .path("/")
         .max_age(cookie::time::Duration::seconds(cfg.server.session_ttl_secs))
