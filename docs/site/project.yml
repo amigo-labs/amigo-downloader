@@ -1,11 +1,10 @@
 # Content for amigo-labs.dev/downloader/ — format: https://github.com/amigo-labs/website/blob/main/docs/project-data.md
 # Versions, download links and release notes come from GitHub Releases; don't write them here.
 schema: 1
-slug: downloader
-name: amigo-downloader
+slug: krake
+name: Krake
 status: beta
 accent: "#9be22d"
-monogram: Dl
 icon: icon.png
 tagline:
   en: The download manager power users actually want
@@ -86,8 +85,8 @@ features:
       de: Funktioniert mit vorhandenen Browser-Erweiterungen – gleicher Port, gleiches Protokoll, keine Konfiguration.
   - title: { en: NZBGet-compatible API, de: NZBGet-kompatible API }
     text:
-      en: A NZBGet JSON-RPC compatibility layer lets tools that speak to NZBGet use amigo-downloader instead.
-      de: Eine NZBGet-kompatible JSON-RPC-Schnittstelle lässt Tools, die mit NZBGet sprechen, stattdessen amigo-downloader nutzen.
+      en: A NZBGet JSON-RPC compatibility layer lets tools that speak to NZBGet use Krake instead.
+      de: Eine NZBGet-kompatible JSON-RPC-Schnittstelle lässt Tools, die mit NZBGet sprechen, stattdessen Krake nutzen.
   - title: { en: Post-processing, de: Nachbearbeitung }
     text:
       en: Automatically extracts RAR, ZIP, 7z and tar.gz archives after a download finishes.
