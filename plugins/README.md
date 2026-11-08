@@ -1,4 +1,4 @@
-# amigo-downloader Plugins
+# Krake Plugins
 
 TypeScript/JavaScript plugin system powered by QuickJS-NG + SWC.
 
@@ -102,10 +102,10 @@ interface DownloadInfo {
 
 ```bash
 # Run spec file (plugin.spec.ts)
-amigo-dl plugins test ./plugins/youtube/plugin.ts
+krake plugins test ./plugins/youtube/plugin.ts
 
 # Resolve a URL directly
-amigo-dl plugins test ./plugins/youtube/plugin.ts https://youtube.com/watch?v=dQw4w9WgXcQ
+krake plugins test ./plugins/youtube/plugin.ts https://youtube.com/watch?v=dQw4w9WgXcQ
 ```
 
 Spec files use `test()`, `assert()`, `assertEqual()`, `assertNotNull()`:

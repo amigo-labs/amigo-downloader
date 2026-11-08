@@ -78,7 +78,7 @@ The empty `"pubkey": ""` in `tauri/tauri.conf.json` must be replaced with either
 - Or the updater plugin section should be removed/disabled until a key is generated
 
 **Implementation approach:**
-- Add a `scripts/generate-tauri-signing-key.sh` script that wraps `tauri signer generate -w ~/.tauri/amigo-downloader.key` and outputs the public key
+- Add a `scripts/generate-tauri-signing-key.sh` script that wraps `tauri signer generate -w ~/.tauri/krake.key` and outputs the public key
 - Document the key generation in the Tauri build instructions
 - Set a placeholder comment in `tauri.conf.json` explaining the key must be generated before release builds
 - In CI, the signing key should come from a secret; local dev builds can disable the updater
@@ -88,7 +88,7 @@ For development, disable the updater plugin to avoid the empty-key error:
 "updater": {
     "active": false,
     "endpoints": [
-        "https://github.com/amigo-labs/amigo-downloader/releases/latest/download/latest.json"
+        "https://github.com/amigo-labs/amigo-krake/releases/latest/download/latest.json"
     ],
     "pubkey": "REPLACE_WITH_REAL_KEY_BEFORE_RELEASE"
 }
@@ -114,7 +114,7 @@ pub fn detect_distribution() -> Distribution {
         .ok()
         .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
     {
-        if name.contains("amigo-desktop") || name.contains("amigo-downloader") {
+        if name.contains("amigo-desktop") || name.contains("krake") {
             // Could be Tauri, but without env var we can't be sure
         }
     }

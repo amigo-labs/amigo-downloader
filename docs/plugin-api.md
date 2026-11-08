@@ -115,7 +115,7 @@ permissions: { domains: ["api.real-debrid.com", "*.rdeb.io"] },
   permissions.domains`, exactly like an SSRF rejection. The SSRF guard
   (no private / loopback / link-local / metadata addresses) still applies on
   top.
-- **Install:** the Web UI and `amigo-dl plugins install <id>` show the
+- **Install:** the Web UI and `krake plugins install <id>` show the
   requested domains and require confirmation; the server refuses an install
   without `{"approve_permissions": true}` (HTTP 428).
 - **Updates:** an update whose domain set is wider than the installed
@@ -372,8 +372,8 @@ Also available as `console.log()`, `console.warn()`, `console.error()`.
 
 ## Sandbox Limits
 
-Plugin JavaScript runs in a separate process, `amigo-plugin-host`, which the
-server (and `amigo-dl`) start next to themselves. Inside it each plugin runs in
+Plugin JavaScript runs in a separate process, `krake-plugin-host`, which the
+server (and `krake`) start next to themselves. Inside it each plugin runs in
 **its own QuickJS runtime**, so memory and the execution deadline are per
 plugin; different plugins execute concurrently, and one slow plugin never
 delays another or the plugin list. Stateful host functions (HTTP, cookies,
@@ -443,7 +443,7 @@ is how plugin updates (`POST /api/v1/updates/plugins/{id}`) take effect
 without a restart. There is no filesystem watcher yet — after editing a
 plugin file on disk, restart the server (or re-trigger a load via the update
 endpoint) to pick up the change. For fast iteration during development, use
-`amigo-dl plugins test <plugin.ts> [url]`, which loads the file fresh on
+`krake plugins test <plugin.ts> [url]`, which loads the file fresh on
 every run.
 
 ## Directory Structure

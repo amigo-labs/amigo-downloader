@@ -92,7 +92,7 @@ second, overlapping key is a possible follow-up.
   host, a non-declared host, a redirect to a non-declared host, and two
   plugins with different lists.
 - [x] Install always requires approval: the server returns HTTP 428 without
-  `approve_permissions`. The Web UI and `amigo-dl plugins install` show the
+  `approve_permissions`. The Web UI and `krake plugins install` show the
   domains first, or an explicit "any public host" warning.
 - [x] An update whose domain set grows is never auto-applied. A manual update
   must be approved.
@@ -146,7 +146,7 @@ second, overlapping key is a possible follow-up.
 
 ## SH-7a. Out-of-process plugin host (#79) — process split
 
-Plugin JS runs in a separate binary, `amigo-plugin-host`, not in the daemon.
+Plugin JS runs in a separate binary, `krake-plugin-host`, not in the daemon.
 This contains crashes (a QuickJS abort or segfault, or `panic = "abort"`, kills
 the child, not the queue). It does **not** yet contain a memory-safety
 exploit: the child runs as the same OS user with the same filesystem and
@@ -190,7 +190,7 @@ network reach as the daemon until SH-7b lands.
   it is missing, loading fails with a clear error and the daemon runs without
   plugins. Test: `missing_host_binary_is_a_clear_error`.
 - [x] The Docker image and both release archives (CLI, server) ship
-  `amigo-plugin-host`.
+  `krake-plugin-host`.
 - Measured with `tests/perf_baseline.rs` in release (4 vCPU container), median
   of four runs each, against the same commit without the split:
 
@@ -206,7 +206,7 @@ network reach as the daemon until SH-7b lands.
   cache starts empty, so "cold" no longer benefits from an earlier run. A
   daemon pays this once at startup. Each host call costs ~0.2 ms of IPC,
   which is noise next to the network latency of a real resolve.
-- The self-updater installs `amigo-plugin-host` together with the binary from
+- The self-updater installs `krake-plugin-host` together with the binary from
   the same release archive (`docs/specs/self-update.md`). A daemon still
   running the old version after an update refuses a respawned host that
   speaks another protocol version (handshake), so plugins fail closed with a
@@ -221,7 +221,7 @@ network reach as the daemon until SH-7b lands.
 These decisions are settled here so the implementation PR does not have to
 argue them again:
 
-- **Topology:** one shared child process (`amigo-plugin-host`) for all
+- **Topology:** one shared child process (`krake-plugin-host`) for all
   plugins. The threat is plugin-vs-daemon. Cookie jars, storage, request
   counters and allowlists are already per plugin, and each plugin already has
   its own QuickJS runtime inside the child.

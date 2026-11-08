@@ -2,7 +2,7 @@
 
 > **Status:** SDK-Skeleton in `plugin-sdk/` ist gelandet (Phase 0–1, siehe Commit `12fb9fc`). Tutorials und Cookbook in `plugin-sdk/docs/`. Die folgenden Phasen sind teilweise umgesetzt; dieses Dokument bleibt als Designgrundlage und Roadmap stehen.
 
-Ein Implementierungsplan für ein TypeScript-SDK, mit dem rund 90% aller JDownloader-artigen Plugins nachgebaut werden können, aufbauend auf der amigo-downloader Host-API (Tier 1 + 2).
+Ein Implementierungsplan für ein TypeScript-SDK, mit dem rund 90% aller JDownloader-artigen Plugins nachgebaut werden können, aufbauend auf der Krake Host-API (Tier 1 + 2).
 
 ## Scope & Non-Goals
 
@@ -37,7 +37,7 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
 
 **Aufgaben:**
 
-- Monorepo-Entscheidung: SDK als Workspace-Member in amigo-downloader (bevorzugt, weil Host-API und SDK zusammen evolvieren).
+- Monorepo-Entscheidung: SDK als Workspace-Member in Krake (bevorzugt, weil Host-API und SDK zusammen evolvieren).
 - Package-Name: `@amigo/plugin-sdk`.
 - Build-Pipeline mit SWC, Target ES2022, Output als ESM plus Type-Declarations.
 - Strikte TypeScript-Config: `strict: true`, `noUncheckedIndexedAccess: true`, `exactOptionalPropertyTypes: true`.
@@ -498,14 +498,14 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
 
 ## Phase 13: Entwickler-Experience und CLI
 
-**Ziel:** Plugin-Entwicklung soll sich gut anfühlen. Local-Testing ohne die ganze amigo-downloader-App starten zu müssen.
+**Ziel:** Plugin-Entwicklung soll sich gut anfühlen. Local-Testing ohne die ganze Krake-App starten zu müssen.
 
 **Aufgaben:**
 
 - CLI-Befehl `amigo plugin new <id>` — scaffolded Plugin-Projekt mit Template, Manifest, passendem `tsconfig.json`, Test-Setup.
 - `amigo plugin test <url>` — spawnt einen minimalen Runner mit Host-API-Mock (oder Real-Host mit Sandbox), lädt das Plugin, ruft extract/decrypt mit der URL auf, printed strukturiertes Result plus Log-Output.
 - `amigo plugin build` — SWC-Transpilation, Manifest-Validation, Bundle in `.amigoplugin`-Tarball.
-- `amigo plugin install <path>` — lädt lokal in laufende amigo-downloader-Instanz.
+- `amigo plugin install <path>` — lädt lokal in laufende Krake-Instanz.
 - `amigo plugin validate <path>` — statische Checks: Manifest-Schema, SDK-Version-Compatibility, Permission-Consistency.
 - Watch-Mode für `test`: Hot-Reload bei Code-Changes.
 

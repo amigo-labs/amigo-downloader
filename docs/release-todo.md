@@ -33,7 +33,7 @@ v0.1.0-Release-PR, deren Merge den Tag setzt und den (bewusst leeren)
       `.github/workflows/release-build.yml` bzw. Docker-Build) zum
       Public-Key passt. `crates/core/build.rs` verweigert Release-Builds
       ohne diesen Key.
-- [ ] Release-Pipeline: jedes `amigo-server`-Binary mit dem Private-Key
+- [ ] Release-Pipeline: jedes `krake-server`-Binary mit dem Private-Key
       signieren und die Detached-Signatur als `<asset>.sig`-Release-Asset
       neben dem Binary und `<asset>.sha256` hochladen (der Self-Updater
       erwartet sie und lehnt sonst das Update ab).

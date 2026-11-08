@@ -16,7 +16,7 @@ A security audit of the Docker deployment identified five issues spanning contai
 
 ### DS-1. No Health Checks
 
-**Problem**: Neither `docker/Dockerfile` nor `docker/docker-compose.yml` defines a `HEALTHCHECK`. Container orchestrators (Docker Swarm, Kubernetes via liveness probes, Compose restart policies) cannot distinguish a running-but-hung process from a healthy one. The container will stay in "running" state even if `amigo-server` has deadlocked or crashed its listener.
+**Problem**: Neither `docker/Dockerfile` nor `docker/docker-compose.yml` defines a `HEALTHCHECK`. Container orchestrators (Docker Swarm, Kubernetes via liveness probes, Compose restart policies) cannot distinguish a running-but-hung process from a healthy one. The container will stay in "running" state even if `krake-server` has deadlocked or crashed its listener.
 
 **Fix**: Add a `HEALTHCHECK` instruction to the production Dockerfile that hits the existing `GET /api/v1/status` endpoint. Mirror this in docker-compose.yml via the `healthcheck:` key for users who build from Compose directly.
 
@@ -29,7 +29,7 @@ A security audit of the Docker deployment identified five issues spanning contai
 
 ### DS-2. Running as Root
 
-**Problem**: The production Dockerfile has no `USER` instruction. The `amigo-server` process runs as UID 0 inside the container. If the application is compromised (e.g., via a malicious plugin or a vulnerability in a dependency), the attacker has root access to the entire container filesystem, can install packages, and potentially escape to the host if the container runtime has misconfigured capabilities.
+**Problem**: The production Dockerfile has no `USER` instruction. The `krake-server` process runs as UID 0 inside the container. If the application is compromised (e.g., via a malicious plugin or a vulnerability in a dependency), the attacker has root access to the entire container filesystem, can install packages, and potentially escape to the host if the container runtime has misconfigured capabilities.
 
 **Fix**: Create a non-root user and group in the runtime stage and switch to it before `ENTRYPOINT`.
 
@@ -95,12 +95,12 @@ A security audit of the Docker deployment identified five issues spanning contai
 
 | ID | Criterion | How to verify |
 |---|---|---|
-| AC-1 | Production container reports healthy/unhealthy status | `docker inspect --format='{{.State.Health.Status}}' amigo-downloader` returns `healthy` when server is up and `unhealthy` when server is stopped or unresponsive |
-| AC-2 | Production container runs as non-root user | `docker exec amigo-downloader whoami` returns a non-root username (e.g., `amigo`) |
+| AC-1 | Production container reports healthy/unhealthy status | `docker inspect --format='{{.State.Health.Status}}' krake` returns `healthy` when server is up and `unhealthy` when server is stopped or unresponsive |
+| AC-2 | Production container runs as non-root user | `docker exec krake whoami` returns a non-root username (e.g., `amigo`) |
 | AC-3 | All base images are pinned to specific versions or digests | `grep -E '^FROM' docker/Dockerfile docker/Dockerfile.dev` shows full version tags or `@sha256:` digests — no floating tags like `node:22-alpine` |
 | AC-4 | No default credentials in docker-compose.yml | `grep -i 'changeme' docker/docker-compose.yml` returns no matches; starting without `AMIGO_API_KEY` set produces an error or auto-generates a key |
 | AC-5 | Dev container starts successfully with volume-mounted source | `docker compose -f docker-compose.dev.yml up` starts Vite dev server without errors when `web-ui/` is mounted; no `npm run build` in entrypoint |
-| AC-6 | Dockle scan passes with no FATAL or WARN findings | `dockle amigo-downloader:local` reports CIS-DI-0001 (non-root), CIS-DI-0006 (healthcheck), DKL-DI-0006 (pinned tags) as PASS |
+| AC-6 | Dockle scan passes with no FATAL or WARN findings | `dockle krake:local` reports CIS-DI-0001 (non-root), CIS-DI-0006 (healthcheck), DKL-DI-0006 (pinned tags) as PASS |
 
 ---
 

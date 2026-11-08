@@ -1,9 +1,9 @@
 # @amigo/plugin-sdk
 
-TypeScript SDK for building [amigo-downloader](https://github.com/amigo-labs/amigo-downloader) plugins.
+TypeScript SDK for building [Krake](https://github.com/amigo-labs/amigo-krake) plugins.
 
 > **Status:** The SDK targets its own plugin model and mock host; the
-> amigo-downloader runtime does not load SDK-style plugins yet. For plugins
+> Krake runtime does not load SDK-style plugins yet. For plugins
 > that should run inside the app today, use the CommonJS interface from
 > `docs/plugin-api.md` (`plugins/template/plugin.ts`). The runtime bridge is
 > tracked in `docs/plan-plugin-sdk.md`.
@@ -16,7 +16,7 @@ npm install @amigo/plugin-sdk
 
 ## Quick start
 
-Plugins that run in amigo-downloader today use the **synchronous CommonJS**
+Plugins that run in Krake today use the **synchronous CommonJS**
 contract — assign to `module.exports`, implement `resolve(url)`, and call the
 injected global `amigo.*` host API directly. There is no `import`, no
 `async`/`await`, and URLs are matched with a single `urlPattern` string.

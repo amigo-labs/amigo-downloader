@@ -4,7 +4,7 @@
 
 ## Context
 
-YouTube-Downloads funktionieren nicht, weil der aktuelle `ANDROID` innertube-Client keine direkten URLs mehr liefert. Außerdem fehlen HLS- und DASH-Downloader komplett — ohne die kann amigo-dl keine Streaming-Formate laden. Die YouTube-Logik liegt aktuell falsch im Core-Crate statt in einem eigenen Extractor.
+YouTube-Downloads funktionieren nicht, weil der aktuelle `ANDROID` innertube-Client keine direkten URLs mehr liefert. Außerdem fehlen HLS- und DASH-Downloader komplett — ohne die kann krake keine Streaming-Formate laden. Die YouTube-Logik liegt aktuell falsch im Core-Crate statt in einem eigenen Extractor.
 
 **Ziel:** YouTube-Downloads zum Laufen bringen, HLS/DASH als Protokolle unterstützen, YouTube aus Core rausnehmen, `--verbose` Flag fürs Debugging.
 
@@ -182,8 +182,8 @@ pub enum StreamProtocol { Http, Hls, Dash }
 
 1. `cargo test --workspace` — alle Tests grün
 2. `cargo clippy --workspace` — keine Warnings
-3. `amigo-dl --verbose https://www.youtube.com/watch?v=1mzl2Oo8Ncw` — zeigt Debug-Output, lädt Video runter
-4. `amigo-dl https://example.com/file.zip` — normaler HTTP-Download funktioniert weiterhin
+3. `krake --verbose https://www.youtube.com/watch?v=1mzl2Oo8Ncw` — zeigt Debug-Output, lädt Video runter
+4. `krake https://example.com/file.zip` — normaler HTTP-Download funktioniert weiterhin
 5. Download-Speed >1 MB/s (N-Parameter korrekt gelöst)
 
 ---

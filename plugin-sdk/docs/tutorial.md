@@ -4,7 +4,7 @@ This walkthrough builds a small hoster plugin that extracts a download URL from 
 
 > **Status:** The SDK plugin model shown here (`definePlugin`, ESM default
 > export, `plugin.toml`) is developed against the SDK's mock host and is not
-> yet loaded by the amigo-downloader runtime. Plugins that should run inside
+> yet loaded by the Krake runtime. Plugins that should run inside
 > the app today use the CommonJS interface documented in `docs/plugin-api.md`
 > (`module.exports` with `urlPattern` and a synchronous `resolve()`); see
 > `plugins/template/plugin.ts` for a starting point. The runtime bridge for
@@ -97,4 +97,4 @@ This prints the plugin manifest and a capability summary (whether `extract`, `de
 
 - Read the [cookbook](./cookbook.md) for patterns (captcha, pagination, HLS, containers, …).
 - Read the [JDownloader mapping](./jdownloader-mapping.md) if you are porting an existing plugin.
-- When the plugin is ready, package and install it into a running amigo-downloader instance.
+- When the plugin is ready, package and install it into a running Krake instance.

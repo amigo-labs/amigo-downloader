@@ -1,4 +1,4 @@
-# Hosting amigo-downloader
+# Hosting Krake
 
 amigo ships three first-class deployment shapes. Pick the one that matches
 where the server actually runs.
@@ -8,20 +8,20 @@ where the server actually runs.
 | Variant | Runs standalone? | Needs a server too? | Typical use |
 |---|---|---|---|
 | **Tauri Desktop** (`amigo-desktop`) | yes — spawns an internal loopback server | no | Personal laptop/desktop, single user |
-| **`amigo-server` binary** (Linux/Mac/Windows) | yes — ships the Web UI embedded | no | Self-hosted on a NAS / homelab without containers |
-| **Docker image** (`amigo-downloader:latest`) | yes (as a container) | no | Always-on homeserver, multiple clients |
-| **`amigo-dl <URL>`** (direct download) | yes — one shot, no daemon | no | Quick single-file download, `yt-dlp`-style |
-| **Web UI in browser** | no — it's only a frontend | yes — served by `amigo-server` or Docker | Regular GUI use |
-| **`amigo-dl` queue commands** (`add`, `list`, `pause`, …) | no | yes — a running `amigo-server`. Use locally by default, or pair once with a remote via `amigo-dl login <url>` and then address it with `--remote <alias>`. | Scripted queue management, talking to a Docker host from a laptop |
+| **`krake-server` binary** (Linux/Mac/Windows) | yes — ships the Web UI embedded | no | Self-hosted on a NAS / homelab without containers |
+| **Docker image** (`krake:latest`) | yes (as a container) | no | Always-on homeserver, multiple clients |
+| **`krake <URL>`** (direct download) | yes — one shot, no daemon | no | Quick single-file download, `yt-dlp`-style |
+| **Web UI in browser** | no — it's only a frontend | yes — served by `krake-server` or Docker | Regular GUI use |
+| **`krake` queue commands** (`add`, `list`, `pause`, …) | no | yes — a running `krake-server`. Use locally by default, or pair once with a remote via `krake login <url>` and then address it with `--remote <alias>`. | Scripted queue management, talking to a Docker host from a laptop |
 
 In short:
 
-- **Standalone** (no extra service required): Tauri, the `amigo-server` binary, the Docker container, `amigo-dl <URL>`.
-- **Needs a running server** (Docker or local, doesn't matter which): browser UI, `amigo-dl` queue commands. The CLI is one binary — `login` / `remote` / `--remote` are just one-time pairing and later addressing on the same tool.
+- **Standalone** (no extra service required): Tauri, the `krake-server` binary, the Docker container, `krake <URL>`.
+- **Needs a running server** (Docker or local, doesn't matter which): browser UI, `krake` queue commands. The CLI is one binary — `login` / `remote` / `--remote` are just one-time pairing and later addressing on the same tool.
 
 ## Local (default)
 
-Running `amigo-server` (or the Tauri desktop app) with no extra config
+Running `krake-server` (or the Tauri desktop app) with no extra config
 binds to `127.0.0.1:1516`. Authentication is off because nothing on the
 network can reach the process — the wizard, login page, and pairing flow
 are all skipped. Just open <http://localhost:1516> and use the app.
@@ -61,7 +61,7 @@ isn't acceptable, see below.
 ### Plugin auto-updates
 
 The plugin registry index (`index.json`) is served alongside a detached
-Ed25519 signature (`index.json.sig`). The amigo-server binary pins the
+Ed25519 signature (`index.json.sig`). The krake-server binary pins the
 signer's public key, verifies the signature on every registry fetch, and
 rejects any tampered or unsigned index. Per-plugin source files are
 additionally SHA-256 pinned in the index.
@@ -74,7 +74,7 @@ each tick; failures are logged, never fatal. New (not-yet-installed)
 plugins are skipped — only plugins the admin has already installed ever
 update automatically.
 
-To rotate the registry signing key, ship a new amigo-server release with
+To rotate the registry signing key, ship a new krake-server release with
 the new pinned public key. Clients that haven't upgraded will reject the
 new signatures — this is the intended behaviour, it fails safe.
 
@@ -146,15 +146,15 @@ Two caveats:
 From any machine that can reach the server:
 
 ```sh
-amigo-dl login http://amigo.example.com
+krake login http://amigo.example.com
 # Prints a fingerprint like "472-189" and polls for approval.
 
 # In the admin browser: click "Approve" on the pop-up device-approval
 # card. The fingerprint displayed in the modal should match the one
 # printed by the CLI.
 
-amigo-dl remote list       # confirm the remote was saved
-amigo-dl remote use <name> # set as default
+krake remote list       # confirm the remote was saved
+krake remote use <name> # set as default
 ```
 
 `remotes.toml` is saved under `~/.config/amigo/` with `0600` permissions.
