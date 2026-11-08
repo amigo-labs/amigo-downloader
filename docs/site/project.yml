@@ -1,0 +1,140 @@
+# Content for amigo-labs.dev/downloader/ — format: https://github.com/amigo-labs/website/blob/main/docs/project-data.md
+# Versions, download links and release notes come from GitHub Releases; don't write them here.
+schema: 1
+slug: downloader
+name: amigo-downloader
+status: beta
+accent: "#3b82f6"
+icon: icon.png
+tagline:
+  en: The download manager power users actually want
+  de: Der Download-Manager, den Power-User wirklich wollen
+summary:
+  en: >-
+    A fast, modular download manager in Rust: multi-chunk HTTP, native Usenet with PAR2 repair,
+    HLS, DASH and YouTube, and a sandboxed TypeScript plugin system. One binary with a Web UI,
+    a CLI and a Tauri desktop app.
+  de: >-
+    Ein schneller, modularer Download-Manager in Rust: Multi-Chunk-HTTP, natives Usenet mit
+    PAR2-Reparatur, HLS, DASH und YouTube sowie ein abgeschottetes TypeScript-Plugin-System.
+    Ein einziges Binary mit Web-Oberfläche, CLI und Tauri-Desktop-App.
+about:
+  en: |
+    Run it as a Docker container or a single binary on a server, or install the native desktop app
+    for Windows, macOS and Linux. The server, the plugins and the Web UI come bundled; metadata,
+    queue and history live in an embedded SQLite database, so there is no external service to set up.
+
+    The Web UI is a responsive Svelte app that also installs as a PWA: share a link from your phone
+    and it lands in the queue. A REST API and a WebSocket stream real-time progress to scripts and
+    other tools.
+  de: |
+    Läuft als Docker-Container oder einzelnes Binary auf einem Server, oder als native Desktop-App
+    für Windows, macOS und Linux. Server, Plugins und Web-Oberfläche sind gebündelt; Metadaten,
+    Warteschlange und Verlauf liegen in einer eingebetteten SQLite-Datenbank, es muss also kein
+    externer Dienst eingerichtet werden.
+
+    Die Web-Oberfläche ist eine responsive Svelte-App, die sich auch als PWA installieren lässt:
+    Einen Link vom Handy teilen, und er landet in der Warteschlange. Eine REST-API und ein WebSocket
+    liefern den Fortschritt in Echtzeit an Skripte und andere Tools.
+platforms: [docker, windows, macos, linux]
+license: MIT
+links:
+  - label: { en: Plugin API, de: Plugin-API }
+    url: https://github.com/amigo-labs/amigo-downloader/blob/main/docs/plugin-api.md
+  - label: { en: Architecture, de: Architektur }
+    url: https://github.com/amigo-labs/amigo-downloader/blob/main/docs/architecture.md
+
+highlights:
+  - value: "8×"
+    label: { en: parallel chunks per download, de: parallele Chunks pro Download }
+  - value: "5"
+    label: { en: "built-in backends: HTTP, HLS, DASH, Usenet, YouTube", de: "eingebaute Backends: HTTP, HLS, DASH, Usenet, YouTube" }
+  - value: "<50 MB"
+    label: { en: "single binary, Web UI included", de: "ein Binary, Web-Oberfläche inklusive" }
+  - value: "0"
+    label: { en: external services — SQLite embedded, de: externe Dienste – SQLite eingebettet }
+
+features:
+  - title: { en: Multi-chunk HTTP, de: Multi-Chunk-HTTP }
+    text:
+      en: Up to 8 parallel chunks per file with adaptive sizing, connection pooling, automatic resume and retry with exponential backoff.
+      de: Bis zu 8 parallele Chunks pro Datei mit adaptiver Größe, Connection-Pooling, automatischem Fortsetzen und Wiederholen mit exponentiellem Backoff.
+  - title: { en: Usenet with PAR2, de: Usenet mit PAR2 }
+    text:
+      en: Native NNTP/NNTPS with multiple servers and priorities, NZB import, yEnc decoding and PAR2 verify and repair.
+      de: Natives NNTP/NNTPS mit mehreren Servern und Prioritäten, NZB-Import, yEnc-Dekodierung sowie PAR2-Prüfung und -Reparatur.
+  - title: { en: "HLS, DASH and YouTube", de: "HLS, DASH und YouTube" }
+    text:
+      en: m3u8 and MPD parsing with variant and track selection and segment downloads, plus a built-in YouTube extractor (InnerTube client, N-parameter challenge, format selection).
+      de: m3u8- und MPD-Parsing mit Auswahl von Variante und Spur sowie Segment-Downloads, dazu ein eingebauter YouTube-Extractor (InnerTube-Client, N-Parameter-Challenge, Formatauswahl).
+  - title: { en: Sandboxed TypeScript plugins, de: Abgeschottete TypeScript-Plugins }
+    text:
+      en: Write hoster and extractor plugins in plain TypeScript. SWC transpiles them, a QuickJS VM in a separate process runs them — no direct network or file-system access, with limits of 30 s, 64 MB, 20 requests and 1 MB storage.
+      de: Hoster- und Extractor-Plugins in einfachem TypeScript schreiben. SWC transpiliert sie, eine QuickJS-VM in einem eigenen Prozess führt sie aus – ohne direkten Netzwerk- oder Dateisystemzugriff, mit Limits von 30 s, 64 MB, 20 Requests und 1 MB Speicher.
+  - title: { en: Plugin marketplace, de: Plugin-Marktplatz }
+    text:
+      en: Search, install and update plugins from the registry, with checksum verification and automatic updates.
+      de: Plugins aus der Registry suchen, installieren und aktualisieren – mit Prüfsummen-Verifikation und automatischen Updates.
+  - title: { en: DLC import and export, de: DLC-Import und -Export }
+    text:
+      en: Read and write AES-128 DLC containers, compatible with the JDownloader ecosystem.
+      de: AES-128-DLC-Container lesen und schreiben, kompatibel mit dem JDownloader-Ökosystem.
+  - title: { en: "Click'n'Load on port 9666", de: "Click'n'Load auf Port 9666" }
+    text:
+      en: Works with existing browser extensions — same port, same protocol, no configuration.
+      de: Funktioniert mit vorhandenen Browser-Erweiterungen – gleicher Port, gleiches Protokoll, keine Konfiguration.
+  - title: { en: NZBGet-compatible API, de: NZBGet-kompatible API }
+    text:
+      en: A NZBGet JSON-RPC compatibility layer lets tools that speak to NZBGet use amigo-downloader instead.
+      de: Eine NZBGet-kompatible JSON-RPC-Schnittstelle lässt Tools, die mit NZBGet sprechen, stattdessen amigo-downloader nutzen.
+  - title: { en: Post-processing, de: Nachbearbeitung }
+    text:
+      en: Automatically extracts RAR, ZIP, 7z and tar.gz archives after a download finishes.
+      de: Entpackt RAR-, ZIP-, 7z- und tar.gz-Archive automatisch, sobald ein Download fertig ist.
+  - title: { en: Bandwidth scheduler, de: Bandbreiten-Planer }
+    text:
+      en: Global and per-download speed limits with time-based schedules, e.g. unlimited at night.
+      de: Globale Limits und Limits pro Download mit Zeitplänen, z. B. unbegrenzt in der Nacht.
+  - title: { en: "RSS, webhooks and self-update", de: "RSS, Webhooks und Selbst-Update" }
+    text:
+      en: Watch RSS feeds, fire outbound webhooks, and let the core binary update itself from GitHub Releases. Interrupted downloads resume after a restart.
+      de: RSS-Feeds beobachten, ausgehende Webhooks auslösen und das Binary sich selbst über GitHub Releases aktualisieren lassen. Unterbrochene Downloads laufen nach einem Neustart weiter.
+  - title: { en: "Web UI, CLI and desktop app", de: "Web-Oberfläche, CLI und Desktop-App" }
+    text:
+      en: A responsive Svelte Web UI (installable as a PWA with share target), the amigo-dl command line for direct downloads and queue control, and a native Tauri app — in English and German.
+      de: Eine responsive Svelte-Oberfläche (als PWA mit Teilen-Ziel installierbar), die Kommandozeile amigo-dl für direkte Downloads und die Warteschlange sowie eine native Tauri-App – auf Englisch und Deutsch.
+
+downloads:
+  files:
+    # Desktop app (Tauri bundles; names carry the version)
+    - { os: windows, label: { en: Desktop app (installer), de: Desktop-App (Installer) }, arch: x64, match: "_x64-setup\\.exe$" }
+    - { os: windows, label: { en: Desktop app (MSI), de: Desktop-App (MSI) }, arch: x64, match: "_x64_en-US\\.msi$" }
+    - { os: macos, label: { en: Desktop app, de: Desktop-App }, arch: arm64, match: "_aarch64\\.dmg$" }
+    - { os: macos, label: { en: Desktop app, de: Desktop-App }, arch: x64, match: "_x64\\.dmg$" }
+    - { os: linux, label: { en: Desktop app (AppImage), de: Desktop-App (AppImage) }, arch: x64, match: "_amd64\\.AppImage$" }
+    - { os: linux, label: { en: Desktop app (.deb), de: Desktop-App (.deb) }, arch: x64, match: "_amd64\\.deb$" }
+    # Server (amigo-server + plugin host)
+    - { os: windows, label: { en: Server, de: Server }, arch: x64, asset: amigo-server-windows-x86_64.zip }
+    - { os: macos, label: { en: Server, de: Server }, arch: arm64, asset: amigo-server-macos-aarch64.tar.gz }
+    - { os: macos, label: { en: Server, de: Server }, arch: x64, asset: amigo-server-macos-x86_64.tar.gz }
+    - { os: linux, label: { en: Server, de: Server }, arch: x64, asset: amigo-server-linux-x86_64.tar.gz }
+    - { os: linux, label: { en: Server, de: Server }, arch: arm64, asset: amigo-server-linux-aarch64.tar.gz }
+    # Command line (amigo-dl + plugin host)
+    - { os: windows, label: { en: CLI (amigo-dl), de: CLI (amigo-dl) }, arch: x64, asset: amigo-dl-windows-x86_64.zip }
+    - { os: macos, label: { en: CLI (amigo-dl), de: CLI (amigo-dl) }, arch: arm64, asset: amigo-dl-macos-aarch64.tar.gz }
+    - { os: macos, label: { en: CLI (amigo-dl), de: CLI (amigo-dl) }, arch: x64, asset: amigo-dl-macos-x86_64.tar.gz }
+    - { os: linux, label: { en: CLI (amigo-dl), de: CLI (amigo-dl) }, arch: x64, asset: amigo-dl-linux-x86_64.tar.gz }
+    - { os: linux, label: { en: CLI (amigo-dl), de: CLI (amigo-dl) }, arch: arm64, asset: amigo-dl-linux-aarch64.tar.gz }
+  install:
+    - label: Docker
+      command: docker run -d --name amigo-downloader -p 1516:1516 -p 9666:9666 -v ./config:/config -v ./downloads:/downloads -e AMIGO_BIND=0.0.0.0:1516 ghcr.io/amigo-labs/amigo-downloader:latest
+      requiresRelease: true
+      note:
+        en: Then open http://localhost:1516; the setup wizard creates the admin account. Port 9666 is Click'n'Load.
+        de: Danach http://localhost:1516 öffnen; der Einrichtungsassistent legt das Admin-Konto an. Port 9666 ist Click'n'Load.
+    - label: { en: Install script (CLI), de: Installationsskript (CLI) }
+      command: curl -fsSL https://raw.githubusercontent.com/amigo-labs/amigo-downloader/main/scripts/install.sh | bash
+      requiresRelease: true
+      note:
+        en: Linux and macOS, x86_64 and aarch64. Installs amigo-dl from the latest release after checking its SHA-256 checksum.
+        de: Linux und macOS, x86_64 und aarch64. Installiert amigo-dl aus dem neuesten Release, nachdem die SHA-256-Prüfsumme geprüft wurde.
