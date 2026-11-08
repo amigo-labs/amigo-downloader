@@ -1,4 +1,4 @@
-/// <reference path="../types/amigo.d.ts" />
+/// <reference path="../types/krake.d.ts" />
 
 const plugin = module.exports;
 
@@ -30,7 +30,7 @@ test("has checkOnline function", () => {
 
 function requireYouTube(): void {
     try {
-        const resp = amigo.httpGet("https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=aqz-KE-bpKQ&format=json");
+        const resp = krake.httpGet("https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=aqz-KE-bpKQ&format=json");
         if (resp.status !== 200) skip("YouTube not reachable (status " + resp.status + ")");
     } catch (e) {
         skip("YouTube not reachable: " + e);

@@ -1,7 +1,7 @@
 //! Host-API integration tests.
 //!
 //! Covers Phase 2.3 of `docs/specs/integration-tests.md`: drive the
-//! `amigo.*` host functions from inside the QuickJS sandbox and assert
+//! `krake.*` host functions from inside the QuickJS sandbox and assert
 //! the side effects observed on a wiremock server, plus the
 //! private-network guard and the storage quota.
 
@@ -56,7 +56,7 @@ async fn test_http_get_through_host_api_reaches_mock() {
             version: "1.0.0",
             urlPattern: ".*",
             resolve(_url) {{
-                var resp = amigo.httpGet("{base}/file");
+                var resp = krake.httpGet("{base}/file");
                 return {{
                     name: "status=" + resp.status + " body=" + resp.body,
                     downloads: [{{
@@ -99,7 +99,7 @@ async fn test_http_post_form_is_received_by_mock() {
             version: "1.0.0",
             urlPattern: ".*",
             resolve(_url) {{
-                var resp = amigo.httpPostForm(
+                var resp = krake.httpPostForm(
                     "{base}/submit",
                     {{ a: "1", b: "two" }}
                 );
@@ -149,7 +149,7 @@ async fn test_private_network_blocked_by_default() {
             urlPattern: ".*",
             resolve(_url) {{
                 try {{
-                    var resp = amigo.httpGet("{base}/blocked");
+                    var resp = krake.httpGet("{base}/blocked");
                     return {{
                         name: "got=" + resp.status + ":" + resp.body,
                         downloads: [],
@@ -188,13 +188,13 @@ async fn test_storage_get_set_roundtrip() {
             version: "1.0.0",
             urlPattern: ".*",
             resolve(_url) {
-                amigo.storageSet("hello", "world");
-                amigo.storageSet("count", "42");
-                var v1 = amigo.storageGet("hello");
-                var v2 = amigo.storageGet("count");
-                var missing = amigo.storageGet("nope");
-                amigo.storageDelete("hello");
-                var afterDelete = amigo.storageGet("hello");
+                krake.storageSet("hello", "world");
+                krake.storageSet("count", "42");
+                var v1 = krake.storageGet("hello");
+                var v2 = krake.storageGet("count");
+                var missing = krake.storageGet("nope");
+                krake.storageDelete("hello");
+                var afterDelete = krake.storageGet("hello");
                 return {
                     name: "v1=" + v1 + " v2=" + v2
                         + " missing=" + (missing === null ? "null" : missing)
@@ -246,7 +246,7 @@ async fn test_storage_quota_enforced() {
                 var threw = false;
                 var msg = "";
                 try {
-                    amigo.storageSet("big", blob);
+                    krake.storageSet("big", blob);
                 } catch (e) {
                     threw = true;
                     msg = (e && e.message) ? e.message : String(e);
@@ -279,16 +279,16 @@ async fn test_regex_and_html_helpers_work() {
             version: "1.0.0",
             urlPattern: ".*",
             resolve(_url) {
-                var m = amigo.regexMatch("foo-(\\d+)", "x foo-123 y");
-                var attr = amigo.htmlQueryAttr(
+                var m = krake.regexMatch("foo-(\\d+)", "x foo-123 y");
+                var attr = krake.htmlQueryAttr(
                     "<a class=\"dl\" href=\"/file.zip\">go</a>",
                     "a.dl", "href"
                 );
-                var text = amigo.htmlQueryText(
+                var text = krake.htmlQueryText(
                     "<h1>Hello</h1>", "h1"
                 );
-                var b64 = amigo.base64Encode("hi");
-                var dec = amigo.base64Decode(b64);
+                var b64 = krake.base64Encode("hi");
+                var dec = krake.base64Decode(b64);
                 return {
                     name: "m=" + m + " attr=" + attr + " text=" + text
                         + " b64=" + b64 + " dec=" + dec,
@@ -340,7 +340,7 @@ async fn test_http_get_follows_redirect_chain_manually() {
         module.exports = {{
             id: "ha-test", name: "x", version: "1.0.0", urlPattern: ".*",
             resolve(_url) {{
-                var resp = amigo.httpGet("{base}/start");
+                var resp = krake.httpGet("{base}/start");
                 return {{ name: "status=" + resp.status + " body=" + resp.body, downloads: [] }};
             }},
         }};
@@ -376,7 +376,7 @@ async fn test_redirect_target_is_revalidated_against_ssrf_policy() {
             id: "ha-test", name: "x", version: "1.0.0", urlPattern: ".*",
             resolve(_url) {{
                 try {{
-                    var resp = amigo.httpGet("{base}/start");
+                    var resp = krake.httpGet("{base}/start");
                     return {{ name: "got=" + resp.status, downloads: [] }};
                 }} catch (e) {{
                     return {{ name: "blocked:" + (e && e.message ? e.message : String(e)), downloads: [] }};

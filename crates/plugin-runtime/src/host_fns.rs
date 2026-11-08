@@ -40,7 +40,8 @@ pub trait HostDispatch: Send + Sync {
 /// Global object a function is installed on.
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Obj {
-    Amigo,
+    /// `krake.*`, also reachable as the deprecated alias `amigo.*`.
+    Krake,
     Console,
 }
 
@@ -83,10 +84,10 @@ pub struct HostFn {
 
 impl HostFn {
     /// Name as seen by [`HostDispatch`] / IPC: `console.log` for console
-    /// methods, the bare name for `amigo.*`.
+    /// methods, the bare name for `krake.*`.
     pub fn qualified_name(&self) -> String {
         match self.object {
-            Obj::Amigo => self.name.to_string(),
+            Obj::Krake => self.name.to_string(),
             Obj::Console => format!("console.{}", self.name),
         }
     }
@@ -99,7 +100,7 @@ const fn local(
     f: fn(&[Option<String>]) -> HostResult,
 ) -> HostFn {
     HostFn {
-        object: Obj::Amigo,
+        object: Obj::Krake,
         name,
         required,
         optional: 0,
@@ -110,7 +111,7 @@ const fn local(
 
 const fn parent(name: &'static str, required: usize, optional: usize, ret: Ret) -> HostFn {
     HostFn {
-        object: Obj::Amigo,
+        object: Obj::Krake,
         name,
         required,
         optional,
@@ -142,7 +143,7 @@ fn json<T: serde::Serialize>(value: &T, empty: &str) -> String {
     serde_json::to_string(value).unwrap_or_else(|_| empty.into())
 }
 
-/// The complete host surface: 44 `amigo.*` functions and 3 `console.*`.
+/// The complete host surface: 44 `krake.*` functions and 3 `console.*`.
 pub static HOST_FNS: &[HostFn] = &[
     // --- HTTP (parent: network, SSRF and domain checks, request budget) ---
     parent("__rawHttpGet", 1, 1, Ret::Str),
@@ -276,7 +277,7 @@ pub fn parent_fn(qualified: &str) -> Option<&'static HostFn> {
 /// object-returning ones. Injected after every table function is registered.
 const JS_SHIM: &str = r#"
 (function() {
-    var a = amigo;
+    var a = krake;
 
     // HTTP: wrap raw JSON-string returns into parsed objects
     a.httpGet = function(url, opts) {
@@ -349,7 +350,7 @@ const JS_SHIM: &str = r#"
         return a.__rawSolveCaptcha(imageUrl, captchaType || "image");
     };
 
-    // Safe deep property access: amigo.traverse(obj, ["a", "b", "c"]) or amigo.traverse(obj, "a.b.c")
+    // Safe deep property access: krake.traverse(obj, ["a", "b", "c"]) or krake.traverse(obj, "a.b.c")
     a.traverse = function(obj, path) {
         if (typeof path === "string") path = path.split(".");
         var cur = obj;
@@ -421,8 +422,10 @@ fn convert_ret<'js>(
     }
 }
 
-/// Install every [`HOST_FNS`] entry under `globalThis.amigo` /
-/// `globalThis.console`, then the [`JS_SHIM`] wrappers.
+/// Install every [`HOST_FNS`] entry under `globalThis.krake` /
+/// `globalThis.console`, then the [`JS_SHIM`] wrappers. `globalThis.amigo`
+/// is the same object: the pre-rename name, kept as a deprecated alias so
+/// existing plugins keep working.
 ///
 /// `dispatch` executes the [`Route::Parent`] functions; it carries the
 /// plugin's identity (its scoped cookie jar, storage namespace, request
@@ -432,8 +435,8 @@ pub fn register_host_api<'js>(
     dispatch: Arc<dyn HostDispatch>,
 ) -> Result<(), crate::Error> {
     let exec = |e: rquickjs::Error| crate::Error::Execution(e.to_string());
-    let amigo = Object::new(ctx.clone())
-        .map_err(|e| crate::Error::Execution(format!("Failed to create amigo object: {e}")))?;
+    let krake = Object::new(ctx.clone())
+        .map_err(|e| crate::Error::Execution(format!("Failed to create krake object: {e}")))?;
     let console = Object::new(ctx.clone())
         .map_err(|e| crate::Error::Execution(format!("Failed to create console: {e}")))?;
 
@@ -454,14 +457,15 @@ pub fn register_host_api<'js>(
         )
         .map_err(exec)?;
         let target = match f.object {
-            Obj::Amigo => &amigo,
+            Obj::Krake => &krake,
             Obj::Console => &console,
         };
         target.set(f.name, func).map_err(exec)?;
     }
 
     let global = ctx.globals();
-    global.set("amigo", amigo).map_err(exec)?;
+    global.set("amigo", krake.clone()).map_err(exec)?;
+    global.set("krake", krake).map_err(exec)?;
     global.set("console", console).map_err(exec)?;
 
     // The shim keeps the Rust→JS boundary at plain strings while giving
@@ -478,9 +482,9 @@ mod tests {
 
     #[test]
     fn table_has_the_documented_surface() {
-        let amigo = HOST_FNS.iter().filter(|f| f.object == Obj::Amigo).count();
+        let krake = HOST_FNS.iter().filter(|f| f.object == Obj::Krake).count();
         let console = HOST_FNS.iter().filter(|f| f.object == Obj::Console).count();
-        assert_eq!((amigo, console), (44, 3));
+        assert_eq!((krake, console), (44, 3));
 
         let names: HashSet<String> = HOST_FNS.iter().map(HostFn::qualified_name).collect();
         assert_eq!(names.len(), HOST_FNS.len(), "duplicate host function name");

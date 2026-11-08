@@ -6,7 +6,7 @@ TypeScript/JavaScript plugin system powered by QuickJS-NG + SWC.
 
 ```
 plugins/
-├── types/amigo.d.ts          # Type declarations (AmigoPlugin, DownloadInfo, amigo.*)
+├── types/krake.d.ts          # Type declarations (KrakePlugin, DownloadInfo, krake.*)
 ├── template/plugin.ts        # Starter template — copy this
 ├── generic-http/             # Built-in: smart HTTP link finder
 │   ├── plugin.ts
@@ -23,7 +23,7 @@ plugins/
 3. Done — auto-detected on next start
 
 ```ts
-/// <reference path="../types/amigo.d.ts" />
+/// <reference path="../types/krake.d.ts" />
 
 module.exports = {
     id: "my-hoster",
@@ -32,8 +32,8 @@ module.exports = {
     urlPattern: "https?://(www\\.)?my-hoster\\.com/.+",
 
     resolve(url: string): DownloadPackage {
-        const resp = amigo.httpGet(url);
-        const downloadUrl = amigo.regexMatch('href="([^"]+\\.zip)"', resp.body);
+        const resp = krake.httpGet(url);
+        const downloadUrl = krake.regexMatch('href="([^"]+\\.zip)"', resp.body);
 
         return {
             name: "My Download",
@@ -50,7 +50,7 @@ module.exports = {
             }],
         };
     },
-} satisfies AmigoPlugin;
+} satisfies KrakePlugin;
 ```
 
 ## Contract
@@ -125,25 +125,25 @@ test("url pattern", () => {
 
 ## Host API
 
-All access goes through `amigo.*` — plugins run sandboxed with no direct network/filesystem access.
+All access goes through `krake.*` — plugins run sandboxed with no direct network/filesystem access.
 
 | Function | Description |
 |---|---|
-| `amigo.httpGet(url)` | GET → `HttpResponse {status, body, headers}` |
-| `amigo.httpPost(url, body, contentType)` | POST → `HttpResponse` |
-| `amigo.httpHead(url)` | HEAD → `HttpResponse {status, headers}` |
-| `amigo.setCookie(domain, name, value)` | Set cookie |
-| `amigo.getCookie(domain, name)` | Get cookie value |
-| `amigo.clearCookies(domain)` | Clear domain cookies |
-| `amigo.regexMatch(pattern, text)` | First capture group |
-| `amigo.regexMatchAll(pattern, text)` | All matches |
-| `amigo.base64Encode(input)` | Base64 encode |
-| `amigo.base64Decode(input)` | Base64 decode |
-| `amigo.storageGet(key)` | Read persistent value |
-| `amigo.storageSet(key, value)` | Write persistent value |
-| `amigo.storageDelete(key)` | Delete persistent value |
-| `amigo.logInfo(msg)` | Log info |
-| `amigo.logWarn(msg)` | Log warning |
-| `amigo.logError(msg)` | Log error |
-| `amigo.logDebug(msg)` | Log debug |
+| `krake.httpGet(url)` | GET → `HttpResponse {status, body, headers}` |
+| `krake.httpPost(url, body, contentType)` | POST → `HttpResponse` |
+| `krake.httpHead(url)` | HEAD → `HttpResponse {status, headers}` |
+| `krake.setCookie(domain, name, value)` | Set cookie |
+| `krake.getCookie(domain, name)` | Get cookie value |
+| `krake.clearCookies(domain)` | Clear domain cookies |
+| `krake.regexMatch(pattern, text)` | First capture group |
+| `krake.regexMatchAll(pattern, text)` | All matches |
+| `krake.base64Encode(input)` | Base64 encode |
+| `krake.base64Decode(input)` | Base64 decode |
+| `krake.storageGet(key)` | Read persistent value |
+| `krake.storageSet(key, value)` | Write persistent value |
+| `krake.storageDelete(key)` | Delete persistent value |
+| `krake.logInfo(msg)` | Log info |
+| `krake.logWarn(msg)` | Log warning |
+| `krake.logError(msg)` | Log error |
+| `krake.logDebug(msg)` | Log debug |
 | `console.log/warn/error` | Also available |

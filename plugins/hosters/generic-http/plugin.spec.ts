@@ -1,4 +1,4 @@
-/// <reference path="../types/amigo.d.ts" />
+/// <reference path="../types/krake.d.ts" />
 
 const plugin = module.exports;
 

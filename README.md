@@ -172,7 +172,7 @@ amigo-krake/
 │   ├── hosters/           # Hoster plugins (generic-http, xfilesharing)
 │   ├── multi-hosters/     # Premium aggregators (alldebrid, premiumize, real-debrid)
 │   ├── template/          # Plugin template
-│   └── types/             # TypeScript type definitions (amigo.d.ts)
+│   └── types/             # TypeScript type definitions (krake.d.ts)
 ├── tauri/                 # Tauri v2 desktop app
 ├── locales/               # i18n translation files (en, de)
 ├── scripts/               # Install script
@@ -218,7 +218,7 @@ Built-in extractors for sites that need special handling beyond simple HTTP:
 Plugins are TypeScript files (`.ts`) that run in a sandboxed QuickJS VM. TypeScript is transpiled to JavaScript at load time via SWC. A plugin exports an object via `module.exports`; all Host-API calls are **synchronous** (the runtime blocks internally) — no `async`/`await` inside plugin code.
 
 ```typescript
-/// <reference path="../types/amigo.d.ts" />
+/// <reference path="../types/krake.d.ts" />
 
 module.exports = {
     id: "my-hoster",
@@ -227,12 +227,12 @@ module.exports = {
     urlPattern: "https?://my-hoster\\.com/.+",
 
     resolve(url: string): DownloadPackage {
-        const page = amigo.httpGet(url);
-        const link = amigo.htmlQueryAttr(page.body, "a.download-btn", "href");
+        const page = krake.httpGet(url);
+        const link = krake.htmlQueryAttr(page.body, "a.download-btn", "href");
         return {
-            name: amigo.htmlExtractTitle(page.body) || "Download",
+            name: krake.htmlExtractTitle(page.body) || "Download",
             downloads: [{
-                url: amigo.urlResolve(url, link!),
+                url: krake.urlResolve(url, link!),
                 filename: null, filesize: null,
                 chunks_supported: true, max_chunks: null,
                 headers: null, cookies: null, wait_seconds: null,
@@ -240,10 +240,10 @@ module.exports = {
             }],
         };
     },
-} satisfies AmigoPlugin;
+} satisfies KrakePlugin;
 ```
 
-**Sandbox limits:** 30s timeout, 64MB RAM, 20 HTTP requests, 1MB storage per plugin. No direct network/filesystem access — everything proxied through the `amigo.*` Host API.
+**Sandbox limits:** 30s timeout, 64MB RAM, 20 HTTP requests, 1MB storage per plugin. No direct network/filesystem access — everything proxied through the `krake.*` Host API.
 
 The plugin runtime includes:
 - **Registry** — discover and install plugins from the marketplace
@@ -421,7 +421,7 @@ docker compose -f docker/docker-compose.local.yml up -d --build
 3. Drop the `.ts` file into `plugins/hosters/` or `plugins/extractors/`
 4. It's auto-detected and loaded (hot-reload supported)
 
-Type definitions are available in `plugins/types/amigo.d.ts` for IDE support.
+Type definitions are available in `plugins/types/krake.d.ts` for IDE support.
 
 See [Plugin API docs](docs/plugin-api.md) for the full Host API reference.
 

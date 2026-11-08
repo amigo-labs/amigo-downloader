@@ -13,7 +13,7 @@ pub mod transpiler;
 pub mod types;
 pub mod updater;
 
-/// Major version of the `amigo.*` host API this runtime implements.
+/// Major version of the `krake.*` host API this runtime implements.
 ///
 /// Plugins declare the major they were written against as `apiVersion`.
 /// Within a major the surface only grows (new functions, new optional

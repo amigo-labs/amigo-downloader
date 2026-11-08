@@ -230,7 +230,7 @@ fn fetching_plugin(id: &str, domains: &str) -> String {
         &format!("permissions: {{ domains: {domains} }},"),
         &format!(
             r#"var target = url.replace("https://{id}.test/", "");
-               var r = amigo.httpGet(decodeURIComponent(target));
+               var r = krake.httpGet(decodeURIComponent(target));
                return {{ name: String(r.status), downloads: [] }};"#
         ),
     )
@@ -340,7 +340,7 @@ async fn allowlist_cannot_be_changed_from_js() {
             &format!(
                 r#"module.exports.permissions.domains.push("localhost");
                    __plugin_exports.permissions = {{ domains: ["localhost"] }};
-                   var r = amigo.httpGet("http://localhost:{port}/x");
+                   var r = krake.httpGet("http://localhost:{port}/x");
                    return {{ name: String(r.status), downloads: [] }};"#
             ),
         ),

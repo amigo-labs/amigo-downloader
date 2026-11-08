@@ -149,12 +149,12 @@ async fn plugin_state_survives_a_child_restart() {
         "stateful",
         &format!(
             r#"if (url.indexOf('write') >= 0) {{
-            amigo.storageSet("token", "t-123");
-            amigo.setCookie("stateful.test", "sid", "c-456");
+            krake.storageSet("token", "t-123");
+            krake.setCookie("stateful.test", "sid", "c-456");
         }}
         {}"#,
             returning(
-                r#"amigo.storageGet("token") + "/" + amigo.getCookie("stateful.test", "sid")"#
+                r#"krake.storageGet("token") + "/" + krake.getCookie("stateful.test", "sid")"#
             )
         ),
     );
@@ -235,7 +235,7 @@ async fn captcha_callback_round_trips_through_the_parent() {
     write_plugin(
         tmp.path(),
         "cap",
-        &returning(r#"amigo.solveCaptcha("https://cap.test/img.png")"#),
+        &returning(r#"krake.solveCaptcha("https://cap.test/img.png")"#),
     );
     let loader = PluginLoader::new_with_host_api(
         tmp.path().to_path_buf(),
@@ -259,7 +259,7 @@ async fn a_pending_captcha_does_not_trip_the_watchdog() {
     write_plugin(
         tmp.path(),
         "slowcap",
-        r#"amigo.solveCaptcha("https://slowcap.test/img.png"); while (true) {}"#,
+        r#"krake.solveCaptcha("https://slowcap.test/img.png"); while (true) {}"#,
     );
     let loader = PluginLoader::new_with_host_api(
         tmp.path().to_path_buf(),

@@ -1,4 +1,4 @@
-/// <reference path="../../types/amigo.d.ts" />
+/// <reference path="../../types/krake.d.ts" />
 
 const plugin = module.exports;
 
@@ -45,10 +45,10 @@ test("size parsing: single capture group gets number + unit", () => {
     };
 
     for (const tc of testCases) {
-        const sizeFullMatch = amigo.regexMatch(sizePattern, tc.html);
+        const sizeFullMatch = krake.regexMatch(sizePattern, tc.html);
         assertNotNull(sizeFullMatch, "should find size in: " + tc.html);
         const num = parseFloat(sizeFullMatch!);
-        const unitMatch = amigo.regexMatch(unitPattern, sizeFullMatch!);
+        const unitMatch = krake.regexMatch(unitPattern, sizeFullMatch!);
         assertNotNull(unitMatch, "should find unit in: " + sizeFullMatch);
         const bytes = Math.round(num * multipliers[unitMatch!.toUpperCase()]);
         assertEqual(bytes, tc.expectedBytes, "bytes mismatch for: " + tc.html);

@@ -18,11 +18,11 @@ npm install @amigo/plugin-sdk
 
 Plugins that run in Krake today use the **synchronous CommonJS**
 contract — assign to `module.exports`, implement `resolve(url)`, and call the
-injected global `amigo.*` host API directly. There is no `import`, no
+injected global `krake.*` host API directly. There is no `import`, no
 `async`/`await`, and URLs are matched with a single `urlPattern` string.
 
 ```ts
-/// <reference path="../types/amigo.d.ts" />
+/// <reference path="../types/krake.d.ts" />
 
 module.exports = {
   id: "example-hoster",
@@ -31,18 +31,18 @@ module.exports = {
   urlPattern: "https?://files\\.example\\.test/.+",
 
   resolve(url: string): DownloadPackage {
-    const page = amigo.httpGet(url);
+    const page = krake.httpGet(url);
     if (page.status !== 200) {
       throw new Error("HTTP " + page.status);
     }
-    const href = amigo.htmlQueryAttr(page.body, "a.download-btn", "href");
+    const href = krake.htmlQueryAttr(page.body, "a.download-btn", "href");
     if (!href) {
       throw new Error("download URL not found");
     }
     return {
-      name: amigo.htmlExtractTitle(page.body) || "Download",
+      name: krake.htmlExtractTitle(page.body) || "Download",
       downloads: [{
-        url: amigo.urlResolve(url, href),
+        url: krake.urlResolve(url, href),
         filename: null,
         filesize: null,
         chunks_supported: true,
@@ -54,7 +54,7 @@ module.exports = {
       }],
     };
   },
-} satisfies AmigoPlugin;
+} satisfies KrakePlugin;
 ```
 
 See `plugins/template/plugin.ts` for a fully commented starting point and
@@ -64,7 +64,7 @@ See `plugins/template/plugin.ts` for a fully commented starting point and
 > executes synchronously; `resolve()` and every other plugin callback must be
 > synchronous. The host API blocks internally (the runtime wraps each call in
 > `spawn_blocking`), so you write straight-line code — `const page =
-> amigo.httpGet(url)` — with no `await`.
+> krake.httpGet(url)` — with no `await`.
 
 ## Experimental SDK model (not yet loaded by the runtime)
 

@@ -24,7 +24,7 @@ so that a later switch is a port and not a rewrite.
 ## 1. The host-function table
 
 All 44 functions registered by `register_host_api`, plus `console.*`, are
-listed below. The `amigo.*` names a plugin sees that are not in the table
+listed below. The `krake.*` names a plugin sees that are not in the table
 (`httpGet`, `httpGetJson`, `htmlQueryAll`, `traverse`, …) are pure-JS wrappers
 in `JS_SHIM`. They never cross the boundary.
 

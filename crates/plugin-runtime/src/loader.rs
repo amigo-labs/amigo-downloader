@@ -824,7 +824,7 @@ module.exports = {{
     version: "1.0.0",
     urlPattern: "https?://{folder}\\.com/.+",
     resolve(url) {{
-        amigo.storageSet("secret", "{id}-value");
+        krake.storageSet("secret", "{id}-value");
         return {{ name: "x", downloads: [{{ url: url, filename: null, filesize: null, chunks_supported: true, max_chunks: null, headers: null, cookies: null, wait_seconds: null, mirrors: [] }}] }};
     }},
 }};

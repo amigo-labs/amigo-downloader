@@ -116,7 +116,7 @@ second, overlapping key is a possible follow-up.
   `apiVersion` loads as 1, with a warning, for one release.
 - [x] `RegistryPlugin.api_version` lets the marketplace and the update check
   filter out entries the host cannot load.
-- [x] Shipped plugins, the template, `amigo.d.ts` and the SDK declare
+- [x] Shipped plugins, the template, `krake.d.ts` and the SDK declare
   `apiVersion`. `docs/plugin-api.md` states the compatibility policy.
 
 ## SH-6. Local bytecode cache (#83)

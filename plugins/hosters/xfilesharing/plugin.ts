@@ -1,4 +1,4 @@
-/// <reference path="../../types/amigo.d.ts" />
+/// <reference path="../../types/krake.d.ts" />
 
 // XFileSharingPro Generic Plugin
 // Handles ~50+ file hosting sites that run on the XFileSharingPro PHP script.
@@ -59,8 +59,8 @@ module.exports = {
 
     resolve(url: string): DownloadPackage {
         // Step 1: GET the file page
-        amigo.logInfo("XFS: Fetching file page: " + url);
-        const page1 = amigo.httpGet(url);
+        krake.logInfo("XFS: Fetching file page: " + url);
+        const page1 = krake.httpGet(url);
 
         if (page1.status !== 200) {
             throw new Error("XFS: Page returned " + page1.status);
@@ -72,7 +72,7 @@ module.exports = {
         }
 
         // Extract filename from the page
-        let filename = amigo.htmlQueryText(page1.body, "h1, h2, .file-title, #file_title, td.file-title") || null;
+        let filename = krake.htmlQueryText(page1.body, "h1, h2, .file-title, #file_title, td.file-title") || null;
         if (filename) {
             filename = filename.trim();
         }
@@ -81,10 +81,10 @@ module.exports = {
         let filesize: number | null = null;
         // Use a single capture group for "number + unit" together so regexMatch
         // returns both parts (regexMatch returns the first capture group only).
-        const sizeFullMatch = amigo.regexMatch("(\\d[\\d.]*\\s*(?:KB|MB|GB|TB))", page1.body);
+        const sizeFullMatch = krake.regexMatch("(\\d[\\d.]*\\s*(?:KB|MB|GB|TB))", page1.body);
         if (sizeFullMatch) {
             const num = parseFloat(sizeFullMatch);
-            const unitMatch = amigo.regexMatch("(KB|MB|GB|TB)", sizeFullMatch);
+            const unitMatch = krake.regexMatch("(KB|MB|GB|TB)", sizeFullMatch);
             if (!isNaN(num) && unitMatch) {
                 const multipliers: Record<string, number> = {
                     "KB": 1024,
@@ -100,7 +100,7 @@ module.exports = {
         }
 
         // Step 2: Submit the first form (usually method_free or method_premium)
-        const hiddenInputs = amigo.htmlHiddenInputs(page1.body);
+        const hiddenInputs = krake.htmlHiddenInputs(page1.body);
 
         // Many XFS sites have a two-step process:
         // Step 1 form: op=download1, id=..., fname=..., method_free=...
@@ -114,7 +114,7 @@ module.exports = {
         let waitSeconds: number | null = null;
 
         // Check if page already has a direct download link
-        downloadUrl = amigo.htmlQueryAttr(page1.body, "a#direct-link, a.btn-download, a[href*='/d/'], a[href*='/dl/']", "href");
+        downloadUrl = krake.htmlQueryAttr(page1.body, "a#direct-link, a.btn-download, a[href*='/d/'], a[href*='/dl/']", "href");
 
         if (!downloadUrl) {
             // Submit the free download form
@@ -127,30 +127,30 @@ module.exports = {
             }
 
             // Check for wait time
-            const waitMatch = amigo.regexMatch('id="countdown"[^>]*>\\s*(\\d+)', page1.body)
-                || amigo.regexMatch('var\\s+seconds\\s*=\\s*(\\d+)', page1.body);
+            const waitMatch = krake.regexMatch('id="countdown"[^>]*>\\s*(\\d+)', page1.body)
+                || krake.regexMatch('var\\s+seconds\\s*=\\s*(\\d+)', page1.body);
             if (waitMatch) {
                 const waitSecs = parseInt(waitMatch, 10);
                 if (waitSecs > 0 && waitSecs <= 120) {
-                    amigo.logInfo("XFS: Waiting " + waitSecs + " seconds...");
+                    krake.logInfo("XFS: Waiting " + waitSecs + " seconds...");
                     // Signal the wait to the engine via wait_seconds in the result.
                     waitSeconds = waitSecs;
                 }
             }
 
-            amigo.logInfo("XFS: Submitting download form...");
-            const page2 = amigo.httpPostForm(url, formFields);
+            krake.logInfo("XFS: Submitting download form...");
+            const page2 = krake.httpPostForm(url, formFields);
 
             if (page2.status !== 200) {
                 throw new Error("XFS: Form submission returned " + page2.status);
             }
 
             // Extract the direct download link from the response
-            downloadUrl = amigo.htmlQueryAttr(page2.body, "a#direct-link, a.btn-download, a[href*='/d/'], a[href*='/dl/']", "href");
+            downloadUrl = krake.htmlQueryAttr(page2.body, "a#direct-link, a.btn-download, a[href*='/d/'], a[href*='/dl/']", "href");
 
             // Also try to find it in a script
             if (!downloadUrl) {
-                downloadUrl = amigo.regexMatch(
+                downloadUrl = krake.regexMatch(
                     '(?:direct_link|dl_url|download_url)\\s*[=:]\\s*["\']([^"\']+)["\']',
                     page2.body
                 );
@@ -158,7 +158,7 @@ module.exports = {
 
             // Try to find any direct file link
             if (!downloadUrl) {
-                downloadUrl = amigo.regexMatch(
+                downloadUrl = krake.regexMatch(
                     'href=["\']?(https?://[^"\'\\s]*\\.(?:zip|rar|7z|mp4|mkv|avi|mp3|pdf|exe|iso|tar\\.gz)[^"\'\\s]*)["\']?',
                     page2.body
                 );
@@ -171,11 +171,11 @@ module.exports = {
 
         // Resolve relative URLs
         if (!downloadUrl.startsWith("http")) {
-            downloadUrl = amigo.urlResolve(url, downloadUrl);
+            downloadUrl = krake.urlResolve(url, downloadUrl);
         }
 
         return {
-            name: filename || amigo.urlFilename(downloadUrl) || "Download",
+            name: filename || krake.urlFilename(downloadUrl) || "Download",
             downloads: [{
                 url: downloadUrl,
                 filename: filename,
@@ -191,7 +191,7 @@ module.exports = {
     },
 
     checkOnline(url: string): "online" | "offline" | "unknown" {
-        const resp = amigo.httpGet(url);
+        const resp = krake.httpGet(url);
         if (resp.status === 200) {
             if (resp.body.includes("File Not Found") || resp.body.includes("file was deleted")) {
                 return "offline";
@@ -201,4 +201,4 @@ module.exports = {
         if (resp.status === 404) return "offline";
         return "unknown";
     },
-} satisfies AmigoPlugin;
+} satisfies KrakePlugin;

@@ -1,4 +1,4 @@
-/// <reference path="../types/amigo.d.ts" />
+/// <reference path="../types/krake.d.ts" />
 
 module.exports = {
     id: "my-hoster",
@@ -6,7 +6,7 @@ module.exports = {
     version: "1.0.0",
     // Host-API major this plugin is written against (see docs/plugin-api.md).
     apiVersion: 1,
-    // Hosts the plugin may reach via amigo.http*. Requests anywhere else are
+    // Hosts the plugin may reach via krake.http*. Requests anywhere else are
     // rejected. Omit only if the plugin truly must reach arbitrary hosts —
     // it is then shown as "unscoped" and needs extra trust to install.
     permissions: { domains: ["my-hoster.com", "*.my-hoster.com"] },
@@ -16,24 +16,24 @@ module.exports = {
 
     resolve(url: string): DownloadPackage {
         // Fetch the page
-        const page = amigo.httpGet(url);
+        const page = krake.httpGet(url);
         if (page.status !== 200) {
             throw new Error("HTTP " + page.status);
         }
 
         // Extract download link using CSS selector or regex
-        const directUrl = amigo.htmlQueryAttr(page.body, "a.download-btn", "href");
+        const directUrl = krake.htmlQueryAttr(page.body, "a.download-btn", "href");
         if (!directUrl) {
             throw new Error("No download link found");
         }
 
         // Resolve relative URL
-        const fullUrl = amigo.urlResolve(url, directUrl);
-        const title = amigo.htmlExtractTitle(page.body) || "Download";
+        const fullUrl = krake.urlResolve(url, directUrl);
+        const title = krake.htmlExtractTitle(page.body) || "Download";
 
         // Probe the file for metadata
-        const head = amigo.httpHead(fullUrl);
-        const filename = amigo.urlFilename(fullUrl);
+        const head = krake.httpHead(fullUrl);
+        const filename = krake.urlFilename(fullUrl);
         const filesize = head.headers["content-length"]
             ? parseInt(head.headers["content-length"])
             : null;
@@ -56,7 +56,7 @@ module.exports = {
 
     // Optional: check if a URL is still available
     checkOnline(url: string): "online" | "offline" | "unknown" {
-        const resp = amigo.httpHead(url);
+        const resp = krake.httpHead(url);
         if (resp.status === 200) return "online";
         if (resp.status === 404) return "offline";
         return "unknown";
@@ -64,7 +64,7 @@ module.exports = {
 
     // Optional: post-processing after download completes
     // postProcess(ctx: PostProcessContext): PostProcessResult {
-    //     amigo.logInfo("Post-processing: " + ctx.filename);
+    //     krake.logInfo("Post-processing: " + ctx.filename);
     //     return { success: true };
     // },
-} satisfies AmigoPlugin;
+} satisfies KrakePlugin;

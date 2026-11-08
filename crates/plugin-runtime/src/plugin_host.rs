@@ -242,7 +242,7 @@ impl Host {
         // Bind the host API after the module body ran (so the plugin's
         // declared identity is known to the daemon) and before `resolve()` or
         // any callback can run — the module body only defines exports and
-        // never touches `amigo`. The daemon maps the handle to the plugin's
+        // never touches `krake`. The daemon maps the handle to the plugin's
         // id, allowlist and request budget; JS can see neither.
         let handle = self.next_handle.fetch_add(1, Ordering::Relaxed);
         let request = Arc::new(AtomicU64::new(0));

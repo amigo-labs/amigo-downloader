@@ -2,7 +2,7 @@
 //!
 //! All network/filesystem access is proxied through these functions.
 //! Plugins have NO direct access to the network or filesystem.
-//! [`crate::host_fns`] registers them under `globalThis.amigo.*`; the stateful
+//! [`crate::host_fns`] registers them under `globalThis.krake.*`; the stateful
 //! ones run here, in the daemon, via [`HostApi::dispatch`].
 
 use std::collections::HashMap;
@@ -34,7 +34,7 @@ type CookieJars = HashMap<String, HashMap<String, HashMap<String, String>>>;
 // --- Input-size limits for the parsing helpers (audit finding #11) ---
 //
 // All of these guard the host *outside* the QuickJS context. The 64 MiB
-// memory cap on the JS side does not protect against `amigo.htmlQueryAll`
+// memory cap on the JS side does not protect against `krake.htmlQueryAll`
 // allocating gigabytes on the host heap, so we cap inputs before they reach
 // `scraper`, `regex`, or the base64 decoder.
 
