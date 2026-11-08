@@ -39,7 +39,7 @@ pub fn build_test_state(config: Config) -> api::AppState {
     let coordinator = Arc::new(coordinator);
 
     let http_client = reqwest::Client::builder()
-        .user_agent("amigo-test")
+        .user_agent("krake-test")
         .build()
         .expect("Failed to build HTTP client");
 

@@ -353,7 +353,7 @@ The web interface is a Svelte 5 PWA with:
 
 1. Open `http://your-server:1516` on your phone
 2. "Add to Home Screen"
-3. Share any URL from any app to "Amigo"
+3. Share any URL from any app to "Krake"
 
 That's it. The link is added as a download instantly.
 

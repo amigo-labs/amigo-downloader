@@ -396,7 +396,7 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
 
 ## Phase 10: Container-Format-Support (DLC, CCF, RSDF)
 
-**Ziel:** Built-in Decrypter für die drei klassischen Link-Container-Formate. SDK stellt Parser bereit, und Amigo shipped mit built-in Decrypter-Plugins, die diese Parser nutzen.
+**Ziel:** Built-in Decrypter für die drei klassischen Link-Container-Formate. SDK stellt Parser bereit, und Krake shipped mit built-in Decrypter-Plugins, die diese Parser nutzen.
 
 **Wichtige Design-Entscheidung:** DLC erfordert historisch einen externen Key-Exchange-Service (original von jdownloader.org betrieben, proprietär). Der Plan unterstützt DLC nur in Verbindung mit einem konfigurierbaren Service-Endpoint. RSDF und CCF haben öffentlich bekannte feste Schlüssel und funktionieren offline.
 
@@ -426,14 +426,14 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
 **Auto-Detection:**
 
 - `container.detect(content: Uint8Array): "dlc" | "ccf" | "rsdf" | null` — Heuristik basierend auf Dateiendung, Magic-Bytes und Content-Struktur.
-- Built-in Decrypter-Plugin `amigo-container` matched `.dlc`, `.ccf`, `.rsdf`-URLs und Dateipfade, dispatched intern an die richtige Parser-Funktion.
+- Built-in Decrypter-Plugin `krake-container` matched `.dlc`, `.ccf`, `.rsdf`-URLs und Dateipfade, dispatched intern an die richtige Parser-Funktion.
 
 **File-Input-Handling:**
 
 - Container-Dateien kommen üblicherweise als lokale Datei, nicht als URL. Host-API muss `util.readFile(path)` exposen (eingeschränkt auf vom User ausgewählte Files).
 - Alternativ können Container als Base64-inline-Content übergeben werden.
 
-**Deliverable:** Built-in Decrypter-Plugin `amigo-container`, das alle drei Formate unterstützt, plus dokumentierte SDK-Helper für Custom-Container-Plugins.
+**Deliverable:** Built-in Decrypter-Plugin `krake-container`, das alle drei Formate unterstützt, plus dokumentierte SDK-Helper für Custom-Container-Plugins.
 
 **Tests:**
 
@@ -502,11 +502,11 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
 
 **Aufgaben:**
 
-- CLI-Befehl `amigo plugin new <id>` — scaffolded Plugin-Projekt mit Template, Manifest, passendem `tsconfig.json`, Test-Setup.
-- `amigo plugin test <url>` — spawnt einen minimalen Runner mit Host-API-Mock (oder Real-Host mit Sandbox), lädt das Plugin, ruft extract/decrypt mit der URL auf, printed strukturiertes Result plus Log-Output.
-- `amigo plugin build` — SWC-Transpilation, Manifest-Validation, Bundle in `.amigoplugin`-Tarball.
-- `amigo plugin install <path>` — lädt lokal in laufende Krake-Instanz.
-- `amigo plugin validate <path>` — statische Checks: Manifest-Schema, SDK-Version-Compatibility, Permission-Consistency.
+- CLI-Befehl `krake-plugin new <id>` — scaffolded Plugin-Projekt mit Template, Manifest, passendem `tsconfig.json`, Test-Setup.
+- `krake-plugin test <url>` — spawnt einen minimalen Runner mit Host-API-Mock (oder Real-Host mit Sandbox), lädt das Plugin, ruft extract/decrypt mit der URL auf, printed strukturiertes Result plus Log-Output.
+- `krake-plugin build` — SWC-Transpilation, Manifest-Validation, Bundle in `.krakeplugin`-Tarball.
+- `krake-plugin install <path>` — lädt lokal in laufende Krake-Instanz.
+- `krake-plugin validate <path>` — statische Checks: Manifest-Schema, SDK-Version-Compatibility, Permission-Consistency.
 - Watch-Mode für `test`: Hot-Reload bei Code-Changes.
 
 **Deliverable:** Plugin-Autor kann in unter 2 Minuten von `plugin new` zu funktionierendem Plugin gegen eine echte URL kommen.

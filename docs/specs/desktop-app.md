@@ -24,7 +24,7 @@ This spec makes the desktop app a working product and keeps it current:
    directories, and `krake-plugin-host` ships as a Tauri sidecar.
 4. **Tray, single instance, deep links.** Closing the window keeps downloads
    running in the tray. A second launch focuses the running app and hands
-   over its `amigo:`/`magnet:` link.
+   over its `krake:`/`magnet:` link.
 5. **Self-update**, modelled on amigo-pincel (`src-tauri/src/updater.rs`
    there):
    - a background check every `update.check_interval_hours` (default 24 h);

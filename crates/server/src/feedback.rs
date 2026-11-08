@@ -313,7 +313,7 @@ async fn submit_feedback(
         }
         title.hash(&mut hasher);
         env!("CARGO_PKG_VERSION").hash(&mut hasher);
-        format!("amigo-dedup-{:016x}", hasher.finish())
+        format!("krake-dedup-{:016x}", hasher.finish())
     };
 
     let repo = &config.feedback.github_repo;
@@ -622,7 +622,7 @@ mod tests {
             host.hash(&mut hasher);
             title.hash(&mut hasher);
             "0.1.0".hash(&mut hasher);
-            format!("amigo-dedup-{:016x}", hasher.finish())
+            format!("krake-dedup-{:016x}", hasher.finish())
         }
 
         // Same error + same host = same hash

@@ -295,7 +295,7 @@ export default plugin.definePlugin({
   version: "0.1.0",
   match: [/upload\.example\.test\//],
   async extract(context) {
-    const boundary = `----amigo${Date.now()}`;
+    const boundary = `----krake${Date.now()}`;
     const body = [
       `--${boundary}`,
       `Content-Disposition: form-data; name="id"`,

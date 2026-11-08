@@ -123,7 +123,7 @@ enum Commands {
         #[command(subcommand)]
         action: UpdateAction,
     },
-    /// Pair this CLI with a remote amigo server (opens an approval request
+    /// Pair this CLI with a remote Krake server (opens an approval request
     /// in the server's web UI). Stores the returned API token in
     /// `~/.config/krake/remotes.toml` under the given alias.
     Login {
@@ -710,7 +710,7 @@ async fn plugins_install(id: &str, yes: bool, alias: Option<&str>) -> anyhow::Re
         .await?;
     let Some(entry) = entries.iter().find(|e| e["id"] == id) else {
         anyhow::bail!(
-            "Plugin {id} is not in the registry of '{remote_name}' (or needs a newer amigo)"
+            "Plugin {id} is not in the registry of '{remote_name}' (or needs a newer Krake)"
         );
     };
     if entry["installed"].as_bool() == Some(true) {

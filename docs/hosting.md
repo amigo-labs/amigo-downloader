@@ -1,6 +1,6 @@
 # Hosting Krake
 
-amigo ships three first-class deployment shapes. Pick the one that matches
+Krake ships three first-class deployment shapes. Pick the one that matches
 where the server actually runs.
 
 ## Which variant do I need?
@@ -84,7 +84,7 @@ new signatures — this is the intended behaviour, it fails safe.
 
 ## Reverse proxy (nginx, Caddy, Traefik)
 
-Serve amigo behind TLS termination on a subdomain (recommended over a
+Serve Krake behind TLS termination on a subdomain (recommended over a
 sub-path). Set `KRAKE_TRUST_PROXY=true` so the pairing flow and rate
 limiter see the real client IP.
 
@@ -93,7 +93,7 @@ limiter see the real client IP.
 ```nginx
 server {
     listen 443 ssl http2;
-    server_name amigo.example.com;
+    server_name krake.example.com;
 
     location / {
         proxy_pass http://127.0.0.1:1516;
@@ -113,7 +113,7 @@ server {
 ### Caddy
 
 ```caddy
-amigo.example.com {
+krake.example.com {
     reverse_proxy 127.0.0.1:1516 {
         header_up X-Forwarded-For {remote_host}
         header_up X-Forwarded-Proto {scheme}
@@ -131,9 +131,9 @@ Using a subdomain is always easier.
 
 ## Tailscale
 
-Bind amigo to `0.0.0.0:1516` (or to the Tailscale interface IP for
+Bind Krake to `0.0.0.0:1516` (or to the Tailscale interface IP for
 belt-and-braces) and reach it at `http://<name>.<tailnet>.ts.net:1516`.
-Nothing special to configure on the amigo side — TOFU is safe because
+Nothing special to configure on the Krake side — TOFU is safe because
 your tailnet isn't the open internet.
 
 Two caveats:
@@ -150,7 +150,7 @@ Two caveats:
 From any machine that can reach the server:
 
 ```sh
-krake login http://amigo.example.com
+krake login http://krake.example.com
 # Prints a fingerprint like "472-189" and polls for approval.
 
 # In the admin browser: click "Approve" on the pop-up device-approval

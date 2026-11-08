@@ -921,7 +921,7 @@ async fn dlc_upload_rejects_oversize_body() {
     // before the multipart parser even runs, so the exact framing does not
     // matter as long as the wire size exceeds the limit.
     let payload = vec![b'A'; 2 * 1024 * 1024];
-    let boundary = "----amigotest";
+    let boundary = "----kraketest";
     let mut body: Vec<u8> = Vec::with_capacity(payload.len() + 256);
     body.extend_from_slice(format!("--{boundary}\r\n").as_bytes());
     body.extend_from_slice(
