@@ -1,4 +1,4 @@
-# Plan: amigo-plugin-sdk
+# Plan: krake-plugin-sdk
 
 > **Status:** SDK-Skeleton in `plugin-sdk/` ist gelandet (Phase 0–1, siehe Commit `12fb9fc`). Tutorials und Cookbook in `plugin-sdk/docs/`. Die folgenden Phasen sind teilweise umgesetzt; dieses Dokument bleibt als Designgrundlage und Roadmap stehen.
 
@@ -38,7 +38,7 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
 **Aufgaben:**
 
 - Monorepo-Entscheidung: SDK als Workspace-Member in Krake (bevorzugt, weil Host-API und SDK zusammen evolvieren).
-- Package-Name: `@amigo/plugin-sdk`.
+- Package-Name: `@amigo-labs/krake-plugin-sdk`.
 - Build-Pipeline mit SWC, Target ES2022, Output als ESM plus Type-Declarations.
 - Strikte TypeScript-Config: `strict: true`, `noUncheckedIndexedAccess: true`, `exactOptionalPropertyTypes: true`.
 - Linting/Formatting konsistent zum Rest des Projekts.
@@ -567,7 +567,7 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
   - Rate-Limited API mit Backoff
   - Response-Validierung und typsichere Parsing
   - Debug-Logging-Patterns
-- Mapping-Tabelle: JDownloader-API zu amigo-plugin-sdk-API, als Referenz für Porting.
+- Mapping-Tabelle: JDownloader-API zu krake-plugin-sdk-API, als Referenz für Porting.
 - Migrationsleitfaden für Leute, die JDownloader-Plugins portieren wollen.
 
 **Deliverable:** Ein Plugin-Autor mit JDownloader-Erfahrung kann ein bestehendes Plugin in unter einer Stunde portieren.

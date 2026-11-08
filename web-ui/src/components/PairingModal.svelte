@@ -8,9 +8,9 @@
   } from "../lib/api";
   import { locale, tr } from "../lib/i18n";
   import { openLayer, layerState } from "../lib/overlays.svelte";
-  import Dialog from "@amigo/ui/components/Dialog.svelte";
-  import Button from "@amigo/ui/components/Button.svelte";
-  import Card from "@amigo/ui/components/Card.svelte";
+  import Dialog from "@amigo-labs/krake-ui/components/Dialog.svelte";
+  import Button from "@amigo-labs/krake-ui/components/Button.svelte";
+  import Card from "@amigo-labs/krake-ui/components/Card.svelte";
 
   // This modal referenced five CSS variables that are defined nowhere
   // (--surface, --border, --muted, --fg, --surface-2), so it always rendered

@@ -2,10 +2,10 @@
   import { login } from "../lib/api";
   import { authRequired } from "../lib/stores";
   import { locale, tr } from "../lib/i18n";
-  import Card from "@amigo/ui/components/Card.svelte";
-  import Button from "@amigo/ui/components/Button.svelte";
-  import Field from "@amigo/ui/components/Field.svelte";
-  import Banner from "@amigo/ui/components/Banner.svelte";
+  import Card from "@amigo-labs/krake-ui/components/Card.svelte";
+  import Button from "@amigo-labs/krake-ui/components/Button.svelte";
+  import Field from "@amigo-labs/krake-ui/components/Field.svelte";
+  import Banner from "@amigo-labs/krake-ui/components/Banner.svelte";
 
   // This screen used to live outside the design system entirely: Svelte 4
   // syntax, no i18n, and five CSS variables (--surface, --border, --accent,

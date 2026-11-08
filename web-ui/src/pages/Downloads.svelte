@@ -15,13 +15,13 @@
   import { moveById } from "../lib/dnd";
   import DownloadList from "../components/download/DownloadList.svelte";
   import SkeletonCard from "../components/SkeletonCard.svelte";
-  import Icon from "@amigo/ui/components/Icon.svelte";
-  import Button from "@amigo/ui/components/Button.svelte";
-  import IconButton from "@amigo/ui/components/IconButton.svelte";
-  import Chip from "@amigo/ui/components/Chip.svelte";
-  import SegmentedControl from "@amigo/ui/components/SegmentedControl.svelte";
-  import EmptyState from "@amigo/ui/components/EmptyState.svelte";
-  import ProgressBar from "@amigo/ui/components/ProgressBar.svelte";
+  import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
+  import Button from "@amigo-labs/krake-ui/components/Button.svelte";
+  import IconButton from "@amigo-labs/krake-ui/components/IconButton.svelte";
+  import Chip from "@amigo-labs/krake-ui/components/Chip.svelte";
+  import SegmentedControl from "@amigo-labs/krake-ui/components/SegmentedControl.svelte";
+  import EmptyState from "@amigo-labs/krake-ui/components/EmptyState.svelte";
+  import ProgressBar from "@amigo-labs/krake-ui/components/ProgressBar.svelte";
 
   let filter = $state<string>("all");
   let confirmingBatchDelete = $state(false);

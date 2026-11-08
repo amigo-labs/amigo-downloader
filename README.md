@@ -166,7 +166,7 @@ amigo-krake/
 │   ├── server/            # Axum REST API, WebSocket, Click'n'Load, embedded UI
 │   └── cli/               # Command-line interface
 ├── web-ui/                # Svelte 5 + Tailwind PWA
-├── plugin-sdk/            # @amigo/plugin-sdk — TS SDK for plugin authors
+├── plugin-sdk/            # @amigo-labs/krake-plugin-sdk — TS SDK for plugin authors
 ├── plugins/               # TypeScript plugin files (.ts)
 │   ├── extractors/        # Site-specific extractors (youtube)
 │   ├── hosters/           # Hoster plugins (generic-http, xfilesharing)

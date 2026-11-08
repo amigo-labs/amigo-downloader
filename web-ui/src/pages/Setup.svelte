@@ -3,11 +3,11 @@
   import { completeSetup, getSetupStatus } from "../lib/api";
   import { setupRequired } from "../lib/stores";
   import { locale, tr } from "../lib/i18n";
-  import Card from "@amigo/ui/components/Card.svelte";
-  import Button from "@amigo/ui/components/Button.svelte";
-  import Field from "@amigo/ui/components/Field.svelte";
-  import Banner from "@amigo/ui/components/Banner.svelte";
-  import ProgressBar from "@amigo/ui/components/ProgressBar.svelte";
+  import Card from "@amigo-labs/krake-ui/components/Card.svelte";
+  import Button from "@amigo-labs/krake-ui/components/Button.svelte";
+  import Field from "@amigo-labs/krake-ui/components/Field.svelte";
+  import Banner from "@amigo-labs/krake-ui/components/Banner.svelte";
+  import ProgressBar from "@amigo-labs/krake-ui/components/ProgressBar.svelte";
 
   // Like Login, this screen was outside the design system: Svelte 4 syntax,
   // undefined CSS variables falling through to hardcoded hexes, no i18n and

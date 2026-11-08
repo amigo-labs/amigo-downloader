@@ -3,11 +3,11 @@
   import { getRssFeeds, addRssFeed, deleteRssFeed } from "../../lib/api";
   import { addToast } from "../../lib/toast";
   import { locale, tr } from "../../lib/i18n";
-  import Card from "@amigo/ui/components/Card.svelte";
-  import Button from "@amigo/ui/components/Button.svelte";
-  import Field from "@amigo/ui/components/Field.svelte";
-  import Banner from "@amigo/ui/components/Banner.svelte";
-  import EmptyState from "@amigo/ui/components/EmptyState.svelte";
+  import Card from "@amigo-labs/krake-ui/components/Card.svelte";
+  import Button from "@amigo-labs/krake-ui/components/Button.svelte";
+  import Field from "@amigo-labs/krake-ui/components/Field.svelte";
+  import Banner from "@amigo-labs/krake-ui/components/Banner.svelte";
+  import EmptyState from "@amigo-labs/krake-ui/components/EmptyState.svelte";
 
   interface RssFeed {
     id: string;

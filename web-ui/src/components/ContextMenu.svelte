@@ -2,7 +2,7 @@
   import { onMount, tick } from "svelte";
   import { locale, tr } from "../lib/i18n";
   import { openLayer, layerState } from "../lib/overlays.svelte";
-  import Icon from "@amigo/ui/components/Icon.svelte";
+  import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
 
   let { x, y, items, onclose }: {
     x: number;

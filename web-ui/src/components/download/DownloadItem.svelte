@@ -11,10 +11,10 @@
   import { selectedIds } from "../../lib/stores";
   import { dragHandle, dropTarget } from "../../lib/dnd";
   import ContextMenu from "../ContextMenu.svelte";
-  import Icon from "@amigo/ui/components/Icon.svelte";
-  import IconButton from "@amigo/ui/components/IconButton.svelte";
-  import ChunkViz from "@amigo/ui/components/ChunkViz.svelte";
-  import ProgressBar from "@amigo/ui/components/ProgressBar.svelte";
+  import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
+  import IconButton from "@amigo-labs/krake-ui/components/IconButton.svelte";
+  import ChunkViz from "@amigo-labs/krake-ui/components/ChunkViz.svelte";
+  import ProgressBar from "@amigo-labs/krake-ui/components/ProgressBar.svelte";
 
   // One component, two densities. Two components is exactly what let the
   // compact row silently lose the context menu, copy-URL, crash reporting,

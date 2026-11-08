@@ -4,9 +4,9 @@
   import { crashReport } from "../lib/stores";
   import { locale, tr } from "../lib/i18n";
   import { openLayer, layerState } from "../lib/overlays.svelte";
-  import Dialog from "@amigo/ui/components/Dialog.svelte";
-  import Banner from "@amigo/ui/components/Banner.svelte";
-  import Icon from "@amigo/ui/components/Icon.svelte";
+  import Dialog from "@amigo-labs/krake-ui/components/Dialog.svelte";
+  import Banner from "@amigo-labs/krake-ui/components/Banner.svelte";
+  import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
 
   let { onclose }: { onclose: () => void } = $props();
 

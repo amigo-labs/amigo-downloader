@@ -3,15 +3,15 @@
   import CaptchaDialog from "./components/CaptchaDialog.svelte";
   import DropZone from "./components/DropZone.svelte";
   import FeedbackDialog from "./components/FeedbackDialog.svelte";
-  import Icon from "@amigo/ui/components/Icon.svelte";
+  import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
   import ShortcutsDialog from "./components/ShortcutsDialog.svelte";
-  import ProgressRing from "@amigo/ui/components/ProgressRing.svelte";
+  import ProgressRing from "@amigo-labs/krake-ui/components/ProgressRing.svelte";
   import SidePanel from "./components/SidePanel.svelte";
-  import Sparkline from "@amigo/ui/components/Sparkline.svelte";
+  import Sparkline from "@amigo-labs/krake-ui/components/Sparkline.svelte";
   import Toasts from "./components/Toasts.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import MobileNav from "./components/MobileNav.svelte";
-  import SegmentedControl from "@amigo/ui/components/SegmentedControl.svelte";
+  import SegmentedControl from "@amigo-labs/krake-ui/components/SegmentedControl.svelte";
   import {
     addDownload,
     connectWebSocket,

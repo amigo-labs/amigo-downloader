@@ -6,13 +6,13 @@
   import { fileIcon, statusInk, statusFill, statusLabelKey, statusCounts, displayName } from "../lib/download";
   import type { Download } from "../lib/stores";
   import SkeletonCard from "../components/SkeletonCard.svelte";
-  import Card from "@amigo/ui/components/Card.svelte";
-  import Button from "@amigo/ui/components/Button.svelte";
-  import IconButton from "@amigo/ui/components/IconButton.svelte";
-  import Chip from "@amigo/ui/components/Chip.svelte";
-  import Icon from "@amigo/ui/components/Icon.svelte";
-  import Banner from "@amigo/ui/components/Banner.svelte";
-  import EmptyState from "@amigo/ui/components/EmptyState.svelte";
+  import Card from "@amigo-labs/krake-ui/components/Card.svelte";
+  import Button from "@amigo-labs/krake-ui/components/Button.svelte";
+  import IconButton from "@amigo-labs/krake-ui/components/IconButton.svelte";
+  import Chip from "@amigo-labs/krake-ui/components/Chip.svelte";
+  import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
+  import Banner from "@amigo-labs/krake-ui/components/Banner.svelte";
+  import EmptyState from "@amigo-labs/krake-ui/components/EmptyState.svelte";
 
   // This page used to be a dead end: no search, no filter, every entry
   // labelled "Completed" regardless of its real status, no way to re-download

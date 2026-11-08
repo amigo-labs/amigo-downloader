@@ -3,9 +3,9 @@
   import { addToast } from "../lib/toast";
   import { locale, tr } from "../lib/i18n";
   import { openLayer, layerState } from "../lib/overlays.svelte";
-  import Dialog from "@amigo/ui/components/Dialog.svelte";
-  import Button from "@amigo/ui/components/Button.svelte";
-  import ProgressBar from "@amigo/ui/components/ProgressBar.svelte";
+  import Dialog from "@amigo-labs/krake-ui/components/Dialog.svelte";
+  import Button from "@amigo-labs/krake-ui/components/Button.svelte";
+  import ProgressBar from "@amigo-labs/krake-ui/components/ProgressBar.svelte";
 
   let { captcha, onclose }: {
     captcha: {

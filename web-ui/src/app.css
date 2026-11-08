@@ -1,10 +1,10 @@
 @import "tailwindcss";
-@import "@amigo/ui/tokens.css";
+@import "@amigo-labs/krake-ui/tokens.css";
 
 /* ========================================
    Web-UI-specific styles (not shared with marketing site).
    Shared design tokens, palettes, neon-card / status-dots /
-   progress / keyframes live in @amigo/ui/tokens.css.
+   progress / keyframes live in @amigo-labs/krake-ui/tokens.css.
    ======================================== */
 
 /* ========================================

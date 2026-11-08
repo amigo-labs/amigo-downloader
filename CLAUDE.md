@@ -209,7 +209,7 @@ amigo-krake/
 │   ├── tauri.conf.json
 │   └── src/
 │       └── main.rs
-├── plugin-sdk/                   # @amigo/plugin-sdk — TS SDK for plugin authors
+├── plugin-sdk/                   # @amigo-labs/krake-plugin-sdk — TS SDK for plugin authors
 │   ├── package.json
 │   ├── tsconfig.json
 │   ├── vitest.config.ts
@@ -473,7 +473,7 @@ Dateiname/Dateigröße/Wait werden **nicht** über Setter-Funktionen gemeldet �
 
 ### TypeScript-SDK (`plugin-sdk/`)
 
-Für komplexere Plugins existiert das separate Package `@amigo/plugin-sdk` mit höheren Abstraktionen (Browser, Page, Form, CookieJar, Captcha-Helpers, HLS/DASH-Manifest-Parser, Container-Helpers). Der Plan ist in `docs/plan-plugin-sdk.md` dokumentiert, Tutorials in `plugin-sdk/docs/`.
+Für komplexere Plugins existiert das separate Package `@amigo-labs/krake-plugin-sdk` mit höheren Abstraktionen (Browser, Page, Form, CookieJar, Captcha-Helpers, HLS/DASH-Manifest-Parser, Container-Helpers). Der Plan ist in `docs/plan-plugin-sdk.md` dokumentiert, Tutorials in `plugin-sdk/docs/`.
 
 ### Plugin Registry & Updates
 - Marketplace: Plugins aus der Registry installieren/suchen

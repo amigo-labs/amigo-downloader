@@ -159,18 +159,18 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Build
-        run: pnpm --filter amigo-web-ui build
+        run: pnpm --filter @amigo-labs/krake-web-ui build
 
       - name: Check
-        run: pnpm --filter amigo-web-ui check
+        run: pnpm --filter @amigo-labs/krake-web-ui check
 
       - name: Unit tests
-        run: pnpm --filter amigo-web-ui test
+        run: pnpm --filter @amigo-labs/krake-web-ui test
 
       # Contrast assertions across 6 palettes x 2 themes, plus a compile pass
       # over every primitive in a package nothing else type-checks.
       - name: Design tokens
-        run: pnpm --filter @amigo/ui check
+        run: pnpm --filter @amigo-labs/krake-ui check
 
       # Hard bans (manual z-index, decorative tokens as text, unlabelled
       # icon buttons) plus the inline-style ratchet.
@@ -196,10 +196,10 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Typecheck
-        run: pnpm --filter @amigo/plugin-sdk typecheck
+        run: pnpm --filter @amigo-labs/krake-plugin-sdk typecheck
 
       - name: Test
-        run: pnpm --filter @amigo/plugin-sdk test
+        run: pnpm --filter @amigo-labs/krake-plugin-sdk test
 
   docker:
     name: Docker build

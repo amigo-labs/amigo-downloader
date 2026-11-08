@@ -126,10 +126,10 @@ one layer manager where z-index is derived from stack position (`1fce7cd`).
 
 ```bash
 pnpm install
-pnpm --filter @amigo/ui check     # 324 contrast assertions + compile every primitive
+pnpm --filter @amigo-labs/krake-ui check     # 324 contrast assertions + compile every primitive
 node scripts/ui-lint.mjs          # hard bans + inline-style ratchet
-pnpm --filter amigo-web-ui check  # svelte-check: 0 errors, 0 warnings
-pnpm --filter amigo-web-ui test   # 39 unit tests
+pnpm --filter @amigo-labs/krake-web-ui check  # svelte-check: 0 errors, 0 warnings
+pnpm --filter @amigo-labs/krake-web-ui test   # 39 unit tests
 pnpm build:web-ui
 cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings
 ```

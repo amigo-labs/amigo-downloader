@@ -1,10 +1,10 @@
 @import "tailwindcss";
-@import "@amigo/ui/tokens.css";
+@import "@amigo-labs/krake-ui/tokens.css";
 
 /* ========================================
    Marketing-site-only styles.
    Design tokens, palettes, keyframes, neon-card, etc. come from
-   @amigo/ui/tokens.css — keep this file lean and marketing-specific.
+   @amigo-labs/krake-ui/tokens.css — keep this file lean and marketing-specific.
    ======================================== */
 
 html {

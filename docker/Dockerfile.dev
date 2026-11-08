@@ -9,7 +9,7 @@ WORKDIR /app
 COPY pnpm-workspace.yaml pnpm-lock.yaml package.json ./
 COPY web-ui/package.json web-ui/
 COPY packages/ui/package.json packages/ui/
-RUN pnpm install --frozen-lockfile --filter amigo-web-ui...
+RUN pnpm install --frozen-lockfile --filter @amigo-labs/krake-web-ui...
 
 # Source code is mounted as volume at runtime — do NOT build here.
 # Use docker-compose.dev.yml to mount the full web-ui/ + packages/ui/ directories.

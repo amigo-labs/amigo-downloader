@@ -3,7 +3,7 @@
   import { closeSidePanel } from "../lib/stores";
   import { addToast } from "../lib/toast";
   import { locale, tr } from "../lib/i18n";
-  import Icon from "@amigo/ui/components/Icon.svelte";
+  import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
 
   let urlInput = $state("");
   let loading = $state(false);

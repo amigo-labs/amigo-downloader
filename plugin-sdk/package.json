@@ -1,5 +1,5 @@
 {
-  "name": "@amigo/plugin-sdk",
+  "name": "@amigo-labs/krake-plugin-sdk",
   "version": "0.1.0",
   "engines": {
     "node": ">=22"
@@ -20,7 +20,7 @@
     }
   },
   "bin": {
-    "amigo-plugin": "./dist/cli/main.js"
+    "krake-plugin": "./dist/cli/main.js"
   },
   "files": [
     "dist",

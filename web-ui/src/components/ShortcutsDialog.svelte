@@ -2,7 +2,7 @@
   import { locale, tr } from "../lib/i18n";
   import { bindings, formatChord } from "../lib/keymap";
   import { openLayer, layerState } from "../lib/overlays.svelte";
-  import Dialog from "@amigo/ui/components/Dialog.svelte";
+  import Dialog from "@amigo-labs/krake-ui/components/Dialog.svelte";
 
   let { onclose }: { onclose: () => void } = $props();
 

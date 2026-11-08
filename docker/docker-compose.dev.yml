@@ -3,7 +3,7 @@ services:
     build:
       context: ..
       dockerfile: docker/Dockerfile.dev
-    container_name: amigo-web-ui
+    container_name: krake-web-ui
     ports:
       - "5173:5173"
     volumes:

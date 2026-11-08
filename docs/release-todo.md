@@ -47,7 +47,7 @@ v0.1.0-Release-PR, deren Merge den Tag setzt und den (bewusst leeren)
 
 ## Veröffentlichung & Distribution
 
-- [ ] Entscheiden, ob `@amigo/plugin-sdk` öffentlich auf npm publiziert wird.
+- [ ] Entscheiden, ob `@amigo-labs/krake-plugin-sdk` öffentlich auf npm publiziert wird.
       Falls ja: npm-Org/Account + `NPM_TOKEN`-Secret anlegen und
       `"private": true` in `plugin-sdk/package.json` entfernen.
 - [ ] Direkt nach dem v0.1.0-Tag `release-as: 0.1.0` aus

@@ -10,12 +10,12 @@ COPY packages/ui/package.json packages/ui/
 
 # Install only the workspace dependencies needed to build the web-ui
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --filter amigo-web-ui...
+    pnpm install --frozen-lockfile --filter @amigo-labs/krake-web-ui...
 
 # Now copy sources and build
 COPY packages/ui packages/ui
 COPY web-ui web-ui
-RUN pnpm --filter amigo-web-ui build
+RUN pnpm --filter @amigo-labs/krake-web-ui build
 
 # Stage 2: Build Rust
 # Pinned to the exact toolchain version so a silent base-image bump can't

@@ -1,11 +1,11 @@
 # Cookbook
 
-Focused recipes for common plugin tasks. Each recipe is self-contained and uses only `@amigo/plugin-sdk`.
+Focused recipes for common plugin tasks. Each recipe is self-contained and uses only `@amigo-labs/krake-plugin-sdk`.
 
 ## 1. Hoster with countdown and reCaptcha
 
 ```ts
-import { plugin, types, captcha } from "@amigo/plugin-sdk";
+import { plugin, types, captcha } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.definePlugin({
   id: "my-host",
@@ -37,7 +37,7 @@ export default plugin.definePlugin({
 ## 2. Paginated JSON API crawler
 
 ```ts
-import { plugin } from "@amigo/plugin-sdk";
+import { plugin } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.defineDecrypter({
   id: "api-folder",
@@ -62,7 +62,7 @@ export default plugin.defineDecrypter({
 ## 3. Folder decrypter (multi-level)
 
 ```ts
-import { plugin } from "@amigo/plugin-sdk";
+import { plugin } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.defineDecrypter({
   id: "folder-walker",
@@ -92,7 +92,7 @@ export default plugin.defineDecrypter({
 ## 4. Premium login with session persistence
 
 ```ts
-import { plugin, types, account } from "@amigo/plugin-sdk";
+import { plugin, types, account } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.definePlugin({
   id: "premium-host",
@@ -128,7 +128,7 @@ export default plugin.definePlugin({
 ## 5. HLS streaming with variant selection
 
 ```ts
-import { plugin, media, types } from "@amigo/plugin-sdk";
+import { plugin, media, types } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.definePlugin({
   id: "vod",
@@ -157,7 +157,7 @@ export default plugin.definePlugin({
 ## 6. DASH extraction
 
 ```ts
-import { plugin, media, types } from "@amigo/plugin-sdk";
+import { plugin, media, types } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.definePlugin({
   id: "dash-demo",
@@ -186,7 +186,7 @@ export default plugin.definePlugin({
 ## 7. RSDF container decrypter
 
 ```ts
-import { plugin, container } from "@amigo/plugin-sdk";
+import { plugin, container } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.defineDecrypter({
   id: "rsdf",
@@ -202,7 +202,7 @@ export default plugin.defineDecrypter({
 ## 8. DLC container decrypter (requires service endpoint)
 
 ```ts
-import { plugin, container } from "@amigo/plugin-sdk";
+import { plugin, container } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.defineDecrypter({
   id: "dlc",
@@ -221,7 +221,7 @@ export default plugin.defineDecrypter({
 ## 9. Obfuscated JS link derivation
 
 ```ts
-import { plugin, javascript, types } from "@amigo/plugin-sdk";
+import { plugin, javascript, types } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.definePlugin({
   id: "obfuscated",
@@ -246,7 +246,7 @@ export default plugin.definePlugin({
 ## 10. Redirect shortener resolver
 
 ```ts
-import { plugin } from "@amigo/plugin-sdk";
+import { plugin } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.defineDecrypter({
   id: "shortener",
@@ -262,7 +262,7 @@ export default plugin.defineDecrypter({
 ## 11. Multiple URL patterns
 
 ```ts
-import { plugin, types } from "@amigo/plugin-sdk";
+import { plugin, types } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.definePlugin({
   id: "multi",
@@ -288,7 +288,7 @@ export default plugin.definePlugin({
 The SDK ships with `postPageRaw` for custom content types. Build the multipart body yourself.
 
 ```ts
-import { plugin, types } from "@amigo/plugin-sdk";
+import { plugin, types } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.definePlugin({
   id: "upload-host",
@@ -321,7 +321,7 @@ export default plugin.definePlugin({
 ## 13. Rate-limited API with retry
 
 ```ts
-import { plugin, errors, types } from "@amigo/plugin-sdk";
+import { plugin, errors, types } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.definePlugin({
   id: "rate-limited",
@@ -348,7 +348,7 @@ export default plugin.definePlugin({
 ## 14. Sanitised filename
 
 ```ts
-import { plugin, types, utility } from "@amigo/plugin-sdk";
+import { plugin, types, utility } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.definePlugin({
   id: "safe-filename",
@@ -370,7 +370,7 @@ export default plugin.definePlugin({
 ## 15. Debug logging and progress reporting
 
 ```ts
-import { plugin, types } from "@amigo/plugin-sdk";
+import { plugin, types } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.definePlugin({
   id: "debug",

@@ -51,7 +51,7 @@ const RULES = [
   {
     id: "no-raw-hex",
     test: /(?:^|[\s;"'{])(?:color|background|background-color|border-color|fill|stroke):\s*#[0-9a-fA-F]{3,8}\b/,
-    message: "Raw hex colours bypass theming. Use a token from @amigo/ui/tokens.css.",
+    message: "Raw hex colours bypass theming. Use a token from @amigo-labs/krake-ui/tokens.css.",
   },
   {
     id: "no-legacy-radius",
@@ -176,7 +176,7 @@ if (UPDATE) {
     if (allowed === undefined) {
       failures.push(
         `${file}  [inline-style-budget] new file with ${n} inline style attributes. ` +
-        `Build it from @amigo/ui primitives, or run \`node scripts/ui-lint.mjs --update\` if this is intentional.`,
+        `Build it from @amigo-labs/krake-ui primitives, or run \`node scripts/ui-lint.mjs --update\` if this is intentional.`,
       );
     } else if (n > allowed) {
       failures.push(

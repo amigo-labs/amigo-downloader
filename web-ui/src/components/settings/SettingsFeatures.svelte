@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { AppConfig } from "../../lib/api";
   import { locale, tr } from "../../lib/i18n";
-  import Card from "@amigo/ui/components/Card.svelte";
-  import Toggle from "@amigo/ui/components/Toggle.svelte";
+  import Card from "@amigo-labs/krake-ui/components/Card.svelte";
+  import Toggle from "@amigo-labs/krake-ui/components/Toggle.svelte";
 
   // Was one of two settings sections with no i18n at all: switching the app
   // to German left these strings in English.

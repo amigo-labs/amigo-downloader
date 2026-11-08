@@ -2,7 +2,7 @@ import { pathToFileURL } from "node:url";
 import { parseArgs } from "./args.js";
 import { runNew, runTest, runValidate } from "./commands.js";
 
-const USAGE = `amigo-plugin <command> [options]
+const USAGE = `krake-plugin <command> [options]
 
 Commands:
   new <id> [--kind hoster|decrypter] [--dir .]

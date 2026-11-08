@@ -18,7 +18,7 @@ permissions = { domains = ["${options.id}.example"] }
 
 export function pluginTs(options: PluginTemplateOptions): string {
   if (options.kind === "decrypter") {
-    return `import { plugin, types } from "@amigo/plugin-sdk";
+    return `import { plugin, types } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.defineDecrypter({
   id: "${options.id}",
@@ -34,7 +34,7 @@ export default plugin.defineDecrypter({
 });
 `;
   }
-  return `import { plugin, types } from "@amigo/plugin-sdk";
+  return `import { plugin, types } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.definePlugin({
   id: "${options.id}",
@@ -86,7 +86,7 @@ export function packageJson(options: PluginTemplateOptions): string {
     "build": "tsc"
   },
   "devDependencies": {
-    "@amigo/plugin-sdk": "^${options.sdkVersion}",
+    "@amigo-labs/krake-plugin-sdk": "^${options.sdkVersion}",
     "typescript": "^5.6.0"
   }
 }
@@ -108,7 +108,7 @@ npm run build
 ## Test
 
 \`\`\`
-amigo-plugin test https://${options.id}.example/sample --plugin ./dist/index.js
+krake-plugin test https://${options.id}.example/sample --plugin ./dist/index.js
 \`\`\`
 `;
 }

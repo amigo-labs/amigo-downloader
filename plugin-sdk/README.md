@@ -1,4 +1,4 @@
-# @amigo/plugin-sdk
+# @amigo-labs/krake-plugin-sdk
 
 TypeScript SDK for building [Krake](https://github.com/amigo-labs/amigo-krake) plugins.
 
@@ -11,7 +11,7 @@ TypeScript SDK for building [Krake](https://github.com/amigo-labs/amigo-krake) p
 ## Install
 
 ```
-npm install @amigo/plugin-sdk
+npm install @amigo-labs/krake-plugin-sdk
 ```
 
 ## Quick start
@@ -68,14 +68,14 @@ See `plugins/template/plugin.ts` for a fully commented starting point and
 
 ## Experimental SDK model (not yet loaded by the runtime)
 
-The `@amigo/plugin-sdk` package also ships a higher-level, promise-based
+The `@amigo-labs/krake-plugin-sdk` package also ships a higher-level, promise-based
 authoring model (`definePlugin`, `Browser`/`Page`, captcha helpers). It runs
 only against the SDK's own mock host for now — the runtime bridge is tracked in
 `docs/plan-plugin-sdk.md`. Do **not** ship a plugin written this way expecting
 it to load in the app yet.
 
 ```ts
-import { plugin, types, captcha } from "@amigo/plugin-sdk";
+import { plugin, types, captcha } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.definePlugin({
   id: "example-hoster",
@@ -105,11 +105,11 @@ export default plugin.definePlugin({
 ## Scaffold a new plugin
 
 ```
-npx amigo-plugin new my-hoster --kind hoster
+npx krake-plugin new my-hoster --kind hoster
 cd my-hoster
 npm install
 npm run build
-npx amigo-plugin test https://my-hoster.example/sample --plugin ./dist/index.js
+npx krake-plugin test https://my-hoster.example/sample --plugin ./dist/index.js
 ```
 
 ## Modules
@@ -129,7 +129,7 @@ npx amigo-plugin test https://my-hoster.example/sample --plugin ./dist/index.js
 | `container` | `rsdf.parse`, `ccf.parse`, `dlc.parse`, `detect` |
 | `javascript` | `run`, `unpackDeanEdwards`, `unpackEval` |
 | `utility` | `parseSize`, `parseDuration`, `parseDate`, `formatFilename` |
-| `cli` | `amigo-plugin` commands |
+| `cli` | `krake-plugin` commands |
 
 ## Docs
 

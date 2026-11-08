@@ -7,8 +7,8 @@
   import { dur } from "../lib/motion";
   import DetailPanel from "./DetailPanel.svelte";
   import AddPanel from "./AddPanel.svelte";
-  import Dialog from "@amigo/ui/components/Dialog.svelte";
-  import IconButton from "@amigo/ui/components/IconButton.svelte";
+  import Dialog from "@amigo-labs/krake-ui/components/Dialog.svelte";
+  import IconButton from "@amigo-labs/krake-ui/components/IconButton.svelte";
 
   let isOpen = $derived($sidePanelMode !== null);
   let title = $derived(
