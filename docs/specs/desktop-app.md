@@ -150,9 +150,9 @@ and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
   - `krake-macos-x64.app.tar.gz` and `krake-macos-arm64.app.tar.gz`;
   - `krake-linux-x64.AppImage` and `krake-linux-x64.deb`;
   - each updater artifact also has its `.sig`.
-- [ ] AC-23: The site's "Desktop" install tab
-  (`site/src/components/sections/InstallTabs.svelte`) links the AC-22 assets
-  per OS, instead of only the releases page.
+- [ ] AC-23: The download section on amigo-labs.dev/krake/ links the AC-22
+  assets per OS (`downloads` in `docs/site/project.yml`), instead of only the
+  releases page.
 - [ ] AC-24: A desktop release needs the organization secrets
   `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The
   installer job fails early with a clear message when either is missing.
@@ -295,7 +295,7 @@ pub struct DesktopState {
   - write `latest.json` for Tauri 2;
   - signature key-ID guard;
   - check that the secrets are present.
-- `site/src/components/sections/InstallTabs.svelte`: direct desktop links.
+- `docs/site/project.yml` (`downloads`): direct desktop links on amigo-labs.dev.
 - `web-ui/src/pages/Plugins.svelte`, `locales/*.json`: banner states.
 - `docs/specs/tauri-workspace-integration.md`: point "Distribution
   detection" and the updater to this spec.

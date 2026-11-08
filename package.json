@@ -8,12 +8,9 @@
   },
   "scripts": {
     "build:web-ui": "pnpm --filter @amigo-labs/krake-web-ui build",
-    "build:site": "pnpm --filter amigo-site build",
     "dev:web-ui": "pnpm --filter @amigo-labs/krake-web-ui dev",
-    "dev:site": "pnpm --filter amigo-site dev",
     "check": "pnpm -r --if-present check",
-    "deploy:site": "wrangler deploy",
-    "preview:site": "pnpm --filter amigo-site build && wrangler dev"
+    "deploy:redirect": "wrangler deploy"
   },
   "devDependencies": {
     "wrangler": "^4.146.0"
@@ -44,11 +41,6 @@
       "smol-toml@<1.7.1": "^1.7.1",
       "source-map-js@>=1.0.0 <1.2.2": "^1.2.2",
       "zod@>=4.0.0 <4.6.6": "^4.6.6"
-    },
-    "auditConfig": {
-      "ignoreGhsas": [
-        "GHSA-ch52-4w7c-c8xp"
-      ]
     }
   }
 }

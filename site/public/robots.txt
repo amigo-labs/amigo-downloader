@@ -1,4 +1,0 @@
-User-agent: *
-Allow: /
-
-Sitemap: https://amigo-downloader.pages.dev/sitemap-index.xml

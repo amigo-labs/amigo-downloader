@@ -2,7 +2,7 @@
 @import "@amigo-labs/krake-ui/tokens.css";
 
 /* ========================================
-   Web-UI-specific styles (not shared with marketing site).
+   Web-UI-specific styles.
    Shared design tokens, palettes, neon-card / status-dots /
    progress / keyframes live in @amigo-labs/krake-ui/tokens.css.
    ======================================== */
