@@ -4,7 +4,8 @@ schema: 1
 slug: downloader
 name: amigo-downloader
 status: beta
-accent: "#3b82f6"
+accent: "#9be22d"
+monogram: Dl
 icon: icon.png
 tagline:
   en: The download manager power users actually want
