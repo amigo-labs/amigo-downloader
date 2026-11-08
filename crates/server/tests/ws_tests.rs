@@ -6,8 +6,8 @@
 use std::net::SocketAddr;
 use std::time::Duration;
 
-use amigo_core::config::Config;
 use futures_util::StreamExt;
+use krake_core::config::Config;
 use tokio::time::timeout;
 use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::tungstenite::client::IntoClientRequest;
@@ -19,8 +19,8 @@ async fn spawn_test_server() -> SocketAddr {
         ..Config::default()
     };
 
-    let state = amigo_server::build_test_state(config);
-    let app = amigo_server::build_test_router(state);
+    let state = krake_server::build_test_state(config);
+    let app = krake_server::build_test_router(state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -162,7 +162,7 @@ async fn test_ws_two_clients_both_receive_event() {
 
 /// Spawn a server behind real auth, returning the address plus a state clone
 /// so the test can seed sessions and read the pre-shared admin token.
-async fn spawn_auth_server() -> (SocketAddr, amigo_server::api::AppState) {
+async fn spawn_auth_server() -> (SocketAddr, krake_server::api::AppState) {
     let mut config = Config {
         max_concurrent_downloads: 0,
         ..Config::default()
@@ -170,11 +170,11 @@ async fn spawn_auth_server() -> (SocketAddr, amigo_server::api::AppState) {
     config.server.api_token = Some("admin-secret".into());
     config.server.setup_complete = true;
 
-    let state = amigo_server::build_test_state(config);
+    let state = krake_server::build_test_state(config);
     let state_clone = state.clone();
     // bind_is_loopback = true suppresses the setup wizard but leaves the auth
     // middleware active, so every WS client must present a credential.
-    let app = amigo_server::build_full_test_router(state, None, true).await;
+    let app = krake_server::build_full_test_router(state, None, true).await;
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -227,10 +227,10 @@ async fn test_ws_events_are_scoped_per_session_owner() {
     // while operator credentials (pre-shared token) see everything.
     let (addr, state) = spawn_auth_server().await;
 
-    let alice_sid = amigo_server::login::create_session(&state, "alice", 3600)
+    let alice_sid = krake_server::login::create_session(&state, "alice", 3600)
         .await
         .expect("seed alice session");
-    let bob_sid = amigo_server::login::create_session(&state, "bob", 3600)
+    let bob_sid = krake_server::login::create_session(&state, "bob", 3600)
         .await
         .expect("seed bob session");
 

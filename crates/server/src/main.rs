@@ -5,15 +5,15 @@ use axum::http::{HeaderValue, Method, header};
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
 
-use amigo_core::captcha::CaptchaManager;
-use amigo_core::config::Config;
-use amigo_core::coordinator::{Coordinator, DownloadEvent};
-use amigo_core::storage::Storage;
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::registry::RegistryConfig;
-use amigo_plugin_runtime::sandbox::SandboxLimits;
-use amigo_plugin_runtime::updater::PluginUpdater;
-use amigo_server::{
+use krake_core::captcha::CaptchaManager;
+use krake_core::config::Config;
+use krake_core::coordinator::{Coordinator, DownloadEvent};
+use krake_core::storage::Storage;
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::registry::RegistryConfig;
+use krake_plugin_runtime::sandbox::SandboxLimits;
+use krake_plugin_runtime::updater::PluginUpdater;
+use krake_server::{
     api, auth, background, clicknload, feedback, login, nzbget_api, pairing, password, resolver,
     security_headers_layer, setup, static_files, update_api, webhooks, ws,
 };
@@ -106,7 +106,7 @@ async fn main() -> anyhow::Result<()> {
     // governs other sandbox limits.
     let sandbox_limits = SandboxLimits::default();
     let mut plugin_host_api =
-        amigo_plugin_runtime::host_api::HostApi::from_sandbox(&sandbox_limits);
+        krake_plugin_runtime::host_api::HostApi::from_sandbox(&sandbox_limits);
 
     // Wire notify callback: plugin → broadcast → WebSocket → UI toast
     {
@@ -140,15 +140,15 @@ async fn main() -> anyhow::Result<()> {
             .expect("Failed to initialize plugin runtime — cannot start server");
     // Locally compiled plugin bytecode, so restarts skip transpile + compile.
     // Lives next to the config (daemon-writable only — plugin JS has no
-    // filesystem access); see `amigo_plugin_runtime::bytecode_cache`.
+    // filesystem access); see `krake_plugin_runtime::bytecode_cache`.
     let bytecode_dir = std::env::var_os("AMIGO_CONFIG_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
         .join("cache")
         .join("plugin-bytecode");
-    match amigo_plugin_runtime::bytecode_cache::BytecodeCache::open(
+    match krake_plugin_runtime::bytecode_cache::BytecodeCache::open(
         &bytecode_dir,
-        amigo_plugin_runtime::bytecode_cache::DEFAULT_MAX_ENTRIES,
+        krake_plugin_runtime::bytecode_cache::DEFAULT_MAX_ENTRIES,
     ) {
         Ok(cache) => plugin_loader = plugin_loader.with_bytecode_cache(cache),
         Err(e) => tracing::warn!(

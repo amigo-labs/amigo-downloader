@@ -7,14 +7,14 @@
 use std::net::SocketAddr;
 use std::path::PathBuf;
 
-use amigo_core::config::Config;
+use krake_core::config::Config;
 
 fn init_tracing_once() {
     use std::sync::Once;
     static ONCE: Once = Once::new();
     ONCE.call_once(|| {
         let _ = tracing_subscriber::fmt()
-            .with_env_filter("amigo_server=debug")
+            .with_env_filter("krake_server=debug")
             .with_test_writer()
             .try_init();
     });
@@ -27,10 +27,10 @@ async fn spawn(setup_pin: Option<&str>) -> (SocketAddr, PathBuf) {
     // we actually listen on 127.0.0.1 during the test.
     config.server.bind = "0.0.0.0:0".into();
 
-    let state = amigo_server::build_test_state(config);
+    let state = krake_server::build_test_state(config);
     let config_path = state.config_path.clone();
     let app =
-        amigo_server::build_full_test_router(state, setup_pin.map(|s| s.to_string()), false).await;
+        krake_server::build_full_test_router(state, setup_pin.map(|s| s.to_string()), false).await;
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();

@@ -1,4 +1,4 @@
-//! Library of the `amigo-server` crate — the API router, middleware and background tasks.
+//! Library of the `krake-server` crate — the API router, middleware and background tasks.
 //! Shared by the `krake-server` binary (`main.rs`) and the integration tests.
 
 pub mod api;
@@ -23,13 +23,13 @@ pub mod ws;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use amigo_core::captcha::CaptchaManager;
-use amigo_core::config::Config;
-use amigo_core::coordinator::Coordinator;
-use amigo_core::storage::Storage;
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::sandbox::SandboxLimits;
-use amigo_plugin_runtime::updater::PluginUpdater;
+use krake_core::captcha::CaptchaManager;
+use krake_core::config::Config;
+use krake_core::coordinator::Coordinator;
+use krake_core::storage::Storage;
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::sandbox::SandboxLimits;
+use krake_plugin_runtime::updater::PluginUpdater;
 
 /// Build the full application state suitable for testing.
 /// Uses in-memory storage and a no-discover plugin loader.
@@ -53,7 +53,7 @@ pub fn build_test_state(config: Config) -> api::AppState {
             .expect("Failed to init plugin loader"),
     );
 
-    let registry_config = amigo_plugin_runtime::registry::RegistryConfig::default();
+    let registry_config = krake_plugin_runtime::registry::RegistryConfig::default();
     let plugin_updater = Arc::new(PluginUpdater::new(
         registry_config,
         http_client.clone(),

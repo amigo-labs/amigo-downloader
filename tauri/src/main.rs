@@ -25,7 +25,7 @@ fn main() {
     use std::sync::Arc;
     use tauri::Manager;
 
-    // Signal to amigo-core that we are running inside Tauri.
+    // Signal to krake-core that we are running inside Tauri.
     // This must be set before any core initialization so that
     // detect_distribution() returns Distribution::Tauri.
     // SAFETY: Called at the very start of main, before any threads are spawned.
@@ -37,7 +37,7 @@ fn main() {
     tracing_subscriber::fmt().with_env_filter("info").init();
 
     // Load config
-    let config = amigo_core::config::Config::load_auto();
+    let config = krake_core::config::Config::load_auto();
 
     // Build Tauri app — storage is initialized in setup() where we have
     // access to the app handle for resolving platform-specific data dirs.
@@ -58,10 +58,10 @@ fn main() {
             let download_dir = PathBuf::from(&config.download_dir);
             let temp_dir = PathBuf::from(&config.temp_dir);
 
-            let storage = amigo_core::storage::Storage::open(db_path, download_dir, temp_dir)
+            let storage = krake_core::storage::Storage::open(db_path, download_dir, temp_dir)
                 .expect("Failed to initialize storage");
 
-            let coordinator = Arc::new(amigo_core::coordinator::Coordinator::new(
+            let coordinator = Arc::new(krake_core::coordinator::Coordinator::new(
                 config.clone(),
                 storage,
             ));
@@ -79,7 +79,7 @@ fn main() {
                     // Start Click'n'Load listener on port 9666
                     let cnl_coord = coord.clone();
                     tokio::spawn(async move {
-                        if let Err(e) = amigo_server::clicknload::start_clicknload(cnl_coord).await
+                        if let Err(e) = krake_server::clicknload::start_clicknload(cnl_coord).await
                         {
                             tracing::warn!("Click'n'Load failed to start: {e}");
                         }
@@ -100,7 +100,7 @@ fn main() {
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn cmd_add_download(
-    coordinator: tauri::State<'_, std::sync::Arc<amigo_core::coordinator::Coordinator>>,
+    coordinator: tauri::State<'_, std::sync::Arc<krake_core::coordinator::Coordinator>>,
     url: String,
 ) -> Result<String, String> {
     coordinator
@@ -112,7 +112,7 @@ async fn cmd_add_download(
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn cmd_get_stats(
-    coordinator: tauri::State<'_, std::sync::Arc<amigo_core::coordinator::Coordinator>>,
+    coordinator: tauri::State<'_, std::sync::Arc<krake_core::coordinator::Coordinator>>,
 ) -> Result<serde_json::Value, String> {
     let active = coordinator.active_count().await;
     let speed = coordinator.total_speed().await;

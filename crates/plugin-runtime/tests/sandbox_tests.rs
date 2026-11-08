@@ -6,8 +6,8 @@
 
 use std::path::Path;
 
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::sandbox::SandboxLimits;
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::sandbox::SandboxLimits;
 
 async fn loader_with(
     limits: SandboxLimits,

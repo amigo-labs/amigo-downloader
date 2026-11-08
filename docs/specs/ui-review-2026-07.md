@@ -134,7 +134,7 @@ pnpm build:web-ui
 cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings
 ```
 
-Manual checks must run against a real server (`cargo run -p amigo-server`,
+Manual checks must run against a real server (`cargo run -p krake-server`,
 UI on `:1516`) — **not** `vite dev`, which sets no CSP and therefore hides A1.
 
 ## Deferred

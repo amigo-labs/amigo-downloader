@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
-use amigo_core::queue::QueueStatus;
+use krake_core::queue::QueueStatus;
 
 use crate::api::AppState;
 

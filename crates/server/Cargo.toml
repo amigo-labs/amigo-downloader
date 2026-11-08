@@ -1,5 +1,5 @@
 [package]
-name = "amigo-server"
+name = "krake-server"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -12,7 +12,7 @@ homepage.workspace = true
 workspace = true
 
 [lib]
-name = "amigo_server"
+name = "krake_server"
 path = "src/lib.rs"
 
 [[bin]]
@@ -20,8 +20,8 @@ name = "krake-server"
 path = "src/main.rs"
 
 [dependencies]
-amigo-core = { workspace = true }
-amigo-plugin-runtime = { workspace = true }
+krake-core = { workspace = true }
+krake-plugin-runtime = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

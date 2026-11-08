@@ -8,8 +8,8 @@
 
 use std::path::PathBuf;
 
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::sandbox::SandboxLimits;
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::sandbox::SandboxLimits;
 
 fn shipped_plugins_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

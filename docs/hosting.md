@@ -7,7 +7,7 @@ where the server actually runs.
 
 | Variant | Runs standalone? | Needs a server too? | Typical use |
 |---|---|---|---|
-| **Tauri Desktop** (`Krake`, crate `amigo-desktop`) | yes — spawns an internal loopback server | no | Personal laptop/desktop, single user |
+| **Tauri Desktop** (`Krake`, crate `krake-desktop`) | yes — spawns an internal loopback server | no | Personal laptop/desktop, single user |
 | **`krake-server` binary** (Linux/Mac/Windows) | yes — ships the Web UI embedded | no | Self-hosted on a NAS / homelab without containers |
 | **Docker image** (`krake:latest`) | yes (as a container) | no | Always-on homeserver, multiple clients |
 | **`krake <URL>`** (direct download) | yes — one shot, no daemon | no | Quick single-file download, `yt-dlp`-style |

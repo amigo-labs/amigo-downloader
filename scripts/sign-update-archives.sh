@@ -5,7 +5,7 @@
 #
 # Writes <archive>.sig next to every krake-<os>-* / krake-server-* archive in
 # <dir>: the lowercase hex of the Ed25519 signature over the archive bytes,
-# which `amigo_core::updater::verify_ed25519` checks.
+# which `krake_core::updater::verify_ed25519` checks.
 #
 # Environment:
 #   AMIGO_UPDATE_SIGNING_KEY  32-byte Ed25519 private seed, 64 hex chars (secret)

@@ -5,7 +5,7 @@
 
 use std::net::SocketAddr;
 
-use amigo_core::config::Config;
+use krake_core::config::Config;
 use std::assert_matches;
 
 /// Spawn a test server on a random port. Returns the bound address.
@@ -16,8 +16,8 @@ async fn spawn_test_server() -> SocketAddr {
         ..Config::default()
     };
 
-    let state = amigo_server::build_test_state(config);
-    let app = amigo_server::build_test_router(state);
+    let state = krake_server::build_test_state(config);
+    let app = krake_server::build_test_router(state);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
         .await
@@ -755,8 +755,8 @@ async fn test_webhook_creation_syncs_to_config() {
         max_concurrent_downloads: 1,
         ..Config::default()
     };
-    let state = amigo_server::build_test_state(config);
-    let app = amigo_server::build_test_router(state);
+    let state = krake_server::build_test_state(config);
+    let app = krake_server::build_test_router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
@@ -1043,14 +1043,14 @@ async fn add_rss_feed_rejects_private_ip_url() {
     // rather than the feature flag short-circuit.
     let config = Config {
         max_concurrent_downloads: 0,
-        features: amigo_core::config::FeatureFlags {
+        features: krake_core::config::FeatureFlags {
             rss_feeds: true,
             ..Default::default()
         },
         ..Config::default()
     };
-    let state = amigo_server::build_test_state(config);
-    let app = amigo_server::build_test_router(state);
+    let state = krake_server::build_test_state(config);
+    let app = krake_server::build_test_router(state);
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {

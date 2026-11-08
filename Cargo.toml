@@ -145,6 +145,6 @@ scraper = "0.22"
 url = "2"
 
 # Internal crates
-amigo-core = { path = "crates/core" }
-amigo-extractors = { path = "crates/extractors" }
-amigo-plugin-runtime = { path = "crates/plugin-runtime" }
+krake-core = { path = "crates/core" }
+krake-extractors = { path = "crates/extractors" }
+krake-plugin-runtime = { path = "crates/plugin-runtime" }

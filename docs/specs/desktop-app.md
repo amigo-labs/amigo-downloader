@@ -55,7 +55,7 @@ and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
 
 ### P1 — Embedded server
 
-- [ ] AC-1: `amigo_server::embedded::serve(opts)` starts the same routes and
+- [ ] AC-1: `krake_server::embedded::serve(opts)` starts the same routes and
   layers as the `krake-server` binary: API, WebSocket, updates, feedback,
   NZBGet, static web-ui, CORS and security headers. It does so on a
   `TcpListener` the caller has already bound. The binary's `main` calls the
@@ -165,7 +165,7 @@ and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
 /// Everything `serve` needs; the binary builds it from env/CLI, the desktop
 /// app from Tauri's path resolver.
 pub struct ServeOptions {
-    pub config: amigo_core::config::Config,
+    pub config: krake_core::config::Config,
     /// Where setup / PUT /config persist the config.
     pub config_path: std::path::PathBuf,
     pub db_path: std::path::PathBuf,
@@ -188,7 +188,7 @@ pub struct DesktopOptions {
 /// Handle returned by `serve`; dropping it does not stop the server.
 pub struct ServerHandle {
     pub local_addr: std::net::SocketAddr,
-    pub coordinator: std::sync::Arc<amigo_core::coordinator::Coordinator>,
+    pub coordinator: std::sync::Arc<krake_core::coordinator::Coordinator>,
     pub shutdown: tokio::sync::oneshot::Sender<()>,
 }
 
@@ -345,7 +345,7 @@ pub struct DesktopState {
 - [ ] Unit (`tauri`): `tauri.conf.json` has `createUpdaterArtifacts`,
   `externalBin` and the org pubkey (key ID `3098504C1538B8F6`) (AC-7, AC-14,
   AC-19).
-- [ ] CI: a `cargo check -p amigo-desktop --features tauri` job with the GTK
+- [ ] CI: a `cargo check -p krake-desktop --features tauri` job with the GTK
   and WebKit libraries, so the Tauri code is compiled on every PR (today
   nothing compiles it).
 - [ ] Workflow:

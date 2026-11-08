@@ -7,10 +7,10 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use amigo_plugin_runtime::Error;
-use amigo_plugin_runtime::host_api::{CaptchaFuture, HostApi};
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::sandbox::SandboxLimits;
+use krake_plugin_runtime::Error;
+use krake_plugin_runtime::host_api::{CaptchaFuture, HostApi};
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::sandbox::SandboxLimits;
 
 fn write_plugin(root: &Path, id: &str, resolve_body: &str) {
     let dir = root.join(id);

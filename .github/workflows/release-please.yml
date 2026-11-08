@@ -6,7 +6,7 @@
 # `version.workspace = true`, so that strategy aborts with
 # "value at path package.version is not tagged". The TOML/JSON updaters below
 # bump the single source of truth in `[workspace.package]` instead, plus the
-# `amigo-*` entries in `Cargo.lock` (CI builds with `--locked`).
+# `krake-*` entries in `Cargo.lock` (CI builds with `--locked`).
 # `scripts/version-consistency.mjs` guards those invariants.
 
 name: Release Please

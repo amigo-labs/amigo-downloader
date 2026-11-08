@@ -2,10 +2,10 @@
 
 use std::path::PathBuf;
 
-use amigo_core::config::Config;
-use amigo_core::coordinator::Coordinator;
-use amigo_core::queue::QueueStatus;
-use amigo_core::storage::Storage;
+use krake_core::config::Config;
+use krake_core::coordinator::Coordinator;
+use krake_core::queue::QueueStatus;
+use krake_core::storage::Storage;
 
 fn test_coordinator() -> Coordinator {
     let storage = Storage::open_memory().expect("Failed to open in-memory storage");
@@ -71,7 +71,7 @@ async fn test_owner_is_attributed_and_resolvable() {
 
 #[tokio::test]
 async fn test_subject_download_id_classifies_events() {
-    use amigo_core::coordinator::DownloadEvent;
+    use krake_core::coordinator::DownloadEvent;
     // Download-scoped events expose their download id.
     assert_eq!(
         DownloadEvent::Added {
@@ -328,7 +328,7 @@ async fn test_chunk_storage_roundtrip() {
     let storage = Storage::open_memory().unwrap();
 
     // Create a download first
-    let row = amigo_core::storage::DownloadRow {
+    let row = krake_core::storage::DownloadRow {
         id: "test-dl".to_string(),
         url: "https://example.com/big.zip".to_string(),
         protocol: "http".to_string(),
@@ -351,7 +351,7 @@ async fn test_chunk_storage_roundtrip() {
     storage.insert_download(&row).await.unwrap();
 
     // Save chunks
-    let chunks = amigo_core::chunk::ChunkPlan::split(10_000_000, 4);
+    let chunks = krake_core::chunk::ChunkPlan::split(10_000_000, 4);
     let temp_dir = PathBuf::from("/tmp/test-chunks");
     storage
         .save_chunks("test-dl", &chunks.chunks, &temp_dir)
@@ -374,7 +374,7 @@ async fn test_chunk_storage_roundtrip() {
     assert_eq!(reloaded[0].bytes_downloaded, 2_500_000);
     assert_eq!(
         reloaded[0].status,
-        amigo_core::chunk::ChunkStatus::Completed
+        krake_core::chunk::ChunkStatus::Completed
     );
 
     // Delete

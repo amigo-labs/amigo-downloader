@@ -7,18 +7,18 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use tokio::sync::watch;
 use tracing::debug;
 
-use amigo_core::bandwidth::{BandwidthConfig, BandwidthLimiter};
-use amigo_core::config::Config;
-use amigo_core::coordinator::Coordinator;
-use amigo_core::protocol::dash::DashDownloader;
-use amigo_core::protocol::hls::HlsDownloader;
-use amigo_core::protocol::http::{DownloadProgress, HttpDownloader};
-use amigo_core::protocol::{DownloadJob, Protocol, ProtocolBackend};
-use amigo_core::queue::QueueStatus;
-use amigo_core::storage::Storage;
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::sandbox::SandboxLimits;
-use amigo_plugin_runtime::types::DownloadProtocol;
+use krake_core::bandwidth::{BandwidthConfig, BandwidthLimiter};
+use krake_core::config::Config;
+use krake_core::coordinator::Coordinator;
+use krake_core::protocol::dash::DashDownloader;
+use krake_core::protocol::hls::HlsDownloader;
+use krake_core::protocol::http::{DownloadProgress, HttpDownloader};
+use krake_core::protocol::{DownloadJob, Protocol, ProtocolBackend};
+use krake_core::queue::QueueStatus;
+use krake_core::storage::Storage;
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::sandbox::SandboxLimits;
+use krake_plugin_runtime::types::DownloadProtocol;
 
 /// Output mode for terminal display.
 #[derive(Debug, Clone, Copy, PartialEq, ValueEnum, Default)]
@@ -227,7 +227,7 @@ fn print_banner(mode: OutputMode) {
             "{} {} {}",
             style("⚡").cyan(),
             style("Krake").bold().cyan(),
-            style(format!("v{}", amigo_core::updater::CURRENT_VERSION)).dim()
+            style(format!("v{}", krake_core::updater::CURRENT_VERSION)).dim()
         );
         return;
     }
@@ -239,7 +239,7 @@ fn print_banner(mode: OutputMode) {
         "  {} {} {}",
         style("⚡").bold().yellow(),
         style("Krake").bold().cyan(),
-        style(format!("v{}", amigo_core::updater::CURRENT_VERSION)).dim()
+        style(format!("v{}", krake_core::updater::CURRENT_VERSION)).dim()
     );
     eprintln!("  {}", style("Fast, modular download manager").dim());
     eprintln!();
@@ -785,8 +785,8 @@ async fn main() -> anyhow::Result<()> {
     init_tracing(verbose);
 
     // Initialize i18n — detect system language, load locale
-    let lang = amigo_core::i18n::detect_system_lang();
-    amigo_core::i18n::init(&lang, std::path::Path::new("locales"));
+    let lang = krake_core::i18n::detect_system_lang();
+    krake_core::i18n::init(&lang, std::path::Path::new("locales"));
 
     // Resolve output mode (--no-color overrides to plain)
     let mode = if cli.no_color || std::env::var("NO_COLOR").is_ok() {
@@ -823,7 +823,7 @@ async fn main() -> anyhow::Result<()> {
                 println!("Added download: {id}");
             } else if let Some(nzb_path) = nzb {
                 let data = std::fs::read_to_string(&nzb_path)?;
-                let nzb = amigo_core::protocol::usenet::nzb::parse_nzb(&data)?;
+                let nzb = krake_core::protocol::usenet::nzb::parse_nzb(&data)?;
                 println!("NZB contains {} files", nzb.files.len());
                 for file in &nzb.files {
                     println!(
@@ -842,7 +842,7 @@ async fn main() -> anyhow::Result<()> {
                 println!("NZB import complete ({} files queued).", nzb.files.len());
             } else if let Some(dlc_path) = dlc {
                 let data = std::fs::read(&dlc_path)?;
-                let packages = amigo_core::container::import_dlc(&data)?;
+                let packages = krake_core::container::import_dlc(&data)?;
                 for pkg in &packages {
                     println!("Package: {} ({} links)", pkg.name, pkg.links.len());
                     for link in &pkg.links {
@@ -865,18 +865,18 @@ async fn main() -> anyhow::Result<()> {
                     ids.as_ref()
                         .is_none_or(|ids_str| ids_str.split(',').any(|i| i.trim() == d.id))
                 })
-                .map(|d| amigo_core::container::ContainerLink {
+                .map(|d| krake_core::container::ContainerLink {
                     url: d.url.clone(),
                     filename: d.filename.clone(),
                     filesize: d.filesize,
                 })
                 .collect();
 
-            let pkg = amigo_core::container::ContainerPackage {
+            let pkg = krake_core::container::ContainerPackage {
                 name: "Export".into(),
                 links,
             };
-            let dlc_data = amigo_core::container::export_dlc(&[pkg])?;
+            let dlc_data = krake_core::container::export_dlc(&[pkg])?;
             let out_path = "export.dlc";
             std::fs::write(out_path, &dlc_data)?;
             println!("Exported to {out_path}");
@@ -1048,7 +1048,7 @@ async fn main() -> anyhow::Result<()> {
             match mode {
                 OutputMode::Json => {
                     tui.json(&serde_json::json!({
-                        "version": amigo_core::updater::CURRENT_VERSION,
+                        "version": krake_core::updater::CURRENT_VERSION,
                         "active": active,
                         "queued": queued,
                         "completed": completed,
@@ -1081,7 +1081,7 @@ async fn main() -> anyhow::Result<()> {
                     );
                 }
                 OutputMode::Plain => {
-                    println!("krake v{}", amigo_core::updater::CURRENT_VERSION);
+                    println!("krake v{}", krake_core::updater::CURRENT_VERSION);
                     println!(
                         "Active: {active}  Queued: {queued}  Completed: {completed}  Failed: {failed}"
                     );
@@ -1152,8 +1152,8 @@ async fn main() -> anyhow::Result<()> {
 
         Commands::Plugins { action } => match action {
             PluginAction::Test { plugin, url } => {
-                use amigo_plugin_runtime::loader::PluginLoader;
-                use amigo_plugin_runtime::sandbox::SandboxLimits;
+                use krake_plugin_runtime::loader::PluginLoader;
+                use krake_plugin_runtime::sandbox::SandboxLimits;
 
                 let path = std::path::Path::new(&plugin);
                 if !path.exists() {
@@ -1261,14 +1261,14 @@ async fn main() -> anyhow::Result<()> {
 
                 println!("Checking for updates...");
 
-                match amigo_core::updater::check_for_update(
+                match krake_core::updater::check_for_update(
                     &client,
                     &config.update.github_repo,
-                    amigo_core::updater::Product::Cli,
+                    krake_core::updater::Product::Cli,
                 )
                 .await
                 {
-                    Ok(amigo_core::updater::CoreUpdateStatus::UpdateAvailable {
+                    Ok(krake_core::updater::CoreUpdateStatus::UpdateAvailable {
                         current,
                         latest,
                         release_notes,
@@ -1279,8 +1279,8 @@ async fn main() -> anyhow::Result<()> {
                             println!("\nRelease notes:\n{release_notes}");
                         }
                     }
-                    Ok(amigo_core::updater::CoreUpdateStatus::UpToDate) => {
-                        println!("Up to date (v{})", amigo_core::updater::CURRENT_VERSION);
+                    Ok(krake_core::updater::CoreUpdateStatus::UpToDate) => {
+                        println!("Up to date (v{})", krake_core::updater::CURRENT_VERSION);
                     }
                     Err(e) => {
                         println!("Could not check for updates: {e}");
@@ -1291,15 +1291,15 @@ async fn main() -> anyhow::Result<()> {
                 let client = reqwest::Client::builder().user_agent("krake").build()?;
                 let config = Config::load_auto();
 
-                let status = amigo_core::updater::check_for_update(
+                let status = krake_core::updater::check_for_update(
                     &client,
                     &config.update.github_repo,
-                    amigo_core::updater::Product::Cli,
+                    krake_core::updater::Product::Cli,
                 )
                 .await?;
 
                 match status {
-                    amigo_core::updater::CoreUpdateStatus::UpdateAvailable {
+                    krake_core::updater::CoreUpdateStatus::UpdateAvailable {
                         current,
                         latest,
                         download_url,
@@ -1313,21 +1313,21 @@ async fn main() -> anyhow::Result<()> {
                             return Ok(());
                         }
                         println!("Updating {current} → {latest}...");
-                        amigo_core::updater::download_and_apply(
+                        krake_core::updater::download_and_apply(
                             &client,
                             &download_url,
                             sha256_url.as_deref(),
                             sig_url.as_deref(),
                             &latest,
-                            amigo_core::updater::Product::Cli,
+                            krake_core::updater::Product::Cli,
                         )
                         .await?;
                         println!("Update applied! Restart krake to use v{latest}.");
                     }
-                    amigo_core::updater::CoreUpdateStatus::UpToDate => {
+                    krake_core::updater::CoreUpdateStatus::UpToDate => {
                         println!(
                             "Already up to date (v{}).",
-                            amigo_core::updater::CURRENT_VERSION
+                            krake_core::updater::CURRENT_VERSION
                         );
                     }
                 }
@@ -1390,7 +1390,7 @@ async fn pair_with_remote(url: &str, name_override: Option<&str>, tui: &Tui) -> 
     let hostname = std::env::var("HOSTNAME")
         .ok()
         .or_else(hostname_fallback)
-        .unwrap_or_else(|| "amigo-cli".to_string());
+        .unwrap_or_else(|| "krake-cli".to_string());
     let device_name = name_override.unwrap_or(&hostname).to_string();
 
     let client = reqwest::Client::builder()

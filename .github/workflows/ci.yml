@@ -63,13 +63,13 @@ jobs:
         run: mkdir -p web-ui/dist
 
       - name: Clippy (includes check)
-        # amigo-desktop is included: without the `tauri` feature it builds a
+        # krake-desktop is included: without the `tauri` feature it builds a
         # stub that needs no system libraries, and it opts into the workspace
         # lint table like every other member.
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
       - name: Test
-        run: cargo test --workspace --exclude amigo-desktop --locked
+        run: cargo test --workspace --exclude krake-desktop --locked
 
   release-build-guard:
     # The release profile runs the build.rs key guards (plugin registry and
@@ -110,7 +110,7 @@ jobs:
       - name: Create web-ui dist stub
         run: mkdir -p web-ui/dist
       - name: cargo check --release (server + CLI + plugin host)
-        run: cargo check --release --locked -p amigo-server -p amigo-cli -p amigo-plugin-runtime
+        run: cargo check --release --locked -p krake-server -p krake-cli -p krake-plugin-runtime
 
   cargo-audit:
     name: Cargo audit (known vulnerabilities)

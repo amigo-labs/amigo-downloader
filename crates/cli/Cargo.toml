@@ -1,5 +1,5 @@
 [package]
-name = "amigo-cli"
+name = "krake-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -16,8 +16,8 @@ name = "krake"
 path = "src/main.rs"
 
 [dependencies]
-amigo-core = { workspace = true }
-amigo-plugin-runtime = { workspace = true }
+krake-core = { workspace = true }
+krake-plugin-runtime = { workspace = true }
 uuid = { workspace = true }
 tokio = { workspace = true }
 clap = { workspace = true }

@@ -18,8 +18,8 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use tracing::{debug, info, warn};
 
-use amigo_core::coordinator::Coordinator;
-use amigo_core::queue::QueueStatus;
+use krake_core::coordinator::Coordinator;
+use krake_core::queue::QueueStatus;
 
 use crate::api::AppState;
 
@@ -35,7 +35,7 @@ static SERVER_START: std::sync::LazyLock<Instant> = std::sync::LazyLock::new(Ins
 /// off".
 pub fn nzbget_router(
     state: AppState,
-    config: &amigo_core::config::NzbGetApiConfig,
+    config: &krake_core::config::NzbGetApiConfig,
 ) -> Option<Router> {
     if !config.enabled {
         debug!("NZBGet JSON-RPC API disabled");
@@ -63,7 +63,7 @@ pub fn nzbget_router(
 /// Validate the NZBGet configuration at startup. Returns an error suitable
 /// for surfacing to the operator when the API is enabled without credentials,
 /// which would otherwise be a wide-open RPC endpoint.
-pub fn validate_nzbget_config(config: &amigo_core::config::NzbGetApiConfig) -> Result<(), String> {
+pub fn validate_nzbget_config(config: &krake_core::config::NzbGetApiConfig) -> Result<(), String> {
     if !config.enabled {
         return Ok(());
     }
@@ -297,7 +297,7 @@ async fn handle_append(coordinator: &Arc<Coordinator>, params: &[Value]) -> RpcR
         String::from_utf8(nzb_data).map_err(|e| (-32602, format!("Invalid UTF-8 in NZB: {e}")))?;
 
     // Validate NZB
-    amigo_core::protocol::usenet::nzb::parse_nzb(&nzb_str)
+    krake_core::protocol::usenet::nzb::parse_nzb(&nzb_str)
         .map_err(|e| (-32602, format!("Invalid NZB: {e}")))?;
 
     // Add as usenet download
@@ -566,8 +566,8 @@ fn id_to_nzbid(id: &str) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use amigo_core::config::NzbGetApiConfig;
     use base64::Engine;
+    use krake_core::config::NzbGetApiConfig;
 
     fn header_map_with_auth(user: &str, pass: &str) -> HeaderMap {
         let mut h = HeaderMap::new();

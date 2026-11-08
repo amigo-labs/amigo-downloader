@@ -9,7 +9,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use amigo_core::storage::SessionRow;
 use axum::{
     Json, Router,
     extract::{ConnectInfo, State},
@@ -18,6 +17,7 @@ use axum::{
     routing::{get, post},
 };
 use axum_extra::extract::cookie::{Cookie, SameSite};
+use krake_core::storage::SessionRow;
 use rand::TryRng;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;

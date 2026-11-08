@@ -61,7 +61,7 @@ e.g. `collapsible_if` → let chains):
 
 - **async-trait**: `Extractor` (never used as `dyn`) declares
   `fn extract(..) -> impl Future<Output = ..> + Send`; implementations stay
-  `async fn` and `async-trait` is dropped from `amigo-extractors`.
+  `async fn` and `async-trait` is dropped from `krake-extractors`.
   `ProtocolBackend` and `UrlResolver` are used as `dyn` and keep
   `async-trait` (updated to 0.1.92, which no longer emits the bare
   `#[must_use]` that clippy 1.99 rejects).
@@ -76,7 +76,7 @@ e.g. `collapsible_if` → let chains):
 - **Server binary on the library crate**: `main.rs` used to re-declare every
   module that `lib.rs` also declares, so each module compiled twice and
   `dead_code` disagreed between the two targets (hence a crate-wide
-  `#![allow(dead_code)]`). `main.rs` now imports `amigo_server::*`; the
+  `#![allow(dead_code)]`). `main.rs` now imports `krake_server::*`; the
   crate-wide allow and three never-constructed JSON-RPC structs are gone.
 - **std APIs**: let chains, let-else, `is_some_and` / `is_ok_and` /
   `is_none_or`, `bool::ok_or_else` (1.98), `String::from_utf8_lossy_owned`
@@ -93,11 +93,11 @@ e.g. `collapsible_if` → let chains):
 | AC-1 | The repo builds with exactly Rust 1.99.0 | `rustc --version` inside the repo prints `rustc 1.99.0` |
 | AC-2 | CI does not float on `@stable` | `grep -rn 'rust-toolchain@stable' .github` returns no matches |
 | AC-3 | Docker builds with the same toolchain | `grep -n '^FROM rust:' docker/Dockerfile` shows `rust:1.99.0-bookworm` |
-| AC-4 | The workspace — all six members, including the `amigo-desktop` stub — is clean under the lint table | `cargo clippy --workspace --all-targets --locked -- -D warnings` exits 0 (this is the CI clippy step) |
+| AC-4 | The workspace — all six members, including the `krake-desktop` stub — is clean under the lint table | `cargo clippy --workspace --all-targets --locked -- -D warnings` exits 0 (this is the CI clippy step) |
 | AC-5 | No `#[allow]` remains in first-party Rust code | `grep -rnE '#!?\[allow\(' crates tauri --include=*.rs` returns no matches |
 | AC-6 | Every workspace member opts into the lint table | each `crates/*/Cargo.toml` and `tauri/Cargo.toml` contains `[lints]` with `workspace = true` |
 | AC-7 | `Extractor` no longer depends on `async-trait` | `grep -n 'async-trait' crates/extractors/Cargo.toml` returns no matches |
-| AC-8 | Tests pass | `cargo test --workspace --exclude amigo-desktop --locked` exits 0 |
+| AC-8 | Tests pass | `cargo test --workspace --exclude krake-desktop --locked` exits 0 |
 
 ---
 

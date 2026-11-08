@@ -6,8 +6,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use amigo_core::config::WebhookEndpoint;
-use amigo_core::coordinator::DownloadEvent;
+use krake_core::config::WebhookEndpoint;
+use krake_core::coordinator::DownloadEvent;
 use serde::Serialize;
 use tokio::sync::{RwLock, broadcast};
 use tracing::{debug, error, info, warn};
@@ -296,7 +296,7 @@ mod tests {
     fn signature_is_verifiable_with_the_stored_secret() {
         // A receiver re-derives the HMAC over the raw body with the shared
         // secret and compares. Same secret + body must reproduce the header.
-        let secret = amigo_core::config::generate_webhook_secret();
+        let secret = krake_core::config::generate_webhook_secret();
         let body = r#"{"event":"download.completed","data":{}}"#;
 
         let header = sign_payload(&secret, body).expect("sign");
@@ -309,7 +309,7 @@ mod tests {
         assert_eq!(hex_sig, expected);
 
         // A wrong secret must NOT verify.
-        let other = amigo_core::config::generate_webhook_secret();
+        let other = krake_core::config::generate_webhook_secret();
         let bad = sign_payload(&other, body).expect("sign");
         assert_ne!(
             bad, header,
@@ -319,7 +319,7 @@ mod tests {
 
     #[test]
     fn generated_secret_is_64_hex_chars() {
-        let s = amigo_core::config::generate_webhook_secret();
+        let s = krake_core::config::generate_webhook_secret();
         assert_eq!(s.len(), 64);
         assert!(s.bytes().all(|b| b.is_ascii_hexdigit()));
     }

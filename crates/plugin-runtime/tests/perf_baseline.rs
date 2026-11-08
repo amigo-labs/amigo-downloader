@@ -4,7 +4,7 @@
 //!
 //! ```sh
 //! AMIGO_REGISTRY_PUBKEY_HEX=$(printf "de%.0s" {1..32}) \
-//!   cargo test -p amigo-plugin-runtime --release --test perf_baseline -- --ignored --nocapture
+//!   cargo test -p krake-plugin-runtime --release --test perf_baseline -- --ignored --nocapture
 //! ```
 //!
 //! Measures, against the shipped `plugins/` tree:
@@ -19,9 +19,9 @@
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use amigo_plugin_runtime::bytecode_cache::BytecodeCache;
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::sandbox::SandboxLimits;
+use krake_plugin_runtime::bytecode_cache::BytecodeCache;
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::sandbox::SandboxLimits;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 

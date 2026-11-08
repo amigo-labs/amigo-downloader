@@ -109,11 +109,11 @@ jobs:
 
       - name: Build CLI and Server
         if: ${{ !matrix.cross }}
-        run: cargo build --release --target ${{ matrix.target }} -p amigo-cli -p amigo-server -p amigo-plugin-runtime
+        run: cargo build --release --target ${{ matrix.target }} -p krake-cli -p krake-server -p krake-plugin-runtime
 
       - name: Build CLI and Server (cross)
         if: ${{ matrix.cross }}
-        run: cross build --release --target ${{ matrix.target }} -p amigo-cli -p amigo-server -p amigo-plugin-runtime
+        run: cross build --release --target ${{ matrix.target }} -p krake-cli -p krake-server -p krake-plugin-runtime
 
       # Both archives carry krake-plugin-host: the CLI and the server each
       # run plugins in it and look for it next to their own executable.

@@ -46,7 +46,7 @@ default-members = [
 ]
 ```
 
-This way `cargo build` builds only the default members, while `cargo build -p amigo-desktop` or `cargo tauri build` explicitly builds the Tauri crate.
+This way `cargo build` builds only the default members, while `cargo build -p krake-desktop` or `cargo tauri build` explicitly builds the Tauri crate.
 
 ### 2. Uncomment Tauri dependencies behind a feature flag
 
@@ -114,7 +114,7 @@ pub fn detect_distribution() -> Distribution {
         .ok()
         .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
     {
-        if name.contains("amigo-desktop") || name.contains("krake") {
+        if name.contains("krake-desktop") || name.contains("krake") {
             // Could be Tauri, but without env var we can't be sure
         }
     }
@@ -137,15 +137,15 @@ std::env::set_var("AMIGO_TAURI", "1");
 
 ### AC1: Workspace membership
 - [ ] `tauri` appears in `[workspace.members]` in root `Cargo.toml`
-- [ ] `cargo metadata --no-deps` includes `amigo-desktop` in the package list
+- [ ] `cargo metadata --no-deps` includes `krake-desktop` in the package list
 - [ ] `cargo check --workspace` succeeds without Tauri system libraries installed (the `tauri` feature is not enabled by default)
-- [ ] `cargo build -p amigo-desktop` compiles the stub binary (prints instructions) without errors
+- [ ] `cargo build -p krake-desktop` compiles the stub binary (prints instructions) without errors
 
 ### AC2: Feature-gated Tauri dependencies
 - [ ] `tauri/Cargo.toml` has no commented-out dependencies
 - [ ] All Tauri crate dependencies are declared as `optional = true` and gated behind a `tauri` feature
 - [ ] `#[cfg(feature = "tauri")]` blocks in `main.rs` compile when the feature is enabled
-- [ ] `cargo clippy -p amigo-desktop` passes (without `tauri` feature, checking the stub path)
+- [ ] `cargo clippy -p krake-desktop` passes (without `tauri` feature, checking the stub path)
 
 ### AC3: Updater public key
 - [ ] `tauri/tauri.conf.json` does not contain `"pubkey": ""`
@@ -171,7 +171,7 @@ std::env::set_var("AMIGO_TAURI", "1");
 ### Workspace `default-members`
 Using `default-members` is important because Tauri v2 requires system libraries (GTK, WebKit on Linux) that may not be present on all developer machines or CI runners. Without `default-members`, adding `tauri` to `members` would cause `cargo build` to fail on machines without those libraries — even though the `tauri` feature is not active — because Cargo still resolves and downloads all workspace members.
 
-With `default-members`, plain `cargo build` only builds the server/CLI crates. The Tauri crate is only built when explicitly requested via `cargo build -p amigo-desktop` or `cargo tauri build`.
+With `default-members`, plain `cargo build` only builds the server/CLI crates. The Tauri crate is only built when explicitly requested via `cargo build -p krake-desktop` or `cargo tauri build`.
 
 ### Feature flag naming
 The feature is named `tauri` to match the existing `#[cfg(feature = "tauri")]` guards already present in `tauri/src/main.rs`. No code changes needed in the cfg attributes.

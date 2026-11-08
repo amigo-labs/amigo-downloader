@@ -17,7 +17,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
-use amigo_core::storage::{ApiTokenRow, PairingRequestRow};
 use axum::{
     Json, Router,
     extract::{ConnectInfo, Query, State},
@@ -25,6 +24,7 @@ use axum::{
     response::{IntoResponse, Response},
     routing::{get, post},
 };
+use krake_core::storage::{ApiTokenRow, PairingRequestRow};
 use rand::TryRng;
 use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
