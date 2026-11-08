@@ -239,7 +239,7 @@ pub async fn check_for_update(
 
     let resp = client
         .get(&url)
-        .header("User-Agent", "amigo-downloader")
+        .header("User-Agent", "krake")
         .header("Accept", "application/vnd.github+json")
         .send()
         .await
@@ -949,7 +949,7 @@ mod tests {
     #[test]
     fn host_pinning_accepts_github_hosts() {
         for url in [
-            "https://github.com/amigo-labs/amigo-downloader/releases/download/v1/bin",
+            "https://github.com/amigo-labs/amigo-krake/releases/download/v1/bin",
             "https://objects.githubusercontent.com/foo",
             "https://codeload.github.com/foo",
             "https://api.github.com/repos/x/releases",

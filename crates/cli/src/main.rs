@@ -681,9 +681,7 @@ async fn plugins_install(id: &str, yes: bool, alias: Option<&str>) -> anyhow::Re
         );
     };
     let base = remote.url.trim_end_matches('/');
-    let client = reqwest::Client::builder()
-        .user_agent("amigo-downloader")
-        .build()?;
+    let client = reqwest::Client::builder().user_agent("krake").build()?;
 
     let entries: Vec<serde_json::Value> = client
         .get(format!("{base}/api/v1/updates/plugins/available"))
@@ -1258,9 +1256,7 @@ async fn main() -> anyhow::Result<()> {
 
         Commands::Update { action } => match action {
             UpdateAction::Check => {
-                let client = reqwest::Client::builder()
-                    .user_agent("amigo-downloader")
-                    .build()?;
+                let client = reqwest::Client::builder().user_agent("krake").build()?;
                 let config = Config::load_auto();
 
                 println!("Checking for updates...");
@@ -1292,9 +1288,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
             UpdateAction::Apply { yes } => {
-                let client = reqwest::Client::builder()
-                    .user_agent("amigo-downloader")
-                    .build()?;
+                let client = reqwest::Client::builder().user_agent("krake").build()?;
                 let config = Config::load_auto();
 
                 let status = amigo_core::updater::check_for_update(

@@ -278,7 +278,7 @@ async fn submit_feedback(
         // Note: We intentionally don't include the URL to avoid leaking private links
     }
 
-    body.push_str("\n---\n*Submitted via amigo-downloader in-app feedback*\n");
+    body.push_str("\n---\n*Submitted via Krake in-app feedback*\n");
 
     // Labels
     let labels = match req.feedback_type {
@@ -357,7 +357,7 @@ async fn submit_feedback(
         .header("Authorization", format!("Bearer {token}"))
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
-        .header("User-Agent", "amigo-downloader")
+        .header("User-Agent", "krake")
         .json(&issue)
         .send()
         .await
@@ -426,7 +426,7 @@ async fn check_duplicate_issue(
         .header("Authorization", format!("Bearer {token}"))
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
-        .header("User-Agent", "amigo-downloader")
+        .header("User-Agent", "krake")
         .send()
         .await
         .map_err(|e| e.to_string())?;

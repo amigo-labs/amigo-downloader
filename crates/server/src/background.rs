@@ -266,7 +266,7 @@ async fn fetch_and_process_feed(
 
     let resp = http_client
         .get(&feed.url)
-        .header("User-Agent", "amigo-downloader/0.1.0")
+        .header("User-Agent", "krake/0.1.0")
         .send()
         .await?;
 

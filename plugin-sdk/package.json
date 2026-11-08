@@ -5,7 +5,7 @@
     "node": ">=22"
   },
   "private": true,
-  "description": "TypeScript SDK for building amigo-downloader plugins",
+  "description": "TypeScript SDK for building Krake plugins",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

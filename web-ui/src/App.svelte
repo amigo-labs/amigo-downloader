@@ -404,14 +404,14 @@
     >
       <img
         src="/amigo-logo.png"
-        alt="amigo-downloader"
+        alt="Krake"
         width="28"
         height="28"
         class="shrink-0"
       />
       {#if !$sidebarCollapsed}
         <div class="min-w-0">
-          <h1 class="font-bold text-base leading-tight" style="color: var(--accent-ink)">AMIGO</h1>
+          <h1 class="font-bold text-base leading-tight" style="color: var(--accent-ink)">KRAKE</h1>
           <p class="text-xs" style="color: var(--text-secondary)">Download Manager</p>
         </div>
       {/if}

@@ -245,7 +245,7 @@ if (typeof window !== "undefined") {
     if (location.hash !== `#${page}`) {
       history.pushState({ page }, "", `#${page}`);
     }
-    document.title = `${page.charAt(0).toUpperCase() + page.slice(1)} — amigo-downloader`;
+    document.title = `${page.charAt(0).toUpperCase() + page.slice(1)} — Krake`;
   });
 }
 
@@ -327,7 +327,7 @@ if (typeof window !== "undefined") {
     const hash = typeof location !== "undefined" ? location.hash.slice(1) : "downloads";
     const page = hash || "downloads";
     const prefix = s.active_downloads > 0 ? `(${s.active_downloads}) ` : "";
-    document.title = `${prefix}${page.charAt(0).toUpperCase() + page.slice(1)} — amigo-downloader`;
+    document.title = `${prefix}${page.charAt(0).toUpperCase() + page.slice(1)} — Krake`;
   });
 }
 

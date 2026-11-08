@@ -312,7 +312,7 @@ impl Default for FeedbackConfig {
         Self {
             enabled: false,
             github_token: std::env::var("AMIGO_GITHUB_TOKEN").unwrap_or_default(),
-            github_repo: "amigo-labs/amigo-downloader".into(),
+            github_repo: "amigo-labs/amigo-krake".into(),
             max_issues_per_hour: 5,
         }
     }
@@ -337,7 +337,7 @@ impl Default for UpdateConfig {
             auto_check: true,
             check_interval_hours: 24,
             plugin_registry_url: "https://raw.githubusercontent.com/amigo-labs/amigo-downloader-plugins/main/index.json".into(),
-            github_repo: "amigo-labs/amigo-downloader".into(),
+            github_repo: "amigo-labs/amigo-krake".into(),
             auto_update_plugins: false,
         }
     }
@@ -348,7 +348,7 @@ impl Default for HttpConfig {
         Self {
             max_chunks_per_download: 8,
             max_connections_per_host: 4,
-            user_agent: "amigo-downloader/0.1.0".into(),
+            user_agent: "krake/0.1.0".into(),
             timeout_connect_secs: 30,
             timeout_read_secs: 120,
         }

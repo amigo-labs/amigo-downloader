@@ -166,7 +166,7 @@ impl HostApi {
     pub fn new(max_requests: u32) -> Self {
         Self {
             http_client: reqwest::Client::builder()
-                .user_agent("amigo-downloader/0.1.0")
+                .user_agent("krake/0.1.0")
                 // Never let reqwest follow redirects on its own: `check_url_allowed`
                 // only validates the *initial* URL, so an auto-followed 3xx to an
                 // internal address would bypass the SSRF guard. We follow manually

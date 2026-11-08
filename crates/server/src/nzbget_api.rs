@@ -1,7 +1,7 @@
 //! NZBGet-compatible JSON-RPC API for Sonarr/Radarr integration.
 //!
 //! Implements the NZBGet JSON-RPC protocol so that Sonarr, Radarr, and other
-//! *arr tools can use amigo-downloader as a drop-in NZBGet replacement.
+//! *arr tools can use Krake as a drop-in NZBGet replacement.
 //!
 //! Endpoint: POST /jsonrpc (with HTTP Basic Auth)
 //! Protocol: JSON-RPC 1.0 (positional parameters only)

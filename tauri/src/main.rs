@@ -1,4 +1,4 @@
-//! Tauri v2 desktop application for amigo-downloader.
+//! Tauri v2 desktop application for Krake.
 //!
 //! This embeds the core download engine and serves the web-ui
 //! in a native window with system tray integration.
@@ -93,7 +93,7 @@ fn main() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("Error running amigo-downloader desktop app");
+        .expect("Error running the Krake desktop app");
 }
 
 // Tauri commands (callable from JavaScript)
@@ -125,12 +125,12 @@ async fn cmd_get_stats(
 // When built without Tauri (regular cargo build), show instructions
 #[cfg(not(feature = "tauri"))]
 fn main() {
-    eprintln!("amigo-downloader desktop app");
+    eprintln!("Krake desktop app");
     eprintln!();
     eprintln!("This binary must be built with the Tauri CLI:");
     eprintln!("  1. cargo install tauri-cli");
     eprintln!("  2. cd web-ui && npm ci && npx vite build && cd ..");
     eprintln!("  3. cd tauri && cargo tauri build");
     eprintln!();
-    eprintln!("For headless/server use, run `amigo-server` instead.");
+    eprintln!("For headless/server use, run `krake-server` instead.");
 }

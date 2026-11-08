@@ -3,7 +3,7 @@
   "packages": {
     ".": {
       "release-type": "simple",
-      "component": "amigo-downloader",
+      "component": "krake",
       "changelog-path": "CHANGELOG.md",
       "release-as": "0.1.0",
       "bump-minor-pre-major": true,

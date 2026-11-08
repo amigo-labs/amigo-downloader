@@ -372,7 +372,7 @@ async fn fetch_index_remote(
 
     let resp = client
         .get(&config.index_url)
-        .header("User-Agent", "amigo-downloader")
+        .header("User-Agent", "krake")
         .send()
         .await
         .map_err(|e| crate::Error::RegistryUnavailable(e.to_string()))?;
@@ -450,7 +450,7 @@ async fn read_capped(
 async fn fetch_signature(client: &reqwest::Client, sig_url: &str) -> Result<String, crate::Error> {
     let resp = client
         .get(sig_url)
-        .header("User-Agent", "amigo-downloader")
+        .header("User-Agent", "krake")
         .send()
         .await
         .map_err(|e| {

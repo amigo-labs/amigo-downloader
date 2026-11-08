@@ -41,7 +41,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.settings": "Settings",
     "nav.management": "Management",
     "nav.main": "Main navigation",
-    "login.title": "Sign in to amigo",
+    "login.title": "Sign in to Krake",
     "pairing.title": "A device wants to connect",
     "pairing.subtitle": "Approve only if you started this pairing yourself and the verification code matches.",
     "pairing.from": "from",
@@ -74,7 +74,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "login.submit": "Sign in",
     "login.invalid": "Invalid username or password.",
     "login.failed": "Sign-in failed. Please try again.",
-    "setup.title": "Welcome to amigo",
+    "setup.title": "Welcome to Krake",
     "setup.lead": "Create the admin account for this server.",
     "setup.step_of": "Step {current} of {total}",
     "setup.checking": "Checking server state…",
@@ -235,7 +235,7 @@ const translations: Record<Locale, Record<string, string>> = {
 
     // Offline / connection-aware empty states
     "downloads.offline": "Server unreachable",
-    "downloads.offline_hint": "Check that the amigo server is running, then reload.",
+    "downloads.offline_hint": "Check that the Krake server is running, then reload.",
 
     // Plugins page
     "plugins.load_failed": "Failed to load plugins. Is the server running?",
@@ -474,7 +474,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.settings": "Einstellungen",
     "nav.management": "Verwaltung",
     "nav.main": "Hauptnavigation",
-    "login.title": "Bei amigo anmelden",
+    "login.title": "Bei Krake anmelden",
     "pairing.title": "Ein Gerät möchte sich verbinden",
     "pairing.subtitle": "Nur bestätigen, wenn du die Kopplung selbst gestartet hast und der Prüfcode übereinstimmt.",
     "pairing.from": "von",
@@ -507,7 +507,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "login.submit": "Anmelden",
     "login.invalid": "Benutzername oder Passwort ist falsch.",
     "login.failed": "Anmeldung fehlgeschlagen. Bitte erneut versuchen.",
-    "setup.title": "Willkommen bei amigo",
+    "setup.title": "Willkommen bei Krake",
     "setup.lead": "Lege das Administrator-Konto für diesen Server an.",
     "setup.step_of": "Schritt {current} von {total}",
     "setup.checking": "Server-Status wird geprüft…",
@@ -656,7 +656,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "drop.import_failed": "Import fehlgeschlagen",
 
     "downloads.offline": "Server nicht erreichbar",
-    "downloads.offline_hint": "Prüfe, ob der amigo-Server läuft, und lade die Seite neu.",
+    "downloads.offline_hint": "Prüfe, ob der Krake-Server läuft, und lade die Seite neu.",
 
     "plugins.load_failed": "Plugins konnten nicht geladen werden. Läuft der Server?",
     "plugins.core_update": "Core-Update verfügbar",

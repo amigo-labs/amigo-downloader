@@ -1,15 +1,15 @@
 {
   "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-config-schema/schema.json",
-  "productName": "amigo-downloader",
+  "productName": "Krake",
   "version": "0.1.0",
-  "identifier": "com.amigo-labs.downloader",
+  "identifier": "com.amigo-labs.krake",
   "build": {
     "frontendDist": "../web-ui/dist"
   },
   "app": {
     "windows": [
       {
-        "title": "amigo-downloader",
+        "title": "Krake",
         "width": 1200,
         "height": 800,
         "minWidth": 400,
@@ -30,7 +30,7 @@
     ],
     "category": "Utility",
     "shortDescription": "Fast, modular download manager",
-    "longDescription": "amigo-downloader is a fast, modular download manager with HTTP multi-chunk downloads, Usenet support, Rune plugin system, and a responsive web UI.",
+    "longDescription": "Krake is a fast, modular download manager with HTTP multi-chunk downloads, Usenet support, Rune plugin system, and a responsive web UI.",
     "linux": {
       "deb": {
         "depends": ["ca-certificates"]
@@ -49,7 +49,7 @@
     "updater": {
       "active": false,
       "endpoints": [
-        "https://github.com/amigo-labs/amigo-downloader/releases/latest/download/latest.json"
+        "https://github.com/amigo-labs/amigo-krake/releases/latest/download/latest.json"
       ],
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDMwOTg1MDRDMTUzOEI4RjYKUldUMnVEZ1ZURkNZTUd1ZSsyS2grT05uc1U1aWdPazgvaVlsTlgrdm8zRHE1SEFIN0FTNjhMZksK"
     }

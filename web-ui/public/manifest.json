@@ -1,6 +1,6 @@
 {
-  "name": "amigo-downloader",
-  "short_name": "Amigo",
+  "name": "Krake",
+  "short_name": "Krake",
   "description": "Fast, modular download manager",
   "start_url": "/",
   "scope": "/",

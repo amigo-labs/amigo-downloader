@@ -310,7 +310,7 @@ jobs:
         run: |
           VERSION="${{ inputs.version }}"
           TAG="${{ inputs.tag_name }}"
-          REPO="amigo-labs/amigo-downloader"
+          REPO="amigo-labs/amigo-krake"
           BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 

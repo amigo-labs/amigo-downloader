@@ -32,7 +32,7 @@
     openLayer({ id: "feedback", kind: "modal", label: "Feedback", onDismiss: onclose }),
   );
 
-  const repo = "amigo-labs/amigo-downloader";
+  const repo = "amigo-labs/amigo-krake";
 
   onMount(async () => {
     try {

@@ -96,7 +96,7 @@ export function packageJson(options: PluginTemplateOptions): string {
 export function readme(options: PluginTemplateOptions): string {
   return `# ${options.id}
 
-An amigo-downloader plugin.
+A Krake plugin.
 
 ## Build
 

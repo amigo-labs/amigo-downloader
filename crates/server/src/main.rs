@@ -93,9 +93,7 @@ async fn main() -> anyhow::Result<()> {
     let mut coordinator = Coordinator::new(config.clone(), storage);
 
     // Shared HTTP client
-    let http_client = reqwest::Client::builder()
-        .user_agent("amigo-downloader")
-        .build()?;
+    let http_client = reqwest::Client::builder().user_agent("krake").build()?;
 
     // Create captcha manager
     let captcha_manager = Arc::new(CaptchaManager::new(

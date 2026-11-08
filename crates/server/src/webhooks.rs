@@ -30,7 +30,7 @@ impl WebhookDispatcher {
     pub fn new(endpoints: Vec<WebhookEndpoint>) -> Self {
         Self {
             client: reqwest::Client::builder()
-                .user_agent("amigo-downloader/0.1.0")
+                .user_agent("krake/0.1.0")
                 .timeout(Duration::from_secs(30))
                 .build()
                 .expect("Failed to build webhook HTTP client"),
@@ -149,7 +149,7 @@ impl WebhookDispatcher {
             event: "test".to_string(),
             timestamp: chrono::Utc::now().to_rfc3339(),
             data: serde_json::json!({
-                "message": "This is a test webhook from amigo-downloader"
+                "message": "This is a test webhook from Krake"
             }),
         };
 

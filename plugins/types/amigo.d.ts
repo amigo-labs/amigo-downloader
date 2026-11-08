@@ -1,4 +1,4 @@
-// Type declarations for amigo-downloader plugin API.
+// Type declarations for Krake plugin API.
 // Include in your plugin project for IDE autocomplete and type checking.
 
 // ─── Plugin Contract ────────────────────────────────────────────────

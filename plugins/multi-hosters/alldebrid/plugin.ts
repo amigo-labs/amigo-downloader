@@ -52,7 +52,7 @@ module.exports = {
         const apiKey = getApiKey();
 
         const resp = amigo.httpGet(
-            API_BASE + "/link/unlock?agent=amigo-downloader&apikey=" + encodeURIComponent(apiKey) + "&link=" + encodeURIComponent(url)
+            API_BASE + "/link/unlock?agent=krake&apikey=" + encodeURIComponent(apiKey) + "&link=" + encodeURIComponent(url)
         );
 
         if (resp.status !== 200) {
@@ -92,7 +92,7 @@ module.exports = {
         // Validate the key BEFORE persisting it: storing first meant a mistyped
         // key was left in storage on failure and then used by resolve()/checkOnline().
         const resp = amigo.httpGet(
-            API_BASE + "/user?agent=amigo-downloader&apikey=" + encodeURIComponent(password)
+            API_BASE + "/user?agent=krake&apikey=" + encodeURIComponent(password)
         );
         if (resp.status === 200) {
             const data = parseApiJson(resp.body, "/user");
@@ -111,7 +111,7 @@ module.exports = {
         if (!apiKey) return "unknown";
 
         const resp = amigo.httpGet(
-            API_BASE + "/link/infos?agent=amigo-downloader&apikey=" + encodeURIComponent(apiKey) + "&link[]=" + encodeURIComponent(url)
+            API_BASE + "/link/infos?agent=krake&apikey=" + encodeURIComponent(apiKey) + "&link[]=" + encodeURIComponent(url)
         );
 
         if (resp.status === 200) {
