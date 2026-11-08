@@ -403,7 +403,7 @@ services:
     volumes:
       - ./config:/config
       - ./downloads:/downloads
-      - ./plugins:/etc/amigo/plugins     # Custom plugins
+      - ./plugins:/etc/krake/plugins     # Custom plugins
     environment:
       - KRAKE_GITHUB_TOKEN=ghp_...  # Optional: auto crash reporting
 ```

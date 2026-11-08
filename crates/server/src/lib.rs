@@ -63,7 +63,7 @@ pub fn build_test_state(config: Config) -> api::AppState {
     let webhook_dispatcher = Arc::new(webhooks::WebhookDispatcher::new(Vec::new()));
 
     let config_path =
-        std::env::temp_dir().join(format!("amigo-test-config-{}.toml", uuid::Uuid::new_v4()));
+        std::env::temp_dir().join(format!("krake-test-config-{}.toml", uuid::Uuid::new_v4()));
 
     api::AppState {
         coordinator,

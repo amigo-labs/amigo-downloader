@@ -17,39 +17,39 @@ CONFIG_DIR="${KRAKE_CONFIG_DIR:-${AMIGO_CONFIG_DIR:-/config}}"
 DOWNLOAD_DIR="${KRAKE_DOWNLOAD_DIR:-${AMIGO_DOWNLOAD_DIR:-/downloads}}"
 
 docs_hint() {
-    echo "amigo: see the volume-permissions section of the docs" \
+    echo "krake: see the volume-permissions section of the docs" \
         "(https://github.com/amigo-labs/amigo-krake) — set PUID/PGID to" \
         "match your host volume owner, or run the container as root." >&2
 }
 
 if [ "$(id -u)" = "0" ]; then
-    # Running as root: align the amigo user/group with the requested IDs, take
+    # Running as root: align the krake user/group with the requested IDs, take
     # ownership of the volumes, then drop privileges via gosu.
-    current_gid="$(getent group amigo | cut -d: -f3)"
+    current_gid="$(getent group krake | cut -d: -f3)"
     if [ "$PGID" != "$current_gid" ]; then
-        groupmod -o -g "$PGID" amigo
+        groupmod -o -g "$PGID" krake
     fi
-    current_uid="$(id -u amigo)"
+    current_uid="$(id -u krake)"
     if [ "$PUID" != "$current_uid" ]; then
-        usermod -o -u "$PUID" amigo
+        usermod -o -u "$PUID" krake
     fi
 
     mkdir -p "$CONFIG_DIR" "$DOWNLOAD_DIR"
     # /config is small (database + config) so a recursive chown is cheap and
     # correct. Only the /downloads mount point itself is chowned — a recursive
     # chown over a large existing library could take a very long time; new
-    # files are created as the amigo user regardless.
-    chown -R amigo:amigo "$CONFIG_DIR"
-    chown amigo:amigo "$DOWNLOAD_DIR"
+    # files are created as the krake user regardless.
+    chown -R krake:krake "$CONFIG_DIR"
+    chown krake:krake "$DOWNLOAD_DIR"
 
-    if ! gosu amigo test -w "$DOWNLOAD_DIR"; then
-        echo "amigo: download dir '$DOWNLOAD_DIR' is not writable by UID $PUID." >&2
+    if ! gosu krake test -w "$DOWNLOAD_DIR"; then
+        echo "krake: download dir '$DOWNLOAD_DIR' is not writable by UID $PUID." >&2
         docs_hint
         exit 1
     fi
 
-    echo "amigo: starting as UID $PUID / GID $PGID"
-    exec gosu amigo "$@"
+    echo "krake: starting as UID $PUID / GID $PGID"
+    exec gosu krake "$@"
 fi
 
 # Not root (image started with --user): we cannot fix ownership, only verify
@@ -57,7 +57,7 @@ fi
 for dir in "$CONFIG_DIR" "$DOWNLOAD_DIR"; do
     mkdir -p "$dir" 2>/dev/null || true
     if [ ! -w "$dir" ]; then
-        echo "amigo: '$dir' is not writable by UID $(id -u)." >&2
+        echo "krake: '$dir' is not writable by UID $(id -u)." >&2
         docs_hint
         exit 1
     fi

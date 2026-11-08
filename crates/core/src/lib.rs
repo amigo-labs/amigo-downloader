@@ -6,6 +6,7 @@ pub mod container;
 pub mod coordinator;
 pub mod env;
 pub mod i18n;
+pub mod migrate;
 pub mod postprocess;
 pub mod protocol;
 pub mod queue;

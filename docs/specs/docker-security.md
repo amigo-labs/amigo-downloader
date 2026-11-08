@@ -34,9 +34,9 @@ A security audit of the Docker deployment identified five issues spanning contai
 **Fix**: Create a non-root user and group in the runtime stage and switch to it before `ENTRYPOINT`.
 
 **Implementation notes**:
-- Add `RUN groupadd -r amigo && useradd -r -g amigo -d /config -s /sbin/nologin amigo` in the runtime stage.
-- `chown` the `/config`, `/downloads`, `/etc/amigo/plugins`, and `/etc/amigo/locales` directories to `amigo:amigo`.
-- Add `USER amigo` before `ENTRYPOINT`.
+- Add `RUN groupadd -r krake && useradd -r -g krake -d /config -s /sbin/nologin krake` in the runtime stage.
+- `chown` the `/config`, `/downloads`, `/etc/krake/plugins`, and `/etc/krake/locales` directories to `krake:krake`.
+- Add `USER krake` before `ENTRYPOINT`.
 - Document that host-mounted volumes (`./config`, `./downloads`) must be writable by the container UID. Provide the UID in the Dockerfile as a label or comment (e.g., UID 1000 or a fixed value).
 - Ensure the Click'n'Load port 9666 (>1024) does not require root. Port 1516 is also >1024, so no capability issues.
 
@@ -96,7 +96,7 @@ A security audit of the Docker deployment identified five issues spanning contai
 | ID | Criterion | How to verify |
 |---|---|---|
 | AC-1 | Production container reports healthy/unhealthy status | `docker inspect --format='{{.State.Health.Status}}' krake` returns `healthy` when server is up and `unhealthy` when server is stopped or unresponsive |
-| AC-2 | Production container runs as non-root user | `docker exec krake whoami` returns a non-root username (e.g., `amigo`) |
+| AC-2 | Production container runs as non-root user | `docker exec krake whoami` returns a non-root username (e.g., `krake`) |
 | AC-3 | All base images are pinned to specific versions or digests | `grep -E '^FROM' docker/Dockerfile docker/Dockerfile.dev` shows full version tags or `@sha256:` digests — no floating tags like `node:22-alpine` |
 | AC-4 | No default credentials in docker-compose.yml | `grep -i 'changeme' docker/docker-compose.yml` returns no matches; starting without `KRAKE_API_KEY` set produces an error or auto-generates a key |
 | AC-5 | Dev container starts successfully with volume-mounted source | `docker compose -f docker-compose.dev.yml up` starts Vite dev server without errors when `web-ui/` is mounted; no `npm run build` in entrypoint |

@@ -161,4 +161,4 @@ krake remote list       # confirm the remote was saved
 krake remote use <name> # set as default
 ```
 
-`remotes.toml` is saved under `~/.config/amigo/` with `0600` permissions.
+`remotes.toml` is saved under `~/.config/krake/` with `0600` permissions.

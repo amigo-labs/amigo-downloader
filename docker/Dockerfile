@@ -56,36 +56,36 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates wget gosu && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with explicit UID/GID 1000 for predictable volume permissions
-RUN groupadd -r -g 1000 amigo && useradd -r -u 1000 -g amigo -d /config -s /sbin/nologin amigo
+RUN groupadd -r -g 1000 krake && useradd -r -u 1000 -g krake -d /config -s /sbin/nologin krake
 
 COPY --from=rust-builder /app/target/release/krake-server /usr/local/bin/
 COPY --from=rust-builder /app/target/release/krake /usr/local/bin/
 # Runs plugin JavaScript outside the daemon; found next to krake-server.
 COPY --from=rust-builder /app/target/release/krake-plugin-host /usr/local/bin/
-COPY plugins/ /etc/amigo/plugins/
-COPY locales/ /etc/amigo/locales/
+COPY plugins/ /etc/krake/plugins/
+COPY locales/ /etc/krake/locales/
 COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Create directories and set ownership
 RUN mkdir -p /config /downloads && \
-    chown -R amigo:amigo /config /downloads /etc/amigo/plugins /etc/amigo/locales
+    chown -R krake:krake /config /downloads /etc/krake/plugins /etc/krake/locales
 
 EXPOSE 1516
 VOLUME ["/config", "/downloads"]
 
 ENV KRAKE_CONFIG_DIR=/config
 ENV KRAKE_DOWNLOAD_DIR=/downloads
-ENV KRAKE_PLUGIN_DIR=/etc/amigo/plugins
-ENV KRAKE_LOCALES_DIR=/etc/amigo/locales
+ENV KRAKE_PLUGIN_DIR=/etc/krake/plugins
+ENV KRAKE_LOCALES_DIR=/etc/krake/locales
 
 # Health check against the status endpoint
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
     CMD wget --no-verbose --tries=1 --spider http://localhost:1516/api/v1/status || exit 1
 
-# The container starts as root so the entrypoint can align the amigo user with
+# The container starts as root so the entrypoint can align the krake user with
 # PUID/PGID and take ownership of host-mounted volumes, then drops privileges
-# to the amigo user (UID 1000 by default) via gosu before exec'ing the server.
+# to the krake user (UID 1000 by default) via gosu before exec'ing the server.
 # Override PUID/PGID to match your host volume owner if it isn't 1000.
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 CMD ["krake-server"]

@@ -371,8 +371,8 @@ impl Storage {
         ensure_active_url_index(&conn)?;
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
-            download_dir: PathBuf::from("/tmp/amigo-downloads"),
-            temp_dir: PathBuf::from("/tmp/amigo-tmp"),
+            download_dir: PathBuf::from("/tmp/krake-downloads"),
+            temp_dir: PathBuf::from("/tmp/krake-tmp"),
         })
     }
 

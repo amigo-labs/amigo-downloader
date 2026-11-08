@@ -125,7 +125,7 @@ enum Commands {
     },
     /// Pair this CLI with a remote amigo server (opens an approval request
     /// in the server's web UI). Stores the returned API token in
-    /// `~/.config/amigo/remotes.toml` under the given alias.
+    /// `~/.config/krake/remotes.toml` under the given alias.
     Login {
         /// Base URL of the remote server, e.g. `http://nas:1516`.
         url: String,
@@ -386,8 +386,15 @@ impl Tui {
 
 fn init_coordinator() -> anyhow::Result<Arc<Coordinator>> {
     let config = Config::load_auto();
+    // Pre-rename installs kept their database as `amigo.db`.
+    if let Err(e) = krake_core::migrate::migrate_db(
+        std::path::Path::new("amigo.db"),
+        std::path::Path::new("krake.db"),
+    ) {
+        tracing::warn!("Could not move amigo.db to krake.db: {e}");
+    }
     let storage = Storage::open(
-        PathBuf::from("amigo.db"),
+        PathBuf::from("krake.db"),
         PathBuf::from(&config.download_dir),
         PathBuf::from(&config.temp_dir),
     )?;
@@ -474,6 +481,9 @@ async fn resolve_url(
     ))
 }
 
+/// Temp directory for partial direct downloads, inside the output directory.
+const TEMP_DIR_NAME: &str = ".krake-tmp";
+
 /// Run a direct download using the ProtocolBackend trait (same path as server).
 async fn direct_download(
     plugin_loader: &PluginLoader,
@@ -504,7 +514,7 @@ async fn direct_download(
         url: download_url,
         download_id: uuid::Uuid::new_v4().to_string(),
         download_dir: PathBuf::from(output_dir),
-        temp_dir: PathBuf::from(output_dir).join(".amigo-tmp"),
+        temp_dir: PathBuf::from(output_dir).join(TEMP_DIR_NAME),
         filename: Some(filename.clone()),
         headers: std::collections::HashMap::new(),
         max_chunks,
@@ -512,6 +522,13 @@ async fn direct_download(
     };
 
     tokio::fs::create_dir_all(output_dir).await?;
+    // Partial downloads of a pre-rename build sit in `.amigo-tmp`.
+    if let Err(e) = krake_core::migrate::migrate_path(
+        &PathBuf::from(output_dir).join(".amigo-tmp"),
+        &job.temp_dir,
+    ) {
+        tracing::warn!("Could not move .amigo-tmp to {TEMP_DIR_NAME}: {e}");
+    }
     tokio::fs::create_dir_all(&job.temp_dir).await?;
 
     let (progress_tx, progress_rx) = watch::channel(DownloadProgress {
@@ -586,7 +603,7 @@ async fn direct_download(
     }
 
     // Clean up temp dir if empty
-    let temp_dir = PathBuf::from(output_dir).join(".amigo-tmp");
+    let temp_dir = PathBuf::from(output_dir).join(TEMP_DIR_NAME);
     let _ = tokio::fs::remove_dir(&temp_dir).await;
 
     Ok(())
@@ -611,7 +628,7 @@ async fn run_direct_downloads(
         .unwrap_or_else(|e| {
             tracing::warn!("Failed to load plugin runtime: {e}");
             PluginLoader::new(
-                PathBuf::from("/etc/amigo/plugins"),
+                PathBuf::from("/etc/krake/plugins"),
                 SandboxLimits::default(),
             )
             .expect("Failed to initialize plugin runtime")

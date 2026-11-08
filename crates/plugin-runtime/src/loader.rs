@@ -765,7 +765,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_load_and_match_js_plugin() {
-        let dir = std::env::temp_dir().join("amigo-test-plugins-js2");
+        let dir = std::env::temp_dir().join("krake-test-plugins-js2");
         let plugin_dir = dir.join("test-hoster");
         std::fs::create_dir_all(&plugin_dir).unwrap();
 
@@ -809,7 +809,7 @@ module.exports = {
         // resolve(). Before the fix the host API was bound to the file stem
         // ("plugin") for both, so they shared one namespace and could read each
         // other's secrets; now it is bound to the declared plugin id.
-        let dir = std::env::temp_dir().join("amigo-test-plugin-isolation");
+        let dir = std::env::temp_dir().join("krake-test-plugin-isolation");
         std::fs::remove_dir_all(&dir).ok();
         for (folder, id) in [("alpha", "alpha-hoster"), ("beta", "beta-hoster")] {
             let plugin_dir = dir.join(folder);
@@ -864,7 +864,7 @@ module.exports = {{
 
     #[tokio::test]
     async fn test_load_typescript_plugin() {
-        let dir = std::env::temp_dir().join("amigo-test-plugins-ts2");
+        let dir = std::env::temp_dir().join("krake-test-plugins-ts2");
         let plugin_dir = dir.join("ts-hoster");
         std::fs::create_dir_all(&plugin_dir).unwrap();
 
@@ -906,7 +906,7 @@ module.exports = {
 
     #[tokio::test]
     async fn test_load_from_category_subfolder() {
-        let dir = std::env::temp_dir().join("amigo-test-plugins-cat");
+        let dir = std::env::temp_dir().join("krake-test-plugins-cat");
         let plugin_dir = dir.join("hosters").join("cat-hoster");
         std::fs::create_dir_all(&plugin_dir).unwrap();
 

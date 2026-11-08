@@ -486,7 +486,7 @@ pub fn apply_update(archive: &Path, product: Product) -> Result<(), crate::Error
     // Stage next to the executable so the installs below are same-filesystem
     // renames.
     let staging = tempfile::Builder::new()
-        .prefix(".amigo-update-")
+        .prefix(".krake-update-")
         .tempdir_in(dir)
         .map_err(|e| crate::Error::Update(format!("cannot stage the update in {dir:?}: {e}")))?;
     let staged = extract_update(archive, staging.path(), product)?;

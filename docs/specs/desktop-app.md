@@ -74,7 +74,7 @@ and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
 - [ ] AC-5: API requests with no cookie, token or `api_token` get `401` in
   desktop mode, as in server mode. Desktop mode adds no loopback trust.
 - [ ] AC-6: Desktop paths:
-  - `config.toml`, `amigo.db`, `plugins/` and `cache/` live under the Tauri
+  - `config.toml`, `krake.db`, `plugins/` and `cache/` live under the Tauri
     `app_data_dir`;
   - on first start `download_dir` defaults to
     `<user Downloads>/Krake` and `temp_dir` to `<download_dir>/.tmp`;

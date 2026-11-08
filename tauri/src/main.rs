@@ -54,7 +54,25 @@ fn main() {
                 .app_data_dir()
                 .unwrap_or_else(|_| PathBuf::from("."));
             std::fs::create_dir_all(&data_dir).expect("Failed to create app data directory");
-            let db_path = data_dir.join("amigo.db");
+            let db_path = data_dir.join("krake.db");
+            // Before the rename the database was `amigo.db`, and the app's
+            // data dir was named after the identifier `com.amigo-labs.downloader`.
+            let legacy_dbs = [
+                data_dir.join("amigo.db"),
+                data_dir
+                    .parent()
+                    .map(|p| p.join("com.amigo-labs.downloader").join("amigo.db"))
+                    .unwrap_or_default(),
+            ];
+            for legacy in legacy_dbs.iter().filter(|p| !p.as_os_str().is_empty()) {
+                if let Err(e) = krake_core::migrate::migrate_db(legacy, &db_path) {
+                    tracing::warn!(
+                        "Could not move {} to {}: {e}",
+                        legacy.display(),
+                        db_path.display()
+                    );
+                }
+            }
             let download_dir = PathBuf::from(&config.download_dir);
             let temp_dir = PathBuf::from(&config.temp_dir);
 

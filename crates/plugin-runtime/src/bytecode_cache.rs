@@ -318,7 +318,7 @@ mod tests {
     use super::*;
 
     fn tmp_cache(name: &str, max: usize) -> BytecodeCache {
-        let dir = std::env::temp_dir().join(format!("amigo-bc-{name}-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("krake-bc-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         BytecodeCache::open(dir, max).unwrap()
     }

@@ -20,6 +20,9 @@ use krake_server::{
 
 /// Whether a boolean-style environment variable is set to a truthy value
 /// (`1` / `true` / `yes` / `on`, case-insensitive).
+/// The database, relative to the working directory.
+const DB_FILE: &str = "krake.db";
+
 fn env_flag(name: &str) -> bool {
     krake_core::env::var(name)
         .is_ok_and(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
@@ -84,8 +87,15 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("Setup completed from environment variables — admin account active.");
     }
 
+    // Pre-rename installs kept their database as `amigo.db`.
+    if let Err(e) = krake_core::migrate::migrate_db(
+        std::path::Path::new("amigo.db"),
+        std::path::Path::new(DB_FILE),
+    ) {
+        tracing::warn!("Could not move amigo.db to {DB_FILE}: {e}");
+    }
     let storage = Storage::open(
-        PathBuf::from("amigo.db"),
+        PathBuf::from(DB_FILE),
         PathBuf::from(&config.download_dir),
         PathBuf::from(&config.temp_dir),
     )?;

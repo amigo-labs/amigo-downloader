@@ -543,7 +543,7 @@ mod tests {
 
     #[test]
     fn test_config_save_and_load() {
-        let dir = std::env::temp_dir().join("amigo-config-test");
+        let dir = std::env::temp_dir().join("krake-config-test");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
 
@@ -588,7 +588,7 @@ mod tests {
     #[test]
     fn test_config_load_missing_file_creates_default() {
         let path = std::env::temp_dir()
-            .join("amigo-config-test-missing")
+            .join("krake-config-test-missing")
             .join("config.toml");
         let _ = std::fs::remove_file(&path);
 
@@ -642,7 +642,7 @@ mod tests {
         // rather than panic later in RetryPolicy::from (Duration::from_secs_f64).
         // Serialize a full, otherwise-valid config so load() parses cleanly and
         // fails at the validation step, not at the parse step.
-        let dir = std::env::temp_dir().join("amigo-config-test-invalid");
+        let dir = std::env::temp_dir().join("krake-config-test-invalid");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
         let mut cfg = Config::default();
