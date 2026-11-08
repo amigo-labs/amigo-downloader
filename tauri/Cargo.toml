@@ -10,7 +10,8 @@ license.workspace = true
 #   3. cd tauri && cargo tauri build
 #
 # Plain `cargo build -p amigo-desktop` builds only the stub (no Tauri feature).
-# `cargo tauri build` enables the "tauri" feature automatically.
+# `cargo tauri build` enables the "tauri" feature automatically and names the
+# installed executable "Krake" (`mainBinaryName` in tauri.conf.json).
 
 [lints]
 workspace = true
