@@ -93,9 +93,11 @@ and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
 - [ ] AC-10: A second launch does not start a second server. It focuses the
   running window, restoring it if it is minimized or hidden, and hands over
   its command-line arguments (tauri-plugin-single-instance).
-- [ ] AC-11: An `amigo://add?url=<encoded>` link, whether at launch or
+- [ ] AC-11: A `krake://add?url=<encoded>` link, whether at launch or
   handed over by AC-10, adds `<url>` to the queue as `POST /downloads` does
-  and shows the window. Malformed links are logged and ignored.
+  and shows the window. Malformed links are logged and ignored. The
+  pre-rename scheme `amigo://` stays registered and is handled the same way
+  (deprecated).
 - [ ] AC-12: A `magnet:` link shows a notification saying torrents are not
   supported, and adds nothing.
 
@@ -305,7 +307,7 @@ pub struct DesktopState {
 | Stored port taken by another program (e.g. a separate `krake-server` on 1516) | Bind `127.0.0.1:0`, store the new port, continue. `localStorage` settings reset once. |
 | Session URL opened in an external browser with an old token | `401`; the token was single-use and per launch. |
 | Another local process calls the API without cookie or token | `401` (AC-5). |
-| Second launch with `amigo://add?url=…` while the first instance is minimized to the tray | The first instance shows its window and queues the URL; the second exits with no second server. |
+| Second launch with `krake://add?url=…` while the first instance is minimized to the tray | The first instance shows its window and queues the URL; the second exits with no second server. |
 | `magnet:` link | Notification "torrents are not supported"; nothing queued. |
 | Update found while downloads are running | Download and verify only; install takes effect at the next start (Windows: on Quit). Downloads continue. |
 | Signature does not match the pubkey | Nothing installed; `POST /updates/core` → 502 with the reason; background check logs it and retries after the interval. |
@@ -340,7 +342,8 @@ pub struct DesktopState {
   - port fallback when the stored port is taken (AC-2);
   - `is_due` interval and clock-went-back cases (AC-13);
   - `can_self_update` in debug, with `APPIMAGE` and without it (AC-16);
-  - deep-link parsing: `amigo://add?url=` valid, malformed, and `magnet:`
+  - deep-link parsing: `krake://add?url=` (and `amigo://add?url=`) valid,
+    malformed, and `magnet:`
     (AC-11, AC-12).
 - [ ] Unit (`tauri`): `tauri.conf.json` has `createUpdaterArtifacts`,
   `externalBin` and the org pubkey (key ID `3098504C1538B8F6`) (AC-7, AC-14,
@@ -360,7 +363,7 @@ pub struct DesktopState {
   - download through a plugin;
   - close to tray, reopen;
   - second launch focuses;
-  - `amigo://add` link;
+  - `krake://add` link;
   - update from version N to N+1 through the banner (AC-9 to AC-18).
 - [ ] Manual: the website links resolve after the release (AC-22, AC-23).
 

@@ -46,10 +46,10 @@
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["amigo", "magnet"]
+        "schemes": ["krake", "amigo", "magnet"]
       },
       "mobile": {
-        "schemes": ["amigo"]
+        "schemes": ["krake", "amigo"]
       }
     },
     "updater": {
