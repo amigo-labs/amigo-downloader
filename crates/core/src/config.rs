@@ -16,7 +16,7 @@ pub struct WebhookEndpoint {
     pub name: String,
     pub url: String,
     /// HMAC-SHA256 signing secret. Always present — every dispatched payload is
-    /// signed with `X-Amigo-Signature: sha256=<hmac>` so receivers can
+    /// signed with `X-Krake-Signature: sha256=<hmac>` so receivers can
     /// authenticate events. A random secret is generated when an endpoint is
     /// created (or when an older config without one is loaded) so signing can
     /// never be silently disabled. An explicit empty/whitespace-only secret in
