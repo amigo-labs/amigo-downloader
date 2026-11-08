@@ -14,7 +14,7 @@ interface Props {
 const {
   title,
   description = "The fastest, most powerful download manager for HTTP, Usenet, HLS, DASH and YouTube. TypeScript plugins, Docker, Tauri, CLI.",
-  ogImage = "/amigo-downloader.png",
+  ogImage = "/social-preview.png",
   palette = "blue",
   intensity = 2,
 } = Astro.props;
@@ -36,7 +36,9 @@ const ogImageUrl = new URL(ogImage, Astro.site).toString();
     <title>{title}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
-    <link rel="icon" type="image/png" href="/amigo-downloader.png" />
+    <link rel="icon" href="/favicon.ico" sizes="32x32" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
