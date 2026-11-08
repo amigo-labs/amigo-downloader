@@ -61,13 +61,13 @@ A security audit of the Docker deployment identified five issues spanning contai
 
 ### DS-4. Default Credentials in docker-compose.yml
 
-**Problem**: `docker-compose.yml` contains `AMIGO_API_KEY=changeme` in plaintext. Users who deploy without changing this value expose their instance with a known default key. Automated scanners and bots actively probe for default credentials.
+**Problem**: `docker-compose.yml` contains `KRAKE_API_KEY=changeme` in plaintext. Users who deploy without changing this value expose their instance with a known default key. Automated scanners and bots actively probe for default credentials.
 
 **Fix**: Remove the hardcoded default and require explicit configuration.
 
 **Implementation notes**:
-- Replace the hardcoded value with a reference to an environment variable or `.env` file: `AMIGO_API_KEY=${AMIGO_API_KEY:?Set AMIGO_API_KEY in .env or environment}`.
-- Add a `.env.example` file in `docker/` with `AMIGO_API_KEY=` (empty) and a comment explaining how to generate a secure key.
+- Replace the hardcoded value with a reference to an environment variable or `.env` file: `KRAKE_API_KEY=${KRAKE_API_KEY:?Set KRAKE_API_KEY in .env or environment}`.
+- Add a `.env.example` file in `docker/` with `KRAKE_API_KEY=` (empty) and a comment explaining how to generate a secure key.
 - Add `.env` to `.dockerignore` and `.gitignore` if not already present.
 - The server should refuse to start (or log a prominent warning) if the API key is empty or equals "changeme". This is a server-side change but should be noted in the spec.
 - Alternatively, auto-generate a random API key on first run if none is provided, and print it to stdout/logs.
@@ -98,7 +98,7 @@ A security audit of the Docker deployment identified five issues spanning contai
 | AC-1 | Production container reports healthy/unhealthy status | `docker inspect --format='{{.State.Health.Status}}' krake` returns `healthy` when server is up and `unhealthy` when server is stopped or unresponsive |
 | AC-2 | Production container runs as non-root user | `docker exec krake whoami` returns a non-root username (e.g., `amigo`) |
 | AC-3 | All base images are pinned to specific versions or digests | `grep -E '^FROM' docker/Dockerfile docker/Dockerfile.dev` shows full version tags or `@sha256:` digests — no floating tags like `node:22-alpine` |
-| AC-4 | No default credentials in docker-compose.yml | `grep -i 'changeme' docker/docker-compose.yml` returns no matches; starting without `AMIGO_API_KEY` set produces an error or auto-generates a key |
+| AC-4 | No default credentials in docker-compose.yml | `grep -i 'changeme' docker/docker-compose.yml` returns no matches; starting without `KRAKE_API_KEY` set produces an error or auto-generates a key |
 | AC-5 | Dev container starts successfully with volume-mounted source | `docker compose -f docker-compose.dev.yml up` starts Vite dev server without errors when `web-ui/` is mounted; no `npm run build` in entrypoint |
 | AC-6 | Dockle scan passes with no FATAL or WARN findings | `dockle krake:local` reports CIS-DI-0001 (non-root), CIS-DI-0006 (healthcheck), DKL-DI-0006 (pinned tags) as PASS |
 

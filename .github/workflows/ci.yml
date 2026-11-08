@@ -78,13 +78,13 @@ jobs:
     name: Release build guard (pinned signing keys)
     runs-on: ubuntu-latest
     env:
-      AMIGO_REGISTRY_PUBKEY_HEX: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
-      AMIGO_UPDATE_PUBKEY_HEX: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+      KRAKE_REGISTRY_PUBKEY_HEX: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+      KRAKE_UPDATE_PUBKEY_HEX: deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
     steps:
       - uses: actions/checkout@v4
       - name: Smoke-test the update signing script
         # A throwaway key signs a dummy archive; release-build.yml runs the
-        # same script with the real AMIGO_UPDATE_SIGNING_KEY secret.
+        # same script with the real KRAKE_UPDATE_SIGNING_KEY secret.
         run: |
           set -euo pipefail
           work="$(mktemp -d)"
@@ -93,11 +93,11 @@ jobs:
           seed="$(openssl pkey -in "$work/key.pem" -outform DER | tail -c 32 | hex)"
           pub="$(openssl pkey -in "$work/key.pem" -pubout -outform DER | tail -c 32 | hex)"
           head -c 4096 /dev/urandom > "$work/krake-server-linux-x86_64.tar.gz"
-          AMIGO_UPDATE_SIGNING_KEY="$seed" AMIGO_UPDATE_PUBKEY_HEX="$pub" \
+          KRAKE_UPDATE_SIGNING_KEY="$seed" KRAKE_UPDATE_PUBKEY_HEX="$pub" \
             scripts/sign-update-archives.sh "$work"
           test "$(wc -c < "$work/krake-server-linux-x86_64.tar.gz.sig")" -eq 128
-          # The job's placeholder AMIGO_UPDATE_PUBKEY_HEX does not match.
-          if AMIGO_UPDATE_SIGNING_KEY="$seed" scripts/sign-update-archives.sh "$work"; then
+          # The job's placeholder KRAKE_UPDATE_PUBKEY_HEX does not match.
+          if KRAKE_UPDATE_SIGNING_KEY="$seed" scripts/sign-update-archives.sh "$work"; then
             echo "a seed that does not match the pinned key was accepted" >&2
             exit 1
           fi
@@ -223,5 +223,5 @@ jobs:
           # smoke test and never pushed. Real release / nightly images must
           # inject the genuine registry and self-update pubkeys via secret.
           build-args: |
-            AMIGO_REGISTRY_PUBKEY_HEX=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
-            AMIGO_UPDATE_PUBKEY_HEX=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+            KRAKE_REGISTRY_PUBKEY_HEX=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+            KRAKE_UPDATE_PUBKEY_HEX=deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef

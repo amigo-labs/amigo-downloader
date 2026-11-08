@@ -1,5 +1,5 @@
 //! Persist remote amigo servers + their API tokens in
-//! `$AMIGO_CONFIG_DIR/remotes.toml` (falling back to
+//! `$KRAKE_CONFIG_DIR/remotes.toml` (falling back to
 //! `~/.config/amigo/remotes.toml`).
 //!
 //! Tokens are stored in plaintext for now — the file should be `0600`. That
@@ -29,7 +29,7 @@ pub struct Remotes {
 }
 
 pub fn config_path() -> PathBuf {
-    if let Ok(dir) = std::env::var("AMIGO_CONFIG_DIR") {
+    if let Ok(dir) = krake_core::env::var("KRAKE_CONFIG_DIR") {
         return PathBuf::from(dir).join("remotes.toml");
     }
     if let Some(home) = dirs_home() {

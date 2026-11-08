@@ -27,8 +27,8 @@ env:
   # without them (or with the all-zero placeholder). They are public, so they
   # are repository variables, not secrets: Settings → Secrets and variables →
   # Actions → Variables.
-  AMIGO_REGISTRY_PUBKEY_HEX: ${{ vars.AMIGO_REGISTRY_PUBKEY_HEX }}
-  AMIGO_UPDATE_PUBKEY_HEX: ${{ vars.AMIGO_UPDATE_PUBKEY_HEX }}
+  KRAKE_REGISTRY_PUBKEY_HEX: ${{ vars.AMIGO_REGISTRY_PUBKEY_HEX }}
+  KRAKE_UPDATE_PUBKEY_HEX: ${{ vars.AMIGO_UPDATE_PUBKEY_HEX }}
 
 permissions:
   contents: write
@@ -69,7 +69,7 @@ jobs:
       - name: Require pinned signing keys
         shell: bash
         run: |
-          for var in AMIGO_REGISTRY_PUBKEY_HEX AMIGO_UPDATE_PUBKEY_HEX; do
+          for var in KRAKE_REGISTRY_PUBKEY_HEX KRAKE_UPDATE_PUBKEY_HEX; do
             if [ -z "${!var}" ]; then
               echo "::error::Repository variable $var is not set; release builds must pin a real Ed25519 public key."
               exit 1
@@ -193,8 +193,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            AMIGO_REGISTRY_PUBKEY_HEX=${{ vars.AMIGO_REGISTRY_PUBKEY_HEX }}
-            AMIGO_UPDATE_PUBKEY_HEX=${{ vars.AMIGO_UPDATE_PUBKEY_HEX }}
+            KRAKE_REGISTRY_PUBKEY_HEX=${{ vars.AMIGO_REGISTRY_PUBKEY_HEX }}
+            KRAKE_UPDATE_PUBKEY_HEX=${{ vars.AMIGO_UPDATE_PUBKEY_HEX }}
 
   # ─── Desktop Installers (Tauri) ────────────────────────────────────
   installers:
@@ -299,11 +299,11 @@ jobs:
 
       # The self-updater (krake-server, krake) refuses a release without a
       # `.sig` next to its archive. The secret holds the private seed matching
-      # AMIGO_UPDATE_PUBKEY_HEX; the script fails if they differ.
+      # KRAKE_UPDATE_PUBKEY_HEX; the script fails if they differ.
       # See docs/specs/self-update.md.
       - name: Sign CLI and server archives
         env:
-          AMIGO_UPDATE_SIGNING_KEY: ${{ secrets.AMIGO_UPDATE_SIGNING_KEY }}
+          KRAKE_UPDATE_SIGNING_KEY: ${{ secrets.AMIGO_UPDATE_SIGNING_KEY }}
         run: scripts/sign-update-archives.sh artifacts
 
       - name: Generate Tauri updater JSON

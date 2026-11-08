@@ -19,5 +19,5 @@ Run everything with `cargo test --workspace`.
 Plugin spec files (`plugins/**/plugin.spec.ts`) are executed through the
 QuickJS-backed runner in `crates/plugin-runtime/tests/spec_runner.rs`.
 Network-dependent assertions in those specs are gated behind
-`AMIGO_NETWORK_TESTS=1`; without that variable they are still parsed and
+`KRAKE_NETWORK_TESTS=1`; without that variable they are still parsed and
 executed, but failures are downgraded to warnings.

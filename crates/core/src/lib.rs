@@ -4,6 +4,7 @@ pub mod chunk;
 pub mod config;
 pub mod container;
 pub mod coordinator;
+pub mod env;
 pub mod i18n;
 pub mod postprocess;
 pub mod protocol;

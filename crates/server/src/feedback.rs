@@ -193,7 +193,7 @@ async fn submit_feedback(
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
-                error: "Feedback not configured. Set AMIGO_GITHUB_TOKEN or configure feedback.github_token.".into(),
+                error: "Feedback not configured. Set KRAKE_GITHUB_TOKEN or configure feedback.github_token.".into(),
             }),
         ));
     };

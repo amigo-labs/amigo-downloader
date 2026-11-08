@@ -210,7 +210,7 @@ impl PluginLoader {
     }
 
     /// Run plugins with the `krake-plugin-host` binary at `path` instead of
-    /// looking it up (`$AMIGO_PLUGIN_HOST_BIN`, then next to the current
+    /// looking it up (`$KRAKE_PLUGIN_HOST_BIN`, then next to the current
     /// executable).
     pub fn with_plugin_host_binary(mut self, path: PathBuf) -> Self {
         self.runtime_mut().process = ProcessHost::new(Some(path));

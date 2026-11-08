@@ -484,7 +484,7 @@ Für komplexere Plugins existiert das separate Package `@amigo/plugin-sdk` mit h
 - Kein direkter Netzwerk/Filesystem/Prozess-Zugang
 - Resource Limits: 30s Timeout (5s für Modul-Load), 64MB RAM pro Plugin (eigene QuickJS-Runtime pro Plugin), 20 HTTP-Requests, 1MB Storage
 - Netzwerk: optionale Domain-Allowlist `permissions.domains`, pro Request und Redirect-Hop erzwungen; Install/erweiternde Updates brauchen Bestätigung
-- Plugin-JS läuft im separaten Prozess `krake-plugin-host` (liegt neben `krake-server`/`krake`, Override: `AMIGO_PLUGIN_HOST_BIN`); ein QuickJS-Crash beendet nur diesen, die Queue läuft weiter. Noch keine OS-Sandbox um den Child (Landlock/seccomp etc.) — offen in #79, siehe `docs/specs/plugin-sandbox-hardening.md` (SH-7b)
+- Plugin-JS läuft im separaten Prozess `krake-plugin-host` (liegt neben `krake-server`/`krake`, Override: `KRAKE_PLUGIN_HOST_BIN`); ein QuickJS-Crash beendet nur diesen, die Queue läuft weiter. Noch keine OS-Sandbox um den Child (Landlock/seccomp etc.) — offen in #79, siehe `docs/specs/plugin-sandbox-hardening.md` (SH-7b)
 - Reload: Laden eines Plugins mit bekannter `id` ersetzt die alte Version (genutzt von Plugin-Updates); kein Filesystem-Watcher — nach manuellen Änderungen Server neu starten oder `krake plugins test` zum Iterieren nutzen
 
 ---

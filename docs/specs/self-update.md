@@ -48,13 +48,13 @@ For each target the release carries, per product (`krake-server`, `krake`):
 The `upload` job of `release-build.yml` runs
 `scripts/sign-update-archives.sh artifacts` before publishing. It needs:
 
-- the secret `AMIGO_UPDATE_SIGNING_KEY`: the 32-byte Ed25519 private seed as
+- the secret `KRAKE_UPDATE_SIGNING_KEY`: the 32-byte Ed25519 private seed as
   64 hex characters;
-- the variable `AMIGO_UPDATE_PUBKEY_HEX`: the matching public key that is
+- the variable `KRAKE_UPDATE_PUBKEY_HEX`: the matching public key that is
   pinned into the binaries.
 
 The script derives the public key from the seed and fails if it differs from
-`AMIGO_UPDATE_PUBKEY_HEX`, so a mismatched secret can never publish
+`KRAKE_UPDATE_PUBKEY_HEX`, so a mismatched secret can never publish
 signatures that every client would reject. It signs with OpenSSL 3
 (`pkeyutl -rawin`), verifies each signature again, and fails if no archive was
 found.
@@ -63,9 +63,9 @@ Generating a key pair (offline):
 
 ```sh
 openssl genpkey -algorithm ed25519 -out update-key.pem
-# secret AMIGO_UPDATE_SIGNING_KEY (keep offline, never commit):
+# secret KRAKE_UPDATE_SIGNING_KEY (keep offline, never commit):
 openssl pkey -in update-key.pem -outform DER | tail -c 32 | od -An -tx1 -v | tr -d ' \n'
-# variable AMIGO_UPDATE_PUBKEY_HEX:
+# variable KRAKE_UPDATE_PUBKEY_HEX:
 openssl pkey -in update-key.pem -pubout -outform DER | tail -c 32 | od -An -tx1 -v | tr -d ' \n'
 ```
 
@@ -132,7 +132,7 @@ openssl pkey -in update-key.pem -pubout -outform DER | tail -c 32 | od -An -tx1 
   Test: `signatures_from_the_release_script_verify` (fixture produced by the
   script with the test key).
 - [x] The signing script signs with a matching key, refuses a seed that does
-  not match `AMIGO_UPDATE_PUBKEY_HEX`, and fails when it finds no archive.
+  not match `KRAKE_UPDATE_PUBKEY_HEX`, and fails when it finds no archive.
   Check: step "Smoke-test the update signing script" in the
   `Release build guard` job of `ci.yml`, with a throwaway key.
 - [x] Signature verification uses `verify_strict`, like registry signatures.

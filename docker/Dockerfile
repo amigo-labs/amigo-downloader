@@ -34,12 +34,12 @@ COPY --from=ui-builder /app/web-ui/dist web-ui/dist
 # time (crates/plugin-runtime/build.rs and crates/core/build.rs each refuse to
 # compile a release build without their key, so an all-zero placeholder can
 # never ship). Production images must be built with
-# `--build-arg AMIGO_REGISTRY_PUBKEY_HEX=<real key>` and
-# `--build-arg AMIGO_UPDATE_PUBKEY_HEX=<real key>`.
-ARG AMIGO_REGISTRY_PUBKEY_HEX
-ENV AMIGO_REGISTRY_PUBKEY_HEX=${AMIGO_REGISTRY_PUBKEY_HEX}
-ARG AMIGO_UPDATE_PUBKEY_HEX
-ENV AMIGO_UPDATE_PUBKEY_HEX=${AMIGO_UPDATE_PUBKEY_HEX}
+# `--build-arg KRAKE_REGISTRY_PUBKEY_HEX=<real key>` and
+# `--build-arg KRAKE_UPDATE_PUBKEY_HEX=<real key>`.
+ARG KRAKE_REGISTRY_PUBKEY_HEX
+ENV KRAKE_REGISTRY_PUBKEY_HEX=${KRAKE_REGISTRY_PUBKEY_HEX}
+ARG KRAKE_UPDATE_PUBKEY_HEX
+ENV KRAKE_UPDATE_PUBKEY_HEX=${KRAKE_UPDATE_PUBKEY_HEX}
 RUN cargo build --release --bin krake-server --bin krake --bin krake-plugin-host
 
 # Stage 3: Runtime
@@ -74,10 +74,10 @@ RUN mkdir -p /config /downloads && \
 EXPOSE 1516
 VOLUME ["/config", "/downloads"]
 
-ENV AMIGO_CONFIG_DIR=/config
-ENV AMIGO_DOWNLOAD_DIR=/downloads
-ENV AMIGO_PLUGIN_DIR=/etc/amigo/plugins
-ENV AMIGO_LOCALES_DIR=/etc/amigo/locales
+ENV KRAKE_CONFIG_DIR=/config
+ENV KRAKE_DOWNLOAD_DIR=/downloads
+ENV KRAKE_PLUGIN_DIR=/etc/amigo/plugins
+ENV KRAKE_LOCALES_DIR=/etc/amigo/locales
 
 # Health check against the status endpoint
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \

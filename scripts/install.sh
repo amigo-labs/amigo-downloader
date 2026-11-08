@@ -5,8 +5,9 @@ set -euo pipefail
 # Usage: curl -fsSL https://raw.githubusercontent.com/amigo-labs/amigo-krake/main/scripts/install.sh | bash
 
 REPO="amigo-labs/amigo-krake"
-INSTALL_DIR="${AMIGO_INSTALL_DIR:-/usr/local/bin}"
-TAG="${AMIGO_TAG:-latest}"  # override with AMIGO_TAG=v0.2.0
+# AMIGO_INSTALL_DIR / AMIGO_TAG are the deprecated pre-rename names.
+INSTALL_DIR="${KRAKE_INSTALL_DIR:-${AMIGO_INSTALL_DIR:-/usr/local/bin}}"
+TAG="${KRAKE_TAG:-${AMIGO_TAG:-latest}}"  # override with KRAKE_TAG=v0.2.0
 
 # Resolve "latest" to the actual release tag via GitHub API
 if [ "$TAG" = "latest" ]; then
@@ -17,7 +18,7 @@ if [ "$TAG" = "latest" ]; then
     case "$HTTP_STATUS" in
         200) ;;
         404)
-            echo "No stable release exists yet for ${REPO}. Set AMIGO_TAG=<tag> to install a specific version." >&2
+            echo "No stable release exists yet for ${REPO}. Set KRAKE_TAG=<tag> to install a specific version." >&2
             exit 1
             ;;
         000)

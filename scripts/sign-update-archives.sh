@@ -8,10 +8,10 @@
 # which `krake_core::updater::verify_ed25519` checks.
 #
 # Environment:
-#   AMIGO_UPDATE_SIGNING_KEY  32-byte Ed25519 private seed, 64 hex chars (secret)
-#   AMIGO_UPDATE_PUBKEY_HEX   matching public key pinned into the binaries
+#   KRAKE_UPDATE_SIGNING_KEY  32-byte Ed25519 private seed, 64 hex chars (secret)
+#   KRAKE_UPDATE_PUBKEY_HEX   matching public key pinned into the binaries
 #
-# The public key derived from the seed must equal AMIGO_UPDATE_PUBKEY_HEX, so
+# The public key derived from the seed must equal KRAKE_UPDATE_PUBKEY_HEX, so
 # a wrong secret fails the release instead of publishing signatures every
 # client rejects. Requires OpenSSL 3 (`pkeyutl -rawin`). See
 # docs/specs/self-update.md.
@@ -22,10 +22,10 @@ dir="${1:?usage: $0 <dir>}"
 is_hex64() { [[ "$1" =~ ^[0-9a-fA-F]{64}$ ]]; }
 to_hex() { od -An -tx1 -v | tr -d ' \n'; }
 
-seed="${AMIGO_UPDATE_SIGNING_KEY:-}"
-pinned="${AMIGO_UPDATE_PUBKEY_HEX:-}"
-is_hex64 "$seed" || { echo "AMIGO_UPDATE_SIGNING_KEY must be 64 hex chars" >&2; exit 1; }
-is_hex64 "$pinned" || { echo "AMIGO_UPDATE_PUBKEY_HEX must be 64 hex chars" >&2; exit 1; }
+seed="${KRAKE_UPDATE_SIGNING_KEY:-}"
+pinned="${KRAKE_UPDATE_PUBKEY_HEX:-}"
+is_hex64 "$seed" || { echo "KRAKE_UPDATE_SIGNING_KEY must be 64 hex chars" >&2; exit 1; }
+is_hex64 "$pinned" || { echo "KRAKE_UPDATE_PUBKEY_HEX must be 64 hex chars" >&2; exit 1; }
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -39,7 +39,7 @@ openssl pkey -inform DER -in "$key" -pubout -outform DER -out "$pub"
 
 derived="$(tail -c 32 "$pub" | to_hex)"
 if [[ "$derived" != "${pinned,,}" ]]; then
-  echo "AMIGO_UPDATE_SIGNING_KEY does not match AMIGO_UPDATE_PUBKEY_HEX" >&2
+  echo "KRAKE_UPDATE_SIGNING_KEY does not match KRAKE_UPDATE_PUBKEY_HEX" >&2
   echo "  derived: $derived" >&2
   echo "  pinned:  ${pinned,,}" >&2
   exit 1

@@ -71,7 +71,7 @@ curl -fsSL https://raw.githubusercontent.com/amigo-labs/amigo-krake/main/scripts
 ```
 
 The installer resolves the latest release, verifies its SHA-256 checksum, and
-installs to `/usr/local/bin` (override with `AMIGO_INSTALL_DIR`). Or build from
+installs to `/usr/local/bin` (override with `KRAKE_INSTALL_DIR`). Or build from
 source with Cargo:
 
 ```bash
@@ -387,7 +387,7 @@ end = "01:00"
 limit = 5000000  # 5 MB/s
 
 [feedback]
-github_token = ""  # or set AMIGO_GITHUB_TOKEN env var
+github_token = ""  # or set KRAKE_GITHUB_TOKEN env var
 github_repo = "amigo-labs/amigo-krake"
 ```
 
@@ -405,7 +405,7 @@ services:
       - ./downloads:/downloads
       - ./plugins:/etc/amigo/plugins     # Custom plugins
     environment:
-      - AMIGO_GITHUB_TOKEN=ghp_...  # Optional: auto crash reporting
+      - KRAKE_GITHUB_TOKEN=ghp_...  # Optional: auto crash reporting
 ```
 
 To build from source locally, use the local compose file:

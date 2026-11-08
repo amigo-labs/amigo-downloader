@@ -39,7 +39,7 @@ pub struct AuthState {
     pub app: AppState,
     /// Optional pre-shared bearer token from `server.api_token`.
     pub preshared_token: Option<Arc<String>>,
-    /// Optional setup-mode PIN (from `AMIGO_SETUP_PIN`). Only consulted by
+    /// Optional setup-mode PIN (from `KRAKE_SETUP_PIN`). Only consulted by
     /// [`require_setup_pin`].
     pub setup_pin: Option<Arc<String>>,
     /// `true` if the server bind is loopback; setup-mode is suppressed there.

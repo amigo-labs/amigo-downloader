@@ -21,7 +21,7 @@ use krake_server::{
 /// Whether a boolean-style environment variable is set to a truthy value
 /// (`1` / `true` / `yes` / `on`, case-insensitive).
 fn env_flag(name: &str) -> bool {
-    std::env::var(name)
+    krake_core::env::var(name)
         .is_ok_and(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
 }
 
@@ -39,15 +39,15 @@ async fn main() -> anyhow::Result<()> {
     // Env overrides — useful for Docker / IaC where flipping `bind` or
     // enabling reverse-proxy awareness shouldn't require editing a TOML
     // file that also lives in a volume.
-    if let Ok(bind) = std::env::var("AMIGO_BIND")
+    if let Ok(bind) = krake_core::env::var("KRAKE_BIND")
         && !bind.trim().is_empty()
     {
         config.server.bind = bind;
     }
-    if env_flag("AMIGO_TRUST_PROXY") {
+    if env_flag("KRAKE_TRUST_PROXY") {
         config.server.trust_proxy = true;
     }
-    if env_flag("AMIGO_AUTO_UPDATE_PLUGINS") {
+    if env_flag("KRAKE_AUTO_UPDATE_PLUGINS") {
         config.update.auto_update_plugins = true;
     }
 
@@ -60,18 +60,18 @@ async fn main() -> anyhow::Result<()> {
         anyhow::bail!("Invalid configuration — refusing to start");
     }
 
-    // Headless setup: if `AMIGO_SETUP_USER` + `AMIGO_SETUP_PASSWORD` are
+    // Headless setup: if `KRAKE_SETUP_USER` + `KRAKE_SETUP_PASSWORD` are
     // provided and the wizard has not been completed, finish it now so the
     // server comes up fully authenticated without the browser.
     if !config.server.setup_complete
         && let (Ok(user), Ok(pw)) = (
-            std::env::var("AMIGO_SETUP_USER"),
-            std::env::var("AMIGO_SETUP_PASSWORD"),
+            krake_core::env::var("KRAKE_SETUP_USER"),
+            krake_core::env::var("KRAKE_SETUP_PASSWORD"),
         )
     {
         if user.trim().is_empty() || pw.len() < 8 {
             tracing::error!(
-                "AMIGO_SETUP_USER / AMIGO_SETUP_PASSWORD provided but invalid (user empty or password < 8 chars)"
+                "KRAKE_SETUP_USER / KRAKE_SETUP_PASSWORD provided but invalid (user empty or password < 8 chars)"
             );
             anyhow::bail!("invalid setup env vars");
         }
@@ -141,7 +141,7 @@ async fn main() -> anyhow::Result<()> {
     // Locally compiled plugin bytecode, so restarts skip transpile + compile.
     // Lives next to the config (daemon-writable only — plugin JS has no
     // filesystem access); see `krake_plugin_runtime::bytecode_cache`.
-    let bytecode_dir = std::env::var_os("AMIGO_CONFIG_DIR")
+    let bytecode_dir = krake_core::env::var_os("KRAKE_CONFIG_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
         .join("cache")
@@ -176,17 +176,17 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Plugin updater. Registry signatures are required by default — a
-    // developer bootstrap override (`AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED=1`)
+    // developer bootstrap override (`KRAKE_PLUGIN_REGISTRY_DEV_UNSIGNED=1`)
     // disables verification with a loud warning, for working against a
     // locally-hosted unsigned fork.
-    let dev_unsigned = env_flag("AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED");
+    let dev_unsigned = env_flag("KRAKE_PLUGIN_REGISTRY_DEV_UNSIGNED");
     if dev_unsigned {
         tracing::warn!(
-            "AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED is set — plugin registry signatures will NOT be verified. DO NOT use this for production."
+            "KRAKE_PLUGIN_REGISTRY_DEV_UNSIGNED is set — plugin registry signatures will NOT be verified. DO NOT use this for production."
         );
     }
     // Derived from `RegistryConfig::default()`, which never trusts the
-    // all-zero placeholder key of a build without AMIGO_REGISTRY_PUBKEY_HEX.
+    // all-zero placeholder key of a build without KRAKE_REGISTRY_PUBKEY_HEX.
     let registry_config =
         RegistryConfig::for_index(config.update.plugin_registry_url.clone(), dev_unsigned);
     let plugin_updater = Arc::new(PluginUpdater::new(
@@ -243,7 +243,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let bind_is_loopback = config.server.is_bind_loopback();
-    let setup_pin_env = std::env::var("AMIGO_SETUP_PIN").ok();
+    let setup_pin_env = krake_core::env::var("KRAKE_SETUP_PIN").ok();
     let auth_state = auth::AuthState::new(
         state.clone(),
         config.server.api_token.clone(),

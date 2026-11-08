@@ -35,8 +35,8 @@ design decisions are recorded at the end.
   cache read re-verifies them. If verification fails, the cache counts as a
   miss and the index is refetched.
   Test: `cached_index_is_reverified_and_tampering_forces_a_refetch`.
-- [x] `release-build.yml` passes `AMIGO_REGISTRY_PUBKEY_HEX` and
-  `AMIGO_UPDATE_PUBKEY_HEX` (repository *variables* — public keys) to native,
+- [x] `release-build.yml` passes `KRAKE_REGISTRY_PUBKEY_HEX` and
+  `KRAKE_UPDATE_PUBKEY_HEX` (repository *variables* — public keys) to native,
   cross and Docker builds. It fails early if they are unset. CI runs
   `cargo check --release` to exercise the `build.rs` guards.
 - [x] `RegistryPlugin::id` must match `^[a-z0-9][a-z0-9-]{0,63}$` before it is
@@ -121,7 +121,7 @@ second, overlapping key is a possible follow-up.
 
 ## SH-6. Local bytecode cache (#83)
 
-- [x] The cache lives at `$AMIGO_CONFIG_DIR/cache/plugin-bytecode/<key>.qjsc`.
+- [x] The cache lives at `$KRAKE_CONFIG_DIR/cache/plugin-bytecode/<key>.qjsc`.
   The key is `sha256(engine fingerprint || filename || source)`, and the
   fingerprint covers the QuickJS version, cache format, runtime version, and
   pointer width / endianness.
@@ -185,7 +185,7 @@ network reach as the daemon until SH-7b lands.
   `solveCaptcha` is a callback, so a pending captcha never trips it.
   Tests: `stopped_child_is_killed_by_the_watchdog`,
   `captcha_callback_round_trips_through_the_parent`.
-- [x] The parent finds the binary through `AMIGO_PLUGIN_HOST_BIN`, then next to
+- [x] The parent finds the binary through `KRAKE_PLUGIN_HOST_BIN`, then next to
   its own executable (and one level up from `deps/` for test binaries). When
   it is missing, loading fails with a clear error and the daemon runs without
   plugins. Test: `missing_host_binary_is_a_clear_error`.
@@ -232,6 +232,6 @@ argue them again:
   parent.
 - **No sandbox primitive available** (for example, Linux before 5.13): refuse
   to run *unscoped* plugins and run scoped ones with a startup warning. An
-  `AMIGO_PLUGIN_SANDBOX=off` override is for development only.
+  `KRAKE_PLUGIN_SANDBOX=off` override is for development only.
 - **Measurements:** compare against the baseline in SH-6 (load and resolve)
   plus daemon startup.

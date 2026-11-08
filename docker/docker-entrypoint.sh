@@ -12,8 +12,9 @@ set -euo pipefail
 PUID="${PUID:-1000}"
 PGID="${PGID:-1000}"
 
-CONFIG_DIR="${AMIGO_CONFIG_DIR:-/config}"
-DOWNLOAD_DIR="${AMIGO_DOWNLOAD_DIR:-/downloads}"
+# AMIGO_* are the deprecated pre-rename names, still honoured.
+CONFIG_DIR="${KRAKE_CONFIG_DIR:-${AMIGO_CONFIG_DIR:-/config}}"
+DOWNLOAD_DIR="${KRAKE_DOWNLOAD_DIR:-${AMIGO_DOWNLOAD_DIR:-/downloads}}"
 
 docs_hint() {
     echo "amigo: see the volume-permissions section of the docs" \

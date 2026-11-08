@@ -19,7 +19,7 @@ pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// Ed25519 public key of the amigo-labs self-update signer.
 ///
-/// Injected at compile time from the `AMIGO_UPDATE_PUBKEY_HEX` environment
+/// Injected at compile time from the `KRAKE_UPDATE_PUBKEY_HEX` environment
 /// variable (64 hex chars). When unset the value falls back to the all-zero
 /// placeholder, which [`trusted_update_key`] treats as "verification
 /// disabled" (with a runtime warning) so dev builds don't trust a forgeable
@@ -27,12 +27,12 @@ pub const CURRENT_VERSION: &str = env!("CARGO_PKG_VERSION");
 /// unset, so production binaries always pin a real key. Rotate by shipping a
 /// new release; clients that haven't updated will reject the new signatures,
 /// which is the safer failure mode.
-pub const AMIGO_UPDATE_PUBLIC_KEY: [u8; 32] = update_pubkey_from_env();
+pub const KRAKE_UPDATE_PUBLIC_KEY: [u8; 32] = update_pubkey_from_env();
 
 const ZERO_PUBKEY: [u8; 32] = [0u8; 32];
 
 const fn update_pubkey_from_env() -> [u8; 32] {
-    match option_env!("AMIGO_UPDATE_PUBKEY_HEX") {
+    match option_env!("KRAKE_UPDATE_PUBKEY_HEX") {
         Some(hex) => parse_hex32(hex),
         None => ZERO_PUBKEY,
     }
@@ -42,7 +42,7 @@ const fn parse_hex32(s: &str) -> [u8; 32] {
     let bytes = s.as_bytes();
     assert!(
         bytes.len() == 64,
-        "AMIGO_UPDATE_PUBKEY_HEX must be 64 hex chars (32-byte Ed25519 public key)"
+        "KRAKE_UPDATE_PUBKEY_HEX must be 64 hex chars (32-byte Ed25519 public key)"
     );
     let mut out = [0u8; 32];
     let mut i = 0;
@@ -58,7 +58,7 @@ const fn hex_nibble(b: u8) -> u8 {
         b'0'..=b'9' => b - b'0',
         b'a'..=b'f' => b - b'a' + 10,
         b'A'..=b'F' => b - b'A' + 10,
-        _ => panic!("AMIGO_UPDATE_PUBKEY_HEX contains non-hex character"),
+        _ => panic!("KRAKE_UPDATE_PUBKEY_HEX contains non-hex character"),
     }
 }
 
@@ -67,10 +67,10 @@ const fn hex_nibble(b: u8) -> u8 {
 /// against the zero placeholder is safer than trusting a key whose private
 /// half is publicly derivable.
 pub fn trusted_update_key() -> Option<[u8; 32]> {
-    if AMIGO_UPDATE_PUBLIC_KEY == ZERO_PUBKEY {
+    if KRAKE_UPDATE_PUBLIC_KEY == ZERO_PUBKEY {
         None
     } else {
-        Some(AMIGO_UPDATE_PUBLIC_KEY)
+        Some(KRAKE_UPDATE_PUBLIC_KEY)
     }
 }
 
@@ -219,10 +219,10 @@ pub enum CoreUpdateStatus {
 
 /// Detect how the binary is distributed.
 pub fn detect_distribution() -> Distribution {
-    if std::env::var("AMIGO_DOCKER").is_ok() {
+    if crate::env::var("KRAKE_DOCKER").is_ok() {
         return Distribution::Docker;
     }
-    if std::env::var("AMIGO_TAURI").is_ok() {
+    if crate::env::var("KRAKE_TAURI").is_ok() {
         return Distribution::Tauri;
     }
     Distribution::Server
@@ -734,14 +734,19 @@ mod tests {
     use super::*;
     use std::assert_matches;
 
+    /// Serialises the tests that set KRAKE_DOCKER / KRAKE_TAURI: they share
+    /// the process environment and would otherwise race.
+    static DISTRIBUTION_ENV: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
     #[test]
     fn test_detect_distribution_default() {
+        let _env = DISTRIBUTION_ENV.lock().unwrap_or_else(|e| e.into_inner());
         // Clean env for this test
-        // SAFETY: Test runs single-threaded via cargo test -- --test-threads=1
-        // or env vars are not shared across these specific tests in practice.
+        // SAFETY: DISTRIBUTION_ENV serialises every test that touches these
+        // variables.
         unsafe {
-            std::env::remove_var("AMIGO_DOCKER");
-            std::env::remove_var("AMIGO_TAURI");
+            std::env::remove_var("KRAKE_DOCKER");
+            std::env::remove_var("KRAKE_TAURI");
         }
         let dist = detect_distribution();
         assert_eq!(dist, Distribution::Server);
@@ -749,42 +754,45 @@ mod tests {
 
     #[test]
     fn test_detect_distribution_docker() {
+        let _env = DISTRIBUTION_ENV.lock().unwrap_or_else(|e| e.into_inner());
         unsafe {
-            std::env::set_var("AMIGO_DOCKER", "1");
-            std::env::remove_var("AMIGO_TAURI");
+            std::env::set_var("KRAKE_DOCKER", "1");
+            std::env::remove_var("KRAKE_TAURI");
         }
         let dist = detect_distribution();
         assert_eq!(dist, Distribution::Docker);
         unsafe {
-            std::env::remove_var("AMIGO_DOCKER");
+            std::env::remove_var("KRAKE_DOCKER");
         }
     }
 
     #[test]
     fn test_detect_distribution_tauri() {
+        let _env = DISTRIBUTION_ENV.lock().unwrap_or_else(|e| e.into_inner());
         unsafe {
-            std::env::remove_var("AMIGO_DOCKER");
-            std::env::set_var("AMIGO_TAURI", "1");
+            std::env::remove_var("KRAKE_DOCKER");
+            std::env::set_var("KRAKE_TAURI", "1");
         }
         let dist = detect_distribution();
         assert_eq!(dist, Distribution::Tauri);
         unsafe {
-            std::env::remove_var("AMIGO_TAURI");
+            std::env::remove_var("KRAKE_TAURI");
         }
     }
 
     #[test]
     fn test_detect_distribution_docker_takes_precedence() {
+        let _env = DISTRIBUTION_ENV.lock().unwrap_or_else(|e| e.into_inner());
         // Docker should take precedence over Tauri if both are set
         unsafe {
-            std::env::set_var("AMIGO_DOCKER", "1");
-            std::env::set_var("AMIGO_TAURI", "1");
+            std::env::set_var("KRAKE_DOCKER", "1");
+            std::env::set_var("KRAKE_TAURI", "1");
         }
         let dist = detect_distribution();
         assert_eq!(dist, Distribution::Docker);
         unsafe {
-            std::env::remove_var("AMIGO_DOCKER");
-            std::env::remove_var("AMIGO_TAURI");
+            std::env::remove_var("KRAKE_DOCKER");
+            std::env::remove_var("KRAKE_TAURI");
         }
     }
 

@@ -33,7 +33,7 @@ fn url_pattern_regex(pattern: &str) -> Option<Regex> {
 
 /// Ed25519 public key of the amigo-labs plugin registry signer.
 ///
-/// Injected at compile time from the `AMIGO_REGISTRY_PUBKEY_HEX` environment
+/// Injected at compile time from the `KRAKE_REGISTRY_PUBKEY_HEX` environment
 /// variable (64 hex chars). When unset the value falls back to the all-zero
 /// placeholder, which no [`RegistryConfig`] constructor accepts: signature
 /// verification is disabled (with a runtime warning) in dev builds instead of
@@ -45,12 +45,12 @@ fn url_pattern_regex(pattern: &str) -> Option<Regex> {
 /// signatures and silently lose marketplace access until they update. A
 /// second, overlapping trusted key would make rotation non-breaking — that is
 /// a deliberate follow-up, not an oversight.
-pub const AMIGO_REGISTRY_PUBLIC_KEY: [u8; 32] = registry_pubkey_from_env();
+pub const KRAKE_REGISTRY_PUBLIC_KEY: [u8; 32] = registry_pubkey_from_env();
 
 const ZERO_PUBKEY: [u8; 32] = [0u8; 32];
 
 const fn registry_pubkey_from_env() -> [u8; 32] {
-    match option_env!("AMIGO_REGISTRY_PUBKEY_HEX") {
+    match option_env!("KRAKE_REGISTRY_PUBKEY_HEX") {
         Some(hex) => parse_hex32(hex),
         None => ZERO_PUBKEY,
     }
@@ -60,7 +60,7 @@ const fn parse_hex32(s: &str) -> [u8; 32] {
     let bytes = s.as_bytes();
     assert!(
         bytes.len() == 64,
-        "AMIGO_REGISTRY_PUBKEY_HEX must be 64 hex chars (32-byte Ed25519 public key)"
+        "KRAKE_REGISTRY_PUBKEY_HEX must be 64 hex chars (32-byte Ed25519 public key)"
     );
     let mut out = [0u8; 32];
     let mut i = 0;
@@ -76,7 +76,7 @@ const fn hex_nibble(b: u8) -> u8 {
         b'0'..=b'9' => b - b'0',
         b'a'..=b'f' => b - b'a' + 10,
         b'A'..=b'F' => b - b'A' + 10,
-        _ => panic!("AMIGO_REGISTRY_PUBKEY_HEX contains non-hex character"),
+        _ => panic!("KRAKE_REGISTRY_PUBKEY_HEX contains non-hex character"),
     }
 }
 
@@ -201,10 +201,10 @@ fn compiled_in_verifier() -> Option<[u8; 32]> {
     // If no real key was injected at compile time, refuse to trust the zero
     // placeholder. Disabling verification with a warning is safer than
     // verifying against a key whose private half is publicly derivable.
-    if AMIGO_REGISTRY_PUBLIC_KEY == ZERO_PUBKEY {
+    if KRAKE_REGISTRY_PUBLIC_KEY == ZERO_PUBKEY {
         None
     } else {
-        Some(AMIGO_REGISTRY_PUBLIC_KEY)
+        Some(KRAKE_REGISTRY_PUBLIC_KEY)
     }
 }
 
@@ -928,7 +928,7 @@ mod tests {
         // When no real key was injected at compile time the field has to be
         // None so that fetch_index_remote logs the explicit "verification
         // DISABLED" warning instead of silently accepting a forgeable signature.
-        if AMIGO_REGISTRY_PUBLIC_KEY == ZERO_PUBKEY {
+        if KRAKE_REGISTRY_PUBLIC_KEY == ZERO_PUBKEY {
             let cfg = RegistryConfig::default();
             assert!(
                 cfg.index_verifier.is_none(),
@@ -936,7 +936,7 @@ mod tests {
             );
         } else {
             let cfg = RegistryConfig::default();
-            assert_eq!(cfg.index_verifier, Some(AMIGO_REGISTRY_PUBLIC_KEY));
+            assert_eq!(cfg.index_verifier, Some(KRAKE_REGISTRY_PUBLIC_KEY));
         }
     }
 

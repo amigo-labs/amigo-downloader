@@ -30,7 +30,7 @@ fn main() {
     // detect_distribution() returns Distribution::Tauri.
     // SAFETY: Called at the very start of main, before any threads are spawned.
     unsafe {
-        std::env::set_var("AMIGO_TAURI", "1");
+        std::env::set_var("KRAKE_TAURI", "1");
     }
 
     // Initialize logging

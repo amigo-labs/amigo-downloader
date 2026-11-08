@@ -122,7 +122,7 @@ pub struct ServerConfig {
     /// except `/api/v1/setup/*` return 503 with `{"error": "setup_required"}`.
     #[serde(default)]
     pub setup_complete: bool,
-    /// Admin username chosen in the setup wizard (or via `AMIGO_SETUP_USER`).
+    /// Admin username chosen in the setup wizard (or via `KRAKE_SETUP_USER`).
     #[serde(default)]
     pub admin_username: Option<String>,
     /// Argon2id hash of the admin password (PHC-formatted). Never the plaintext.
@@ -247,7 +247,7 @@ pub struct FeedbackConfig {
     /// Enable in-app feedback (requires github_token).
     pub enabled: bool,
     /// GitHub Personal Access Token with `repo` scope.
-    /// Can also be set via AMIGO_GITHUB_TOKEN env var.
+    /// Can also be set via KRAKE_GITHUB_TOKEN env var.
     pub github_token: String,
     /// Target GitHub repo for issues (owner/repo).
     pub github_repo: String,
@@ -311,7 +311,7 @@ impl Default for FeedbackConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            github_token: std::env::var("AMIGO_GITHUB_TOKEN").unwrap_or_default(),
+            github_token: crate::env::var("KRAKE_GITHUB_TOKEN").unwrap_or_default(),
             github_repo: "amigo-labs/amigo-krake".into(),
             max_issues_per_hour: 5,
         }
@@ -387,18 +387,18 @@ impl Config {
 
     /// Resolve the config file path (first writable standard path).
     pub fn resolve_path() -> std::path::PathBuf {
-        if let Ok(dir) = std::env::var("AMIGO_CONFIG_DIR") {
+        if let Ok(dir) = crate::env::var("KRAKE_CONFIG_DIR") {
             return std::path::PathBuf::from(dir).join("config.toml");
         }
         std::path::PathBuf::from("config.toml")
     }
 
     /// Load config, trying standard paths in order:
-    /// 1. $AMIGO_CONFIG_DIR/config.toml
+    /// 1. $KRAKE_CONFIG_DIR/config.toml
     /// 2. ./config.toml
     pub fn load_auto() -> Self {
         let paths = [
-            std::env::var("AMIGO_CONFIG_DIR")
+            crate::env::var("KRAKE_CONFIG_DIR")
                 .map(|d| std::path::PathBuf::from(d).join("config.toml"))
                 .ok(),
             Some(std::path::PathBuf::from("config.toml")),

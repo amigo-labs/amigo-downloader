@@ -23,13 +23,13 @@ v0.1.0-Release-PR, deren Merge den Tag setzt und den (bewusst leeren)
 - [ ] Pubkey in `tauri/tauri.conf.json` gegen den neuen Key abgleichen.
       Danach kann der Code-Schritt `"active": true` (Updater) gesetzt werden.
 - [ ] Registry-Ed25519-**Private**-Key erzeugen und offline sichern;
-      sicherstellen, dass `AMIGO_REGISTRY_PUBKEY_HEX` (Build-Arg in
+      sicherstellen, dass `KRAKE_REGISTRY_PUBKEY_HEX` (Build-Arg in
       `.github/workflows/release-build.yml` bzw. Docker-Build) zum
       Public-Key passt.
 - [ ] Signier-Prozess für den Plugin-Registry-Index etablieren und
       dokumentieren (wer signiert beim Veröffentlichen neuer Plugins?).
 - [ ] Self-Update-Ed25519-**Private**-Key erzeugen und offline sichern;
-      sicherstellen, dass `AMIGO_UPDATE_PUBKEY_HEX` (Build-Arg in
+      sicherstellen, dass `KRAKE_UPDATE_PUBKEY_HEX` (Build-Arg in
       `.github/workflows/release-build.yml` bzw. Docker-Build) zum
       Public-Key passt. `crates/core/build.rs` verweigert Release-Builds
       ohne diesen Key.

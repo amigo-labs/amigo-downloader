@@ -32,7 +32,7 @@ are all skipped. Just open <http://localhost:1516> and use the app.
 cd docker && docker compose up -d
 ```
 
-`docker-compose.yml` sets `AMIGO_BIND=0.0.0.0:1516`, so the container
+`docker-compose.yml` sets `KRAKE_BIND=0.0.0.0:1516`, so the container
 listens on every interface. On first start the server enters **setup
 mode**: any HTTP request to `/api/v1/*` returns 503 `{"error":
 "setup_required"}`, and the Web UI automatically shows the setup wizard.
@@ -50,13 +50,17 @@ isn't acceptable, see below.
 
 | Variable | Effect |
 | --- | --- |
-| `AMIGO_BIND` | Listen address. Default `127.0.0.1:1516` locally, `0.0.0.0:1516` in Docker. |
-| `AMIGO_SETUP_PIN` | When set, the wizard requires `X-Setup-Pin: <value>` on `/api/v1/setup/*`. Recommended for public VPS / Tailscale Funnel. |
-| `AMIGO_SETUP_USER` + `AMIGO_SETUP_PASSWORD` | Headless provisioning — the admin account is created at startup and the wizard never appears. Good for IaC / docker-compose. |
-| `AMIGO_TRUST_PROXY` | `true` = honour `X-Forwarded-For` / `X-Forwarded-Proto`. Enable only behind a reverse proxy you control. |
-| `AMIGO_API_TOKEN` | Legacy pre-shared bearer token; accepted alongside session cookies and pairing-issued API tokens. |
-| `AMIGO_AUTO_UPDATE_PLUGINS` | `true` = periodically install plugin updates from the signed registry. Defaults to off; relies on the Ed25519-signed `index.json.sig` for tamper evidence. |
-| `AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED` | `1` = accept an unsigned plugin registry (disables signature verification). Local development only — never set in production. |
+| `KRAKE_BIND` | Listen address. Default `127.0.0.1:1516` locally, `0.0.0.0:1516` in Docker. |
+| `KRAKE_SETUP_PIN` | When set, the wizard requires `X-Setup-Pin: <value>` on `/api/v1/setup/*`. Recommended for public VPS / Tailscale Funnel. |
+| `KRAKE_SETUP_USER` + `KRAKE_SETUP_PASSWORD` | Headless provisioning — the admin account is created at startup and the wizard never appears. Good for IaC / docker-compose. |
+| `KRAKE_TRUST_PROXY` | `true` = honour `X-Forwarded-For` / `X-Forwarded-Proto`. Enable only behind a reverse proxy you control. |
+| `KRAKE_API_TOKEN` | Legacy pre-shared bearer token; accepted alongside session cookies and pairing-issued API tokens. |
+| `KRAKE_AUTO_UPDATE_PLUGINS` | `true` = periodically install plugin updates from the signed registry. Defaults to off; relies on the Ed25519-signed `index.json.sig` for tamper evidence. |
+| `KRAKE_PLUGIN_REGISTRY_DEV_UNSIGNED` | `1` = accept an unsigned plugin registry (disables signature verification). Local development only — never set in production. |
+
+The variables were called `AMIGO_*` before the rename to Krake. The old
+names still work when the `KRAKE_*` name is unset; the server logs a
+deprecation warning for each one it picks up.
 
 ### Plugin auto-updates
 
@@ -68,7 +72,7 @@ additionally SHA-256 pinned in the index.
 
 With that tamper evidence in place, periodic auto-installs are safe to
 enable. Set `auto_update_plugins = true` in `[update]` (or export
-`AMIGO_AUTO_UPDATE_PLUGINS=true`). The background task then runs every
+`KRAKE_AUTO_UPDATE_PLUGINS=true`). The background task then runs every
 `update.check_interval_hours` hours and calls `update_all_plugins()` on
 each tick; failures are logged, never fatal. New (not-yet-installed)
 plugins are skipped — only plugins the admin has already installed ever
@@ -81,7 +85,7 @@ new signatures — this is the intended behaviour, it fails safe.
 ## Reverse proxy (nginx, Caddy, Traefik)
 
 Serve amigo behind TLS termination on a subdomain (recommended over a
-sub-path). Set `AMIGO_TRUST_PROXY=true` so the pairing flow and rate
+sub-path). Set `KRAKE_TRUST_PROXY=true` so the pairing flow and rate
 limiter see the real client IP.
 
 ### nginx
@@ -135,10 +139,10 @@ your tailnet isn't the open internet.
 Two caveats:
 
 - **Tailscale Serve** (tls on a tailnet-only hostname) works out of the
-  box. Set `AMIGO_TRUST_PROXY=true` if you want the real client IP
+  box. Set `KRAKE_TRUST_PROXY=true` if you want the real client IP
   instead of `127.0.0.1` in the pairing UI.
 - **Tailscale Funnel** exposes your instance to the public internet. Treat
-  it exactly like a VPS — set `AMIGO_SETUP_PIN` so random visitors can't
+  it exactly like a VPS — set `KRAKE_SETUP_PIN` so random visitors can't
   claim the admin account before you do.
 
 ## Pairing the CLI against a remote server

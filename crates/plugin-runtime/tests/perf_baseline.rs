@@ -3,7 +3,7 @@
 //! Ignored by default — run explicitly and read the printed numbers:
 //!
 //! ```sh
-//! AMIGO_REGISTRY_PUBKEY_HEX=$(printf "de%.0s" {1..32}) \
+//! KRAKE_REGISTRY_PUBKEY_HEX=$(printf "de%.0s" {1..32}) \
 //!   cargo test -p krake-plugin-runtime --release --test perf_baseline -- --ignored --nocapture
 //! ```
 //!

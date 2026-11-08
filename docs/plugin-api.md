@@ -419,7 +419,7 @@ No direct network, filesystem, or process access. Everything is proxied through 
 ## Compiled bytecode is local-only
 
 To make restarts cheap, the server caches each plugin's compiled QuickJS
-bytecode on disk (`$AMIGO_CONFIG_DIR/cache/plugin-bytecode`). QuickJS does
+bytecode on disk (`$KRAKE_CONFIG_DIR/cache/plugin-bytecode`). QuickJS does
 **not** validate bytecode before executing it — malformed or version-mismatched
 bytecode is a memory-safety problem, not a parse error — so:
 
