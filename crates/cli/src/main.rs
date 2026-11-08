@@ -7,18 +7,18 @@ use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use tokio::sync::watch;
 use tracing::debug;
 
-use amigo_core::bandwidth::{BandwidthConfig, BandwidthLimiter};
-use amigo_core::config::Config;
-use amigo_core::coordinator::Coordinator;
-use amigo_core::protocol::dash::DashDownloader;
-use amigo_core::protocol::hls::HlsDownloader;
-use amigo_core::protocol::http::{DownloadProgress, HttpDownloader};
-use amigo_core::protocol::{DownloadJob, Protocol, ProtocolBackend};
-use amigo_core::queue::QueueStatus;
-use amigo_core::storage::Storage;
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::sandbox::SandboxLimits;
-use amigo_plugin_runtime::types::DownloadProtocol;
+use krake_core::bandwidth::{BandwidthConfig, BandwidthLimiter};
+use krake_core::config::Config;
+use krake_core::coordinator::Coordinator;
+use krake_core::protocol::dash::DashDownloader;
+use krake_core::protocol::hls::HlsDownloader;
+use krake_core::protocol::http::{DownloadProgress, HttpDownloader};
+use krake_core::protocol::{DownloadJob, Protocol, ProtocolBackend};
+use krake_core::queue::QueueStatus;
+use krake_core::storage::Storage;
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::sandbox::SandboxLimits;
+use krake_plugin_runtime::types::DownloadProtocol;
 
 /// Output mode for terminal display.
 #[derive(Debug, Clone, Copy, PartialEq, ValueEnum, Default)]
@@ -33,7 +33,7 @@ enum OutputMode {
 }
 
 #[derive(Parser)]
-#[command(name = "amigo-dl", about = "amigo-dl — fast, modular download manager")]
+#[command(name = "krake", about = "Krake — fast, modular download manager")]
 struct Cli {
     /// URLs to download directly (no subcommand needed)
     urls: Vec<String>,
@@ -123,9 +123,9 @@ enum Commands {
         #[command(subcommand)]
         action: UpdateAction,
     },
-    /// Pair this CLI with a remote amigo server (opens an approval request
+    /// Pair this CLI with a remote Krake server (opens an approval request
     /// in the server's web UI). Stores the returned API token in
-    /// `~/.config/amigo/remotes.toml` under the given alias.
+    /// `~/.config/krake/remotes.toml` under the given alias.
     Login {
         /// Base URL of the remote server, e.g. `http://nas:1516`.
         url: String,
@@ -226,8 +226,8 @@ fn print_banner(mode: OutputMode) {
         eprintln!(
             "{} {} {}",
             style("⚡").cyan(),
-            style("amigo-dl").bold().cyan(),
-            style(format!("v{}", amigo_core::updater::CURRENT_VERSION)).dim()
+            style("Krake").bold().cyan(),
+            style(format!("v{}", krake_core::updater::CURRENT_VERSION)).dim()
         );
         return;
     }
@@ -238,8 +238,8 @@ fn print_banner(mode: OutputMode) {
     eprintln!(
         "  {} {} {}",
         style("⚡").bold().yellow(),
-        style("amigo-dl").bold().cyan(),
-        style(format!("v{}", amigo_core::updater::CURRENT_VERSION)).dim()
+        style("Krake").bold().cyan(),
+        style(format!("v{}", krake_core::updater::CURRENT_VERSION)).dim()
     );
     eprintln!("  {}", style("Fast, modular download manager").dim());
     eprintln!();
@@ -386,8 +386,15 @@ impl Tui {
 
 fn init_coordinator() -> anyhow::Result<Arc<Coordinator>> {
     let config = Config::load_auto();
+    // Pre-rename installs kept their database as `amigo.db`.
+    if let Err(e) = krake_core::migrate::migrate_db(
+        std::path::Path::new("amigo.db"),
+        std::path::Path::new("krake.db"),
+    ) {
+        tracing::warn!("Could not move amigo.db to krake.db: {e}");
+    }
     let storage = Storage::open(
-        PathBuf::from("amigo.db"),
+        PathBuf::from("krake.db"),
         PathBuf::from(&config.download_dir),
         PathBuf::from(&config.temp_dir),
     )?;
@@ -474,6 +481,9 @@ async fn resolve_url(
     ))
 }
 
+/// Temp directory for partial direct downloads, inside the output directory.
+const TEMP_DIR_NAME: &str = ".krake-tmp";
+
 /// Run a direct download using the ProtocolBackend trait (same path as server).
 async fn direct_download(
     plugin_loader: &PluginLoader,
@@ -504,7 +514,7 @@ async fn direct_download(
         url: download_url,
         download_id: uuid::Uuid::new_v4().to_string(),
         download_dir: PathBuf::from(output_dir),
-        temp_dir: PathBuf::from(output_dir).join(".amigo-tmp"),
+        temp_dir: PathBuf::from(output_dir).join(TEMP_DIR_NAME),
         filename: Some(filename.clone()),
         headers: std::collections::HashMap::new(),
         max_chunks,
@@ -512,6 +522,13 @@ async fn direct_download(
     };
 
     tokio::fs::create_dir_all(output_dir).await?;
+    // Partial downloads of a pre-rename build sit in `.amigo-tmp`.
+    if let Err(e) = krake_core::migrate::migrate_path(
+        &PathBuf::from(output_dir).join(".amigo-tmp"),
+        &job.temp_dir,
+    ) {
+        tracing::warn!("Could not move .amigo-tmp to {TEMP_DIR_NAME}: {e}");
+    }
     tokio::fs::create_dir_all(&job.temp_dir).await?;
 
     let (progress_tx, progress_rx) = watch::channel(DownloadProgress {
@@ -586,7 +603,7 @@ async fn direct_download(
     }
 
     // Clean up temp dir if empty
-    let temp_dir = PathBuf::from(output_dir).join(".amigo-tmp");
+    let temp_dir = PathBuf::from(output_dir).join(TEMP_DIR_NAME);
     let _ = tokio::fs::remove_dir(&temp_dir).await;
 
     Ok(())
@@ -600,7 +617,7 @@ async fn run_direct_downloads(
     tui: &Tui,
 ) -> anyhow::Result<()> {
     if urls.is_empty() {
-        anyhow::bail!("No URLs provided. Usage: amigo-dl <URL> [URL...]");
+        anyhow::bail!("No URLs provided. Usage: krake <URL> [URL...]");
     }
 
     let config = Config::load_auto();
@@ -611,7 +628,7 @@ async fn run_direct_downloads(
         .unwrap_or_else(|e| {
             tracing::warn!("Failed to load plugin runtime: {e}");
             PluginLoader::new(
-                PathBuf::from("/etc/amigo/plugins"),
+                PathBuf::from("/etc/krake/plugins"),
                 SandboxLimits::default(),
             )
             .expect("Failed to initialize plugin runtime")
@@ -669,7 +686,7 @@ fn init_tracing(verbose: bool) {
         .init();
 }
 
-/// `amigo-dl plugins install <id>`: install a registry plugin on the paired
+/// `krake plugins install <id>`: install a registry plugin on the paired
 /// server, after showing which hosts it may contact and getting the user's
 /// confirmation (or `--yes`). The server refuses the install (HTTP 428)
 /// unless the approval is sent.
@@ -677,13 +694,11 @@ async fn plugins_install(id: &str, yes: bool, alias: Option<&str>) -> anyhow::Re
     let all = remotes::load();
     let Some((remote_name, remote)) = remotes::resolve(&all, alias) else {
         anyhow::bail!(
-            "No paired server. Pair with `amigo-dl login <url>` first, or pass --remote <alias>."
+            "No paired server. Pair with `krake login <url>` first, or pass --remote <alias>."
         );
     };
     let base = remote.url.trim_end_matches('/');
-    let client = reqwest::Client::builder()
-        .user_agent("amigo-downloader")
-        .build()?;
+    let client = reqwest::Client::builder().user_agent("krake").build()?;
 
     let entries: Vec<serde_json::Value> = client
         .get(format!("{base}/api/v1/updates/plugins/available"))
@@ -695,7 +710,7 @@ async fn plugins_install(id: &str, yes: bool, alias: Option<&str>) -> anyhow::Re
         .await?;
     let Some(entry) = entries.iter().find(|e| e["id"] == id) else {
         anyhow::bail!(
-            "Plugin {id} is not in the registry of '{remote_name}' (or needs a newer amigo)"
+            "Plugin {id} is not in the registry of '{remote_name}' (or needs a newer Krake)"
         );
     };
     if entry["installed"].as_bool() == Some(true) {
@@ -787,8 +802,8 @@ async fn main() -> anyhow::Result<()> {
     init_tracing(verbose);
 
     // Initialize i18n — detect system language, load locale
-    let lang = amigo_core::i18n::detect_system_lang();
-    amigo_core::i18n::init(&lang, std::path::Path::new("locales"));
+    let lang = krake_core::i18n::detect_system_lang();
+    krake_core::i18n::init(&lang, std::path::Path::new("locales"));
 
     // Resolve output mode (--no-color overrides to plain)
     let mode = if cli.no_color || std::env::var("NO_COLOR").is_ok() {
@@ -802,7 +817,7 @@ async fn main() -> anyhow::Result<()> {
     // Bare URLs without subcommand → direct download
     if cli.command.is_none() {
         if cli.urls.is_empty() {
-            Cli::parse_from(["amigo-dl", "--help"]);
+            Cli::parse_from(["krake", "--help"]);
         }
         print_banner(mode);
         return run_direct_downloads(&cli.urls, &cli.output, cli.chunks, &tui).await;
@@ -825,7 +840,7 @@ async fn main() -> anyhow::Result<()> {
                 println!("Added download: {id}");
             } else if let Some(nzb_path) = nzb {
                 let data = std::fs::read_to_string(&nzb_path)?;
-                let nzb = amigo_core::protocol::usenet::nzb::parse_nzb(&data)?;
+                let nzb = krake_core::protocol::usenet::nzb::parse_nzb(&data)?;
                 println!("NZB contains {} files", nzb.files.len());
                 for file in &nzb.files {
                     println!(
@@ -844,7 +859,7 @@ async fn main() -> anyhow::Result<()> {
                 println!("NZB import complete ({} files queued).", nzb.files.len());
             } else if let Some(dlc_path) = dlc {
                 let data = std::fs::read(&dlc_path)?;
-                let packages = amigo_core::container::import_dlc(&data)?;
+                let packages = krake_core::container::import_dlc(&data)?;
                 for pkg in &packages {
                     println!("Package: {} ({} links)", pkg.name, pkg.links.len());
                     for link in &pkg.links {
@@ -867,18 +882,18 @@ async fn main() -> anyhow::Result<()> {
                     ids.as_ref()
                         .is_none_or(|ids_str| ids_str.split(',').any(|i| i.trim() == d.id))
                 })
-                .map(|d| amigo_core::container::ContainerLink {
+                .map(|d| krake_core::container::ContainerLink {
                     url: d.url.clone(),
                     filename: d.filename.clone(),
                     filesize: d.filesize,
                 })
                 .collect();
 
-            let pkg = amigo_core::container::ContainerPackage {
+            let pkg = krake_core::container::ContainerPackage {
                 name: "Export".into(),
                 links,
             };
-            let dlc_data = amigo_core::container::export_dlc(&[pkg])?;
+            let dlc_data = krake_core::container::export_dlc(&[pkg])?;
             let out_path = "export.dlc";
             std::fs::write(out_path, &dlc_data)?;
             println!("Exported to {out_path}");
@@ -1050,7 +1065,7 @@ async fn main() -> anyhow::Result<()> {
             match mode {
                 OutputMode::Json => {
                     tui.json(&serde_json::json!({
-                        "version": amigo_core::updater::CURRENT_VERSION,
+                        "version": krake_core::updater::CURRENT_VERSION,
                         "active": active,
                         "queued": queued,
                         "completed": completed,
@@ -1083,7 +1098,7 @@ async fn main() -> anyhow::Result<()> {
                     );
                 }
                 OutputMode::Plain => {
-                    println!("amigo-dl v{}", amigo_core::updater::CURRENT_VERSION);
+                    println!("krake v{}", krake_core::updater::CURRENT_VERSION);
                     println!(
                         "Active: {active}  Queued: {queued}  Completed: {completed}  Failed: {failed}"
                     );
@@ -1154,8 +1169,8 @@ async fn main() -> anyhow::Result<()> {
 
         Commands::Plugins { action } => match action {
             PluginAction::Test { plugin, url } => {
-                use amigo_plugin_runtime::loader::PluginLoader;
-                use amigo_plugin_runtime::sandbox::SandboxLimits;
+                use krake_plugin_runtime::loader::PluginLoader;
+                use krake_plugin_runtime::sandbox::SandboxLimits;
 
                 let path = std::path::Path::new(&plugin);
                 if !path.exists() {
@@ -1244,8 +1259,8 @@ async fn main() -> anyhow::Result<()> {
             }
             PluginAction::List | PluginAction::Enable { .. } | PluginAction::Login { .. } => {
                 println!(
-                    "Plugin management requires a running server. Start `amigo-server` locally, \
-                     or pair against a remote with `amigo-dl login <url>`."
+                    "Plugin management requires a running server. Start `krake-server` locally, \
+                     or pair against a remote with `krake login <url>`."
                 );
             }
             PluginAction::Install { id, yes, remote } => {
@@ -1258,21 +1273,19 @@ async fn main() -> anyhow::Result<()> {
 
         Commands::Update { action } => match action {
             UpdateAction::Check => {
-                let client = reqwest::Client::builder()
-                    .user_agent("amigo-downloader")
-                    .build()?;
+                let client = reqwest::Client::builder().user_agent("krake").build()?;
                 let config = Config::load_auto();
 
                 println!("Checking for updates...");
 
-                match amigo_core::updater::check_for_update(
+                match krake_core::updater::check_for_update(
                     &client,
                     &config.update.github_repo,
-                    amigo_core::updater::Product::Cli,
+                    krake_core::updater::Product::Cli,
                 )
                 .await
                 {
-                    Ok(amigo_core::updater::CoreUpdateStatus::UpdateAvailable {
+                    Ok(krake_core::updater::CoreUpdateStatus::UpdateAvailable {
                         current,
                         latest,
                         release_notes,
@@ -1283,8 +1296,8 @@ async fn main() -> anyhow::Result<()> {
                             println!("\nRelease notes:\n{release_notes}");
                         }
                     }
-                    Ok(amigo_core::updater::CoreUpdateStatus::UpToDate) => {
-                        println!("Up to date (v{})", amigo_core::updater::CURRENT_VERSION);
+                    Ok(krake_core::updater::CoreUpdateStatus::UpToDate) => {
+                        println!("Up to date (v{})", krake_core::updater::CURRENT_VERSION);
                     }
                     Err(e) => {
                         println!("Could not check for updates: {e}");
@@ -1292,20 +1305,18 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
             UpdateAction::Apply { yes } => {
-                let client = reqwest::Client::builder()
-                    .user_agent("amigo-downloader")
-                    .build()?;
+                let client = reqwest::Client::builder().user_agent("krake").build()?;
                 let config = Config::load_auto();
 
-                let status = amigo_core::updater::check_for_update(
+                let status = krake_core::updater::check_for_update(
                     &client,
                     &config.update.github_repo,
-                    amigo_core::updater::Product::Cli,
+                    krake_core::updater::Product::Cli,
                 )
                 .await?;
 
                 match status {
-                    amigo_core::updater::CoreUpdateStatus::UpdateAvailable {
+                    krake_core::updater::CoreUpdateStatus::UpdateAvailable {
                         current,
                         latest,
                         download_url,
@@ -1319,21 +1330,21 @@ async fn main() -> anyhow::Result<()> {
                             return Ok(());
                         }
                         println!("Updating {current} → {latest}...");
-                        amigo_core::updater::download_and_apply(
+                        krake_core::updater::download_and_apply(
                             &client,
                             &download_url,
                             sha256_url.as_deref(),
                             sig_url.as_deref(),
                             &latest,
-                            amigo_core::updater::Product::Cli,
+                            krake_core::updater::Product::Cli,
                         )
                         .await?;
-                        println!("Update applied! Restart amigo-dl to use v{latest}.");
+                        println!("Update applied! Restart krake to use v{latest}.");
                     }
-                    amigo_core::updater::CoreUpdateStatus::UpToDate => {
+                    krake_core::updater::CoreUpdateStatus::UpToDate => {
                         println!(
                             "Already up to date (v{}).",
-                            amigo_core::updater::CURRENT_VERSION
+                            krake_core::updater::CURRENT_VERSION
                         );
                     }
                 }
@@ -1347,7 +1358,7 @@ async fn main() -> anyhow::Result<()> {
             RemoteAction::List => {
                 let r = remotes::load();
                 if r.remotes.is_empty() {
-                    tui.info("No remotes configured. Run `amigo-dl login <url>`.");
+                    tui.info("No remotes configured. Run `krake login <url>`.");
                 } else {
                     for (alias, remote) in &r.remotes {
                         let marker = if r.default.as_deref() == Some(alias) {
@@ -1375,7 +1386,7 @@ async fn main() -> anyhow::Result<()> {
                 let mut r = remotes::load();
                 if !r.remotes.contains_key(&name) {
                     tui.error(&format!(
-                        "No remote named {name} — run `amigo-dl login` first."
+                        "No remote named {name} — run `krake login` first."
                     ));
                 } else {
                     r.default = Some(name.clone());
@@ -1396,7 +1407,7 @@ async fn pair_with_remote(url: &str, name_override: Option<&str>, tui: &Tui) -> 
     let hostname = std::env::var("HOSTNAME")
         .ok()
         .or_else(hostname_fallback)
-        .unwrap_or_else(|| "amigo-cli".to_string());
+        .unwrap_or_else(|| "krake-cli".to_string());
     let device_name = name_override.unwrap_or(&hostname).to_string();
 
     let client = reqwest::Client::builder()

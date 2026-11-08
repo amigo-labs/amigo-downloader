@@ -6,10 +6,10 @@
 use std::path::Path;
 use std::sync::Arc;
 
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::registry::RegistryConfig;
-use amigo_plugin_runtime::sandbox::SandboxLimits;
-use amigo_plugin_runtime::updater::PluginUpdater;
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::registry::RegistryConfig;
+use krake_plugin_runtime::sandbox::SandboxLimits;
+use krake_plugin_runtime::updater::PluginUpdater;
 use sha2::{Digest, Sha256};
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
@@ -120,7 +120,7 @@ async fn install_rejects_manifest_wider_than_approved_and_leaves_no_file() {
     assert!(
         matches!(
             err,
-            amigo_plugin_runtime::Error::PermissionApprovalRequired(_)
+            krake_plugin_runtime::Error::PermissionApprovalRequired(_)
         ),
         "{err}"
     );
@@ -135,7 +135,7 @@ async fn install_rejects_manifest_wider_than_approved_and_leaves_no_file() {
     let err = updater.install_plugin("greedy", false).await.unwrap_err();
     assert!(matches!(
         err,
-        amigo_plugin_runtime::Error::PermissionApprovalRequired(_)
+        krake_plugin_runtime::Error::PermissionApprovalRequired(_)
     ));
 }
 
@@ -188,7 +188,7 @@ async fn install_then_update_in_place_and_widening_needs_approval() {
     let err = updater.update_plugin("good", false).await.unwrap_err();
     assert!(matches!(
         err,
-        amigo_plugin_runtime::Error::PermissionApprovalRequired(_)
+        krake_plugin_runtime::Error::PermissionApprovalRequired(_)
     ));
     assert_eq!(
         loader.get_plugin_meta("good").await.unwrap().version,

@@ -7,12 +7,12 @@
     canPause, canResume, canRetry, etaSeconds, formatEta,
   } from "../lib/download";
   import { createDownloadActions } from "../lib/downloadActions.svelte";
-  import ChunkViz from "@amigo/ui/components/ChunkViz.svelte";
-  import ProgressBar from "@amigo/ui/components/ProgressBar.svelte";
-  import Button from "@amigo/ui/components/Button.svelte";
-  import IconButton from "@amigo/ui/components/IconButton.svelte";
-  import EmptyState from "@amigo/ui/components/EmptyState.svelte";
-  import Banner from "@amigo/ui/components/Banner.svelte";
+  import ChunkViz from "@amigo-labs/krake-ui/components/ChunkViz.svelte";
+  import ProgressBar from "@amigo-labs/krake-ui/components/ProgressBar.svelte";
+  import Button from "@amigo-labs/krake-ui/components/Button.svelte";
+  import IconButton from "@amigo-labs/krake-ui/components/IconButton.svelte";
+  import EmptyState from "@amigo-labs/krake-ui/components/EmptyState.svelte";
+  import Banner from "@amigo-labs/krake-ui/components/Banner.svelte";
 
   let dl = $derived($selectedDownload);
 

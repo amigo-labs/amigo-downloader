@@ -1,12 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-# amigo-dl installer — downloads the latest stable CLI binary.
-# Usage: curl -fsSL https://raw.githubusercontent.com/amigo-labs/amigo-downloader/main/scripts/install.sh | bash
+# krake installer — downloads the latest stable CLI binary.
+# Usage: curl -fsSL https://raw.githubusercontent.com/amigo-labs/amigo-krake/main/scripts/install.sh | bash
 
-REPO="amigo-labs/amigo-downloader"
-INSTALL_DIR="${AMIGO_INSTALL_DIR:-/usr/local/bin}"
-TAG="${AMIGO_TAG:-latest}"  # override with AMIGO_TAG=v0.2.0
+REPO="amigo-labs/amigo-krake"
+# AMIGO_INSTALL_DIR / AMIGO_TAG are the deprecated pre-rename names.
+INSTALL_DIR="${KRAKE_INSTALL_DIR:-${AMIGO_INSTALL_DIR:-/usr/local/bin}}"
+TAG="${KRAKE_TAG:-${AMIGO_TAG:-latest}}"  # override with KRAKE_TAG=v0.2.0
 
 # Resolve "latest" to the actual release tag via GitHub API
 if [ "$TAG" = "latest" ]; then
@@ -17,7 +18,7 @@ if [ "$TAG" = "latest" ]; then
     case "$HTTP_STATUS" in
         200) ;;
         404)
-            echo "No stable release exists yet for ${REPO}. Set AMIGO_TAG=<tag> to install a specific version." >&2
+            echo "No stable release exists yet for ${REPO}. Set KRAKE_TAG=<tag> to install a specific version." >&2
             exit 1
             ;;
         000)
@@ -55,11 +56,11 @@ case "$ARCH" in
     *)             echo "Unsupported architecture: $ARCH"; exit 1 ;;
 esac
 
-ARCHIVE="amigo-dl-${OS_NAME}-${ARCH_NAME}.tar.gz"
+ARCHIVE="krake-${OS_NAME}-${ARCH_NAME}.tar.gz"
 URL="https://github.com/${REPO}/releases/download/${TAG}/${ARCHIVE}"
 SHA_URL="${URL}.sha256"
 
-echo "Installing amigo-dl (${OS_NAME}/${ARCH_NAME})..."
+echo "Installing krake (${OS_NAME}/${ARCH_NAME})..."
 
 # Download to temp dir
 TMP_DIR="$(mktemp -d)"
@@ -83,10 +84,10 @@ fi
 # Extract and install
 tar xzf "$ARCHIVE"
 
-# amigo-plugin-host runs plugin JavaScript outside amigo-dl; it must sit next
-# to amigo-dl. Archives from before it existed do not contain it.
-BINARIES="amigo-dl"
-[ -f amigo-plugin-host ] && BINARIES="$BINARIES amigo-plugin-host"
+# krake-plugin-host runs plugin JavaScript outside krake; it must sit next
+# to krake. Archives from before it existed do not contain it.
+BINARIES="krake"
+[ -f krake-plugin-host ] && BINARIES="$BINARIES krake-plugin-host"
 
 if [ -w "$INSTALL_DIR" ]; then
     SUDO=""
@@ -100,5 +101,5 @@ for bin in $BINARIES; do
 done
 
 echo ""
-echo "Installed amigo-dl to ${INSTALL_DIR}/amigo-dl"
-echo "Run 'amigo-dl --help' to get started."
+echo "Installed krake to ${INSTALL_DIR}/krake"
+echo "Run 'krake --help' to get started."

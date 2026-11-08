@@ -4,7 +4,7 @@
   import { getConfig, putConfig, getWebhooks, type AppConfig } from "../lib/api";
   import { addToast } from "../lib/toast";
   import { locale, tr, type Locale } from "../lib/i18n";
-  import Icon from "@amigo/ui/components/Icon.svelte";
+  import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
 
   import SettingsFeatures from "../components/settings/SettingsFeatures.svelte";
   import SettingsUsenet from "../components/settings/SettingsUsenet.svelte";
@@ -78,12 +78,12 @@
     <h3 class="text-lg font-bold mb-4" style="color: var(--text-primary)">{tr($locale, "settings.about")}</h3>
     <div class="rounded-xl p-5" style="background: var(--bg-surface); border: 1px solid var(--border-color)">
       <div class="flex items-center gap-4">
-        <img src="/amigo-logo.png" alt="amigo-downloader" width="40" height="40" class="rounded-lg" />
+        <img src="/icon.svg" alt="Krake" width="40" height="40" />
         <div>
-          <p class="font-bold" style="color: var(--text-primary)">amigo-downloader</p>
+          <p class="font-bold" style="color: var(--text-primary)">Krake</p>
           <p class="text-sm" style="color: var(--text-secondary)">v0.1.0 — Fast, modular download manager</p>
           <p class="text-xs mt-1" style="font-family: var(--font-mono);color: var(--text-secondary)">
-            github.com/amigo-labs/amigo-downloader
+            github.com/amigo-labs/amigo-krake
           </p>
         </div>
       </div>

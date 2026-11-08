@@ -371,8 +371,8 @@ impl Storage {
         ensure_active_url_index(&conn)?;
         Ok(Self {
             db: Arc::new(Mutex::new(conn)),
-            download_dir: PathBuf::from("/tmp/amigo-downloads"),
-            temp_dir: PathBuf::from("/tmp/amigo-tmp"),
+            download_dir: PathBuf::from("/tmp/krake-downloads"),
+            temp_dir: PathBuf::from("/tmp/krake-tmp"),
         })
     }
 
@@ -1415,7 +1415,7 @@ mod tests {
             poll_token_hash: "poll-hash".into(),
             device_name: "laptop".into(),
             source_ip: "192.0.2.5".into(),
-            user_agent: "amigo-dl/0.1".into(),
+            user_agent: "krake/0.1".into(),
             fingerprint: "472-189".into(),
             status: "pending".into(),
             api_token_plain: None,

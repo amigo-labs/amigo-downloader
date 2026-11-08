@@ -35,8 +35,8 @@ design decisions are recorded at the end.
   cache read re-verifies them. If verification fails, the cache counts as a
   miss and the index is refetched.
   Test: `cached_index_is_reverified_and_tampering_forces_a_refetch`.
-- [x] `release-build.yml` passes `AMIGO_REGISTRY_PUBKEY_HEX` and
-  `AMIGO_UPDATE_PUBKEY_HEX` (repository *variables* — public keys) to native,
+- [x] `release-build.yml` passes `KRAKE_REGISTRY_PUBKEY_HEX` and
+  `KRAKE_UPDATE_PUBKEY_HEX` (repository *variables* — public keys) to native,
   cross and Docker builds. It fails early if they are unset. CI runs
   `cargo check --release` to exercise the `build.rs` guards.
 - [x] `RegistryPlugin::id` must match `^[a-z0-9][a-z0-9-]{0,63}$` before it is
@@ -92,7 +92,7 @@ second, overlapping key is a possible follow-up.
   host, a non-declared host, a redirect to a non-declared host, and two
   plugins with different lists.
 - [x] Install always requires approval: the server returns HTTP 428 without
-  `approve_permissions`. The Web UI and `amigo-dl plugins install` show the
+  `approve_permissions`. The Web UI and `krake plugins install` show the
   domains first, or an explicit "any public host" warning.
 - [x] An update whose domain set grows is never auto-applied. A manual update
   must be approved.
@@ -116,12 +116,12 @@ second, overlapping key is a possible follow-up.
   `apiVersion` loads as 1, with a warning, for one release.
 - [x] `RegistryPlugin.api_version` lets the marketplace and the update check
   filter out entries the host cannot load.
-- [x] Shipped plugins, the template, `amigo.d.ts` and the SDK declare
+- [x] Shipped plugins, the template, `krake.d.ts` and the SDK declare
   `apiVersion`. `docs/plugin-api.md` states the compatibility policy.
 
 ## SH-6. Local bytecode cache (#83)
 
-- [x] The cache lives at `$AMIGO_CONFIG_DIR/cache/plugin-bytecode/<key>.qjsc`.
+- [x] The cache lives at `$KRAKE_CONFIG_DIR/cache/plugin-bytecode/<key>.qjsc`.
   The key is `sha256(engine fingerprint || filename || source)`, and the
   fingerprint covers the QuickJS version, cache format, runtime version, and
   pointer width / endianness.
@@ -146,7 +146,7 @@ second, overlapping key is a possible follow-up.
 
 ## SH-7a. Out-of-process plugin host (#79) — process split
 
-Plugin JS runs in a separate binary, `amigo-plugin-host`, not in the daemon.
+Plugin JS runs in a separate binary, `krake-plugin-host`, not in the daemon.
 This contains crashes (a QuickJS abort or segfault, or `panic = "abort"`, kills
 the child, not the queue). It does **not** yet contain a memory-safety
 exploit: the child runs as the same OS user with the same filesystem and
@@ -185,12 +185,12 @@ network reach as the daemon until SH-7b lands.
   `solveCaptcha` is a callback, so a pending captcha never trips it.
   Tests: `stopped_child_is_killed_by_the_watchdog`,
   `captcha_callback_round_trips_through_the_parent`.
-- [x] The parent finds the binary through `AMIGO_PLUGIN_HOST_BIN`, then next to
+- [x] The parent finds the binary through `KRAKE_PLUGIN_HOST_BIN`, then next to
   its own executable (and one level up from `deps/` for test binaries). When
   it is missing, loading fails with a clear error and the daemon runs without
   plugins. Test: `missing_host_binary_is_a_clear_error`.
 - [x] The Docker image and both release archives (CLI, server) ship
-  `amigo-plugin-host`.
+  `krake-plugin-host`.
 - Measured with `tests/perf_baseline.rs` in release (4 vCPU container), median
   of four runs each, against the same commit without the split:
 
@@ -206,7 +206,7 @@ network reach as the daemon until SH-7b lands.
   cache starts empty, so "cold" no longer benefits from an earlier run. A
   daemon pays this once at startup. Each host call costs ~0.2 ms of IPC,
   which is noise next to the network latency of a real resolve.
-- The self-updater installs `amigo-plugin-host` together with the binary from
+- The self-updater installs `krake-plugin-host` together with the binary from
   the same release archive (`docs/specs/self-update.md`). A daemon still
   running the old version after an update refuses a respawned host that
   speaks another protocol version (handshake), so plugins fail closed with a
@@ -221,7 +221,7 @@ network reach as the daemon until SH-7b lands.
 These decisions are settled here so the implementation PR does not have to
 argue them again:
 
-- **Topology:** one shared child process (`amigo-plugin-host`) for all
+- **Topology:** one shared child process (`krake-plugin-host`) for all
   plugins. The threat is plugin-vs-daemon. Cookie jars, storage, request
   counters and allowlists are already per plugin, and each plugin already has
   its own QuickJS runtime inside the child.
@@ -232,6 +232,6 @@ argue them again:
   parent.
 - **No sandbox primitive available** (for example, Linux before 5.13): refuse
   to run *unscoped* plugins and run scoped ones with a startup warning. An
-  `AMIGO_PLUGIN_SANDBOX=off` override is for development only.
+  `KRAKE_PLUGIN_SANDBOX=off` override is for development only.
 - **Measurements:** compare against the baseline in SH-6 (load and resolve)
   plus daemon startup.

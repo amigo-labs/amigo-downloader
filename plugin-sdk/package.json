@@ -1,11 +1,11 @@
 {
-  "name": "@amigo/plugin-sdk",
+  "name": "@amigo-labs/krake-plugin-sdk",
   "version": "0.1.0",
   "engines": {
     "node": ">=22"
   },
   "private": true,
-  "description": "TypeScript SDK for building amigo-downloader plugins",
+  "description": "TypeScript SDK for building Krake plugins",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,7 +20,7 @@
     }
   },
   "bin": {
-    "amigo-plugin": "./dist/cli/main.js"
+    "krake-plugin": "./dist/cli/main.js"
   },
   "files": [
     "dist",

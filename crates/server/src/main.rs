@@ -5,23 +5,26 @@ use axum::http::{HeaderValue, Method, header};
 use tower_http::cors::CorsLayer;
 use tracing_subscriber::EnvFilter;
 
-use amigo_core::captcha::CaptchaManager;
-use amigo_core::config::Config;
-use amigo_core::coordinator::{Coordinator, DownloadEvent};
-use amigo_core::storage::Storage;
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::registry::RegistryConfig;
-use amigo_plugin_runtime::sandbox::SandboxLimits;
-use amigo_plugin_runtime::updater::PluginUpdater;
-use amigo_server::{
+use krake_core::captcha::CaptchaManager;
+use krake_core::config::Config;
+use krake_core::coordinator::{Coordinator, DownloadEvent};
+use krake_core::storage::Storage;
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::registry::RegistryConfig;
+use krake_plugin_runtime::sandbox::SandboxLimits;
+use krake_plugin_runtime::updater::PluginUpdater;
+use krake_server::{
     api, auth, background, clicknload, feedback, login, nzbget_api, pairing, password, resolver,
     security_headers_layer, setup, static_files, update_api, webhooks, ws,
 };
 
 /// Whether a boolean-style environment variable is set to a truthy value
 /// (`1` / `true` / `yes` / `on`, case-insensitive).
+/// The database, relative to the working directory.
+const DB_FILE: &str = "krake.db";
+
 fn env_flag(name: &str) -> bool {
-    std::env::var(name)
+    krake_core::env::var(name)
         .is_ok_and(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes" | "on"))
 }
 
@@ -39,15 +42,15 @@ async fn main() -> anyhow::Result<()> {
     // Env overrides — useful for Docker / IaC where flipping `bind` or
     // enabling reverse-proxy awareness shouldn't require editing a TOML
     // file that also lives in a volume.
-    if let Ok(bind) = std::env::var("AMIGO_BIND")
+    if let Ok(bind) = krake_core::env::var("KRAKE_BIND")
         && !bind.trim().is_empty()
     {
         config.server.bind = bind;
     }
-    if env_flag("AMIGO_TRUST_PROXY") {
+    if env_flag("KRAKE_TRUST_PROXY") {
         config.server.trust_proxy = true;
     }
-    if env_flag("AMIGO_AUTO_UPDATE_PLUGINS") {
+    if env_flag("KRAKE_AUTO_UPDATE_PLUGINS") {
         config.update.auto_update_plugins = true;
     }
 
@@ -60,18 +63,18 @@ async fn main() -> anyhow::Result<()> {
         anyhow::bail!("Invalid configuration — refusing to start");
     }
 
-    // Headless setup: if `AMIGO_SETUP_USER` + `AMIGO_SETUP_PASSWORD` are
+    // Headless setup: if `KRAKE_SETUP_USER` + `KRAKE_SETUP_PASSWORD` are
     // provided and the wizard has not been completed, finish it now so the
     // server comes up fully authenticated without the browser.
     if !config.server.setup_complete
         && let (Ok(user), Ok(pw)) = (
-            std::env::var("AMIGO_SETUP_USER"),
-            std::env::var("AMIGO_SETUP_PASSWORD"),
+            krake_core::env::var("KRAKE_SETUP_USER"),
+            krake_core::env::var("KRAKE_SETUP_PASSWORD"),
         )
     {
         if user.trim().is_empty() || pw.len() < 8 {
             tracing::error!(
-                "AMIGO_SETUP_USER / AMIGO_SETUP_PASSWORD provided but invalid (user empty or password < 8 chars)"
+                "KRAKE_SETUP_USER / KRAKE_SETUP_PASSWORD provided but invalid (user empty or password < 8 chars)"
             );
             anyhow::bail!("invalid setup env vars");
         }
@@ -84,8 +87,15 @@ async fn main() -> anyhow::Result<()> {
         tracing::info!("Setup completed from environment variables — admin account active.");
     }
 
+    // Pre-rename installs kept their database as `amigo.db`.
+    if let Err(e) = krake_core::migrate::migrate_db(
+        std::path::Path::new("amigo.db"),
+        std::path::Path::new(DB_FILE),
+    ) {
+        tracing::warn!("Could not move amigo.db to {DB_FILE}: {e}");
+    }
     let storage = Storage::open(
-        PathBuf::from("amigo.db"),
+        PathBuf::from(DB_FILE),
         PathBuf::from(&config.download_dir),
         PathBuf::from(&config.temp_dir),
     )?;
@@ -93,9 +103,7 @@ async fn main() -> anyhow::Result<()> {
     let mut coordinator = Coordinator::new(config.clone(), storage);
 
     // Shared HTTP client
-    let http_client = reqwest::Client::builder()
-        .user_agent("amigo-downloader")
-        .build()?;
+    let http_client = reqwest::Client::builder().user_agent("krake").build()?;
 
     // Create captcha manager
     let captcha_manager = Arc::new(CaptchaManager::new(
@@ -108,7 +116,7 @@ async fn main() -> anyhow::Result<()> {
     // governs other sandbox limits.
     let sandbox_limits = SandboxLimits::default();
     let mut plugin_host_api =
-        amigo_plugin_runtime::host_api::HostApi::from_sandbox(&sandbox_limits);
+        krake_plugin_runtime::host_api::HostApi::from_sandbox(&sandbox_limits);
 
     // Wire notify callback: plugin → broadcast → WebSocket → UI toast
     {
@@ -142,15 +150,15 @@ async fn main() -> anyhow::Result<()> {
             .expect("Failed to initialize plugin runtime — cannot start server");
     // Locally compiled plugin bytecode, so restarts skip transpile + compile.
     // Lives next to the config (daemon-writable only — plugin JS has no
-    // filesystem access); see `amigo_plugin_runtime::bytecode_cache`.
-    let bytecode_dir = std::env::var_os("AMIGO_CONFIG_DIR")
+    // filesystem access); see `krake_plugin_runtime::bytecode_cache`.
+    let bytecode_dir = krake_core::env::var_os("KRAKE_CONFIG_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
         .join("cache")
         .join("plugin-bytecode");
-    match amigo_plugin_runtime::bytecode_cache::BytecodeCache::open(
+    match krake_plugin_runtime::bytecode_cache::BytecodeCache::open(
         &bytecode_dir,
-        amigo_plugin_runtime::bytecode_cache::DEFAULT_MAX_ENTRIES,
+        krake_plugin_runtime::bytecode_cache::DEFAULT_MAX_ENTRIES,
     ) {
         Ok(cache) => plugin_loader = plugin_loader.with_bytecode_cache(cache),
         Err(e) => tracing::warn!(
@@ -178,17 +186,17 @@ async fn main() -> anyhow::Result<()> {
     }
 
     // Plugin updater. Registry signatures are required by default — a
-    // developer bootstrap override (`AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED=1`)
+    // developer bootstrap override (`KRAKE_PLUGIN_REGISTRY_DEV_UNSIGNED=1`)
     // disables verification with a loud warning, for working against a
     // locally-hosted unsigned fork.
-    let dev_unsigned = env_flag("AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED");
+    let dev_unsigned = env_flag("KRAKE_PLUGIN_REGISTRY_DEV_UNSIGNED");
     if dev_unsigned {
         tracing::warn!(
-            "AMIGO_PLUGIN_REGISTRY_DEV_UNSIGNED is set — plugin registry signatures will NOT be verified. DO NOT use this for production."
+            "KRAKE_PLUGIN_REGISTRY_DEV_UNSIGNED is set — plugin registry signatures will NOT be verified. DO NOT use this for production."
         );
     }
     // Derived from `RegistryConfig::default()`, which never trusts the
-    // all-zero placeholder key of a build without AMIGO_REGISTRY_PUBKEY_HEX.
+    // all-zero placeholder key of a build without KRAKE_REGISTRY_PUBKEY_HEX.
     let registry_config =
         RegistryConfig::for_index(config.update.plugin_registry_url.clone(), dev_unsigned);
     let plugin_updater = Arc::new(PluginUpdater::new(
@@ -245,7 +253,7 @@ async fn main() -> anyhow::Result<()> {
     };
 
     let bind_is_loopback = config.server.is_bind_loopback();
-    let setup_pin_env = std::env::var("AMIGO_SETUP_PIN").ok();
+    let setup_pin_env = krake_core::env::var("KRAKE_SETUP_PIN").ok();
     let auth_state = auth::AuthState::new(
         state.clone(),
         config.server.api_token.clone(),
@@ -310,7 +318,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let bind = config.server.bind.clone();
-    tracing::info!("Starting amigo-server on {bind}");
+    tracing::info!("Starting krake-server on {bind}");
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     axum::serve(

@@ -4,7 +4,7 @@
   import { toasts, removeToast, pauseToast, resumeToast, type Toast } from "../lib/toast";
   import { dur, flipConfig } from "../lib/motion";
   import { locale, tr } from "../lib/i18n";
-  import Icon from "@amigo/ui/components/Icon.svelte";
+  import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
 
   // -ink variants: these carry text and glyphs, so they must clear AA.
   function inkFor(type: Toast["type"]) {

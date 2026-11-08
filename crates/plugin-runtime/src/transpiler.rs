@@ -188,7 +188,7 @@ const x = 42;
     #[test]
     fn test_strip_declare() {
         let ts = r#"
-declare const amigo: { httpGet(url: string): string; };
+declare const krake: { httpGet(url: string): string; };
 function resolve(url: string) { return { url: url }; }
 "#;
         let js = transpile(ts, "test.ts").unwrap();

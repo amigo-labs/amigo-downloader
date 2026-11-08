@@ -22,7 +22,7 @@ describe("parseArgs", () => {
 describe("runNew", () => {
   let workdir: string;
   beforeEach(() => {
-    workdir = mkdtempSync(join(tmpdir(), "amigo-sdk-"));
+    workdir = mkdtempSync(join(tmpdir(), "krake-sdk-"));
   });
   afterEach(() => {
     rmSync(workdir, { recursive: true, force: true });

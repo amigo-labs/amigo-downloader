@@ -4,7 +4,7 @@
 //!
 //! - `GET  /api/v1/setup/status` — public; returns `{needs_setup, needs_pin}`.
 //! - `POST /api/v1/setup/complete` — body `{username, password, pin?}`.
-//!   Protected by `require_setup_pin` when `AMIGO_SETUP_PIN` is set; TOFU
+//!   Protected by `require_setup_pin` when `KRAKE_SETUP_PIN` is set; TOFU
 //!   otherwise. Hashes the password with Argon2id, persists to `config.toml`,
 //!   marks `setup_complete = true`, and issues a session cookie so the
 //!   wizard can redirect the browser straight into the app.

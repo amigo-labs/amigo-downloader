@@ -1,8 +1,8 @@
-// amigo-downloader Service Worker
+// Krake service worker
 // Minimal: app shell caching + offline support
 // Share Target uses GET, so no SW interception needed
 
-const CACHE_NAME = "amigo-v1";
+const CACHE_NAME = "krake-v1";
 const APP_SHELL = ["/", "/index.html"];
 
 // Install: pre-cache app shell

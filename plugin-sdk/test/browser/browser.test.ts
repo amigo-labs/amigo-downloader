@@ -237,7 +237,7 @@ describe("Browser clone", () => {
       http: (request) => ok({ url: request.url, body: new Uint8Array() }),
     });
     const original = new Browser({ hostApi: controller.api });
-    original.setUserAgent("amigo-test/1.0");
+    original.setUserAgent("krake-test/1.0");
     original.cookieJar.set("https://example.test/", "sid=1");
 
     const clone = original.clone();

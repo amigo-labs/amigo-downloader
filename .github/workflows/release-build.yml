@@ -27,8 +27,8 @@ env:
   # without them (or with the all-zero placeholder). They are public, so they
   # are repository variables, not secrets: Settings → Secrets and variables →
   # Actions → Variables.
-  AMIGO_REGISTRY_PUBKEY_HEX: ${{ vars.AMIGO_REGISTRY_PUBKEY_HEX }}
-  AMIGO_UPDATE_PUBKEY_HEX: ${{ vars.AMIGO_UPDATE_PUBKEY_HEX }}
+  KRAKE_REGISTRY_PUBKEY_HEX: ${{ vars.AMIGO_REGISTRY_PUBKEY_HEX }}
+  KRAKE_UPDATE_PUBKEY_HEX: ${{ vars.AMIGO_UPDATE_PUBKEY_HEX }}
 
 permissions:
   contents: write
@@ -45,31 +45,31 @@ jobs:
         include:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
-            cli_archive: amigo-dl-linux-x86_64.tar.gz
-            server_archive: amigo-server-linux-x86_64.tar.gz
+            cli_archive: krake-linux-x86_64.tar.gz
+            server_archive: krake-server-linux-x86_64.tar.gz
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-latest
-            cli_archive: amigo-dl-linux-aarch64.tar.gz
-            server_archive: amigo-server-linux-aarch64.tar.gz
+            cli_archive: krake-linux-aarch64.tar.gz
+            server_archive: krake-server-linux-aarch64.tar.gz
             cross: true
           - target: x86_64-apple-darwin
             os: macos-latest
-            cli_archive: amigo-dl-macos-x86_64.tar.gz
-            server_archive: amigo-server-macos-x86_64.tar.gz
+            cli_archive: krake-macos-x86_64.tar.gz
+            server_archive: krake-server-macos-x86_64.tar.gz
           - target: aarch64-apple-darwin
             os: macos-latest
-            cli_archive: amigo-dl-macos-aarch64.tar.gz
-            server_archive: amigo-server-macos-aarch64.tar.gz
+            cli_archive: krake-macos-aarch64.tar.gz
+            server_archive: krake-server-macos-aarch64.tar.gz
           - target: x86_64-pc-windows-msvc
             os: windows-latest
-            cli_archive: amigo-dl-windows-x86_64.zip
-            server_archive: amigo-server-windows-x86_64.zip
+            cli_archive: krake-windows-x86_64.zip
+            server_archive: krake-server-windows-x86_64.zip
 
     steps:
       - name: Require pinned signing keys
         shell: bash
         run: |
-          for var in AMIGO_REGISTRY_PUBKEY_HEX AMIGO_UPDATE_PUBKEY_HEX; do
+          for var in KRAKE_REGISTRY_PUBKEY_HEX KRAKE_UPDATE_PUBKEY_HEX; do
             if [ -z "${!var}" ]; then
               echo "::error::Repository variable $var is not set; release builds must pin a real Ed25519 public key."
               exit 1
@@ -109,25 +109,25 @@ jobs:
 
       - name: Build CLI and Server
         if: ${{ !matrix.cross }}
-        run: cargo build --release --target ${{ matrix.target }} -p amigo-cli -p amigo-server -p amigo-plugin-runtime
+        run: cargo build --release --target ${{ matrix.target }} -p krake-cli -p krake-server -p krake-plugin-runtime
 
       - name: Build CLI and Server (cross)
         if: ${{ matrix.cross }}
-        run: cross build --release --target ${{ matrix.target }} -p amigo-cli -p amigo-server -p amigo-plugin-runtime
+        run: cross build --release --target ${{ matrix.target }} -p krake-cli -p krake-server -p krake-plugin-runtime
 
-      # Both archives carry amigo-plugin-host: the CLI and the server each
+      # Both archives carry krake-plugin-host: the CLI and the server each
       # run plugins in it and look for it next to their own executable.
       - name: Package (Unix)
         if: runner.os != 'Windows'
         run: |
           cd target/${{ matrix.target }}/release
 
-          tar czf ../../../${{ matrix.cli_archive }} amigo-dl amigo-plugin-host
+          tar czf ../../../${{ matrix.cli_archive }} krake krake-plugin-host
           cd ../../..
           sha256sum ${{ matrix.cli_archive }} > ${{ matrix.cli_archive }}.sha256
 
           cd target/${{ matrix.target }}/release
-          tar czf ../../../${{ matrix.server_archive }} amigo-server amigo-plugin-host
+          tar czf ../../../${{ matrix.server_archive }} krake-server krake-plugin-host
           cd ../../..
           sha256sum ${{ matrix.server_archive }} > ${{ matrix.server_archive }}.sha256
 
@@ -135,10 +135,10 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          Compress-Archive -Path target/${{ matrix.target }}/release/amigo-dl.exe, target/${{ matrix.target }}/release/amigo-plugin-host.exe -DestinationPath ${{ matrix.cli_archive }}
+          Compress-Archive -Path target/${{ matrix.target }}/release/krake.exe, target/${{ matrix.target }}/release/krake-plugin-host.exe -DestinationPath ${{ matrix.cli_archive }}
           (Get-FileHash ${{ matrix.cli_archive }} -Algorithm SHA256).Hash.ToLower() + "  ${{ matrix.cli_archive }}" | Out-File -Encoding ascii ${{ matrix.cli_archive }}.sha256
 
-          Compress-Archive -Path target/${{ matrix.target }}/release/amigo-server.exe, target/${{ matrix.target }}/release/amigo-plugin-host.exe -DestinationPath ${{ matrix.server_archive }}
+          Compress-Archive -Path target/${{ matrix.target }}/release/krake-server.exe, target/${{ matrix.target }}/release/krake-plugin-host.exe -DestinationPath ${{ matrix.server_archive }}
           (Get-FileHash ${{ matrix.server_archive }} -Algorithm SHA256).Hash.ToLower() + "  ${{ matrix.server_archive }}" | Out-File -Encoding ascii ${{ matrix.server_archive }}.sha256
 
       - uses: actions/upload-artifact@v4
@@ -186,15 +186,15 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/amigo-labs/amigo-downloader:latest
-            ghcr.io/amigo-labs/amigo-downloader:${{ inputs.version }}
-            ghcr.io/amigo-labs/amigo-downloader:${{ steps.version.outputs.minor }}
-            ghcr.io/amigo-labs/amigo-downloader:${{ steps.version.outputs.major }}
+            ghcr.io/amigo-labs/krake:latest
+            ghcr.io/amigo-labs/krake:${{ inputs.version }}
+            ghcr.io/amigo-labs/krake:${{ steps.version.outputs.minor }}
+            ghcr.io/amigo-labs/krake:${{ steps.version.outputs.major }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
-            AMIGO_REGISTRY_PUBKEY_HEX=${{ vars.AMIGO_REGISTRY_PUBKEY_HEX }}
-            AMIGO_UPDATE_PUBKEY_HEX=${{ vars.AMIGO_UPDATE_PUBKEY_HEX }}
+            KRAKE_REGISTRY_PUBKEY_HEX=${{ vars.AMIGO_REGISTRY_PUBKEY_HEX }}
+            KRAKE_UPDATE_PUBKEY_HEX=${{ vars.AMIGO_UPDATE_PUBKEY_HEX }}
 
   # ─── Desktop Installers (Tauri) ────────────────────────────────────
   installers:
@@ -297,20 +297,20 @@ jobs:
       - name: List artifacts
         run: find artifacts -type f | sort
 
-      # The self-updater (amigo-server, amigo-dl) refuses a release without a
+      # The self-updater (krake-server, krake) refuses a release without a
       # `.sig` next to its archive. The secret holds the private seed matching
-      # AMIGO_UPDATE_PUBKEY_HEX; the script fails if they differ.
+      # KRAKE_UPDATE_PUBKEY_HEX; the script fails if they differ.
       # See docs/specs/self-update.md.
       - name: Sign CLI and server archives
         env:
-          AMIGO_UPDATE_SIGNING_KEY: ${{ secrets.AMIGO_UPDATE_SIGNING_KEY }}
+          KRAKE_UPDATE_SIGNING_KEY: ${{ secrets.AMIGO_UPDATE_SIGNING_KEY }}
         run: scripts/sign-update-archives.sh artifacts
 
       - name: Generate Tauri updater JSON
         run: |
           VERSION="${{ inputs.version }}"
           TAG="${{ inputs.tag_name }}"
-          REPO="amigo-labs/amigo-downloader"
+          REPO="amigo-labs/amigo-krake"
           BASE_URL="https://github.com/${REPO}/releases/download/${TAG}"
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 

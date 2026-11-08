@@ -10,11 +10,11 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use amigo_core::captcha::CaptchaManager;
-use amigo_core::coordinator::Coordinator;
-use amigo_core::queue::QueueStatus;
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::updater::PluginUpdater;
+use krake_core::captcha::CaptchaManager;
+use krake_core::coordinator::Coordinator;
+use krake_core::queue::QueueStatus;
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::updater::PluginUpdater;
 
 use crate::webhooks::WebhookDispatcher;
 
@@ -187,13 +187,13 @@ struct PluginResponse {
     /// Host-API major the plugin declared.
     api_version: u32,
     /// Declared permissions; `permissions.domains == null` = unscoped.
-    permissions: amigo_plugin_runtime::types::PluginPermissions,
+    permissions: krake_plugin_runtime::types::PluginPermissions,
     /// The plugin host crashed during this plugin's last call.
     failing: bool,
 }
 
-impl From<amigo_plugin_runtime::types::PluginMeta> for PluginResponse {
-    fn from(p: amigo_plugin_runtime::types::PluginMeta) -> Self {
+impl From<krake_plugin_runtime::types::PluginMeta> for PluginResponse {
+    fn from(p: krake_plugin_runtime::types::PluginMeta) -> Self {
         Self {
             id: p.id,
             name: p.name,
@@ -374,7 +374,7 @@ async fn apply_action(
     state: &AppState,
     id: &str,
     action: &str,
-) -> Option<Result<(), amigo_core::Error>> {
+) -> Option<Result<(), krake_core::Error>> {
     Some(match action {
         "pause" => state.coordinator.pause(id).await,
         "resume" => state.coordinator.resume(id).await,
@@ -565,18 +565,18 @@ async fn suggest_plugin(
     State(state): State<AppState>,
     Json(req): Json<SuggestPluginRequest>,
 ) -> Json<SuggestPluginResponse> {
-    let config = amigo_plugin_runtime::registry::RegistryConfig::default();
-    let index = amigo_plugin_runtime::registry::load_index(&state.http_client, &config).await;
+    let config = krake_plugin_runtime::registry::RegistryConfig::default();
+    let index = krake_plugin_runtime::registry::load_index(&state.http_client, &config).await;
 
     if let Ok(index) = index
         && let Some(plugin) =
-            amigo_plugin_runtime::registry::suggest_plugin_for_url(&index, &req.url)
+            krake_plugin_runtime::registry::suggest_plugin_for_url(&index, &req.url)
     {
         return Json(SuggestPluginResponse {
             found: true,
             plugin_id: Some(plugin.id.clone()),
             plugin_name: Some(plugin.name.clone()),
-            install_command: Some(format!("amigo-dl plugins install {}", plugin.id)),
+            install_command: Some(format!("krake plugins install {}", plugin.id)),
         });
     }
 
@@ -641,7 +641,7 @@ async fn upload_nzb(
         ));
     }
 
-    let nzb = amigo_core::protocol::usenet::nzb::parse_nzb(&req.nzb_data).map_err(|e| {
+    let nzb = krake_core::protocol::usenet::nzb::parse_nzb(&req.nzb_data).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
@@ -737,7 +737,7 @@ async fn upload_container(
         )
     })?;
 
-    let packages = amigo_core::container::import_dlc(&data).map_err(|e| {
+    let packages = krake_core::container::import_dlc(&data).map_err(|e| {
         (
             StatusCode::BAD_REQUEST,
             Json(ErrorResponse {
@@ -856,7 +856,7 @@ async fn add_usenet_server(
     }
 
     let id = uuid::Uuid::new_v4().to_string();
-    let row = amigo_core::storage::UsenetServerRow {
+    let row = krake_core::storage::UsenetServerRow {
         id: id.clone(),
         name: req.name.clone(),
         host: req.host.clone(),
@@ -981,7 +981,7 @@ const REDACTED_SENTINEL: &str = "__redacted__";
 /// (API tokens, GitHub PAT, NZBGet password, webhook signing secrets, the
 /// admin password hash) are replaced with [`REDACTED_SENTINEL`] when set,
 /// or left as `None`/empty when not configured.
-fn redact_config(mut config: amigo_core::config::Config) -> amigo_core::config::Config {
+fn redact_config(mut config: krake_core::config::Config) -> krake_core::config::Config {
     if config.server.api_token.is_some() {
         config.server.api_token = Some(REDACTED_SENTINEL.into());
     }
@@ -1006,8 +1006,8 @@ fn redact_config(mut config: amigo_core::config::Config) -> amigo_core::config::
 /// just round-tripping the masked value — keep the existing on-disk secret
 /// instead of overwriting it with the sentinel string.
 fn apply_secret_passthrough(
-    incoming: &mut amigo_core::config::Config,
-    existing: &amigo_core::config::Config,
+    incoming: &mut krake_core::config::Config,
+    existing: &krake_core::config::Config,
 ) {
     if incoming.server.api_token.as_deref() == Some(REDACTED_SENTINEL) {
         incoming.server.api_token = existing.server.api_token.clone();
@@ -1033,20 +1033,20 @@ fn apply_secret_passthrough(
                 .iter()
                 .find(|h| h.id == hook.id)
                 .map(|h| h.secret.clone())
-                .unwrap_or_else(amigo_core::config::generate_webhook_secret);
+                .unwrap_or_else(krake_core::config::generate_webhook_secret);
         }
     }
 }
 
-async fn get_config(State(state): State<AppState>) -> Json<amigo_core::config::Config> {
+async fn get_config(State(state): State<AppState>) -> Json<krake_core::config::Config> {
     let config = state.coordinator.config().await;
     Json(redact_config(config))
 }
 
 async fn put_config(
     State(state): State<AppState>,
-    Json(mut new_config): Json<amigo_core::config::Config>,
-) -> Result<Json<amigo_core::config::Config>, (StatusCode, Json<ErrorResponse>)> {
+    Json(mut new_config): Json<krake_core::config::Config>,
+) -> Result<Json<krake_core::config::Config>, (StatusCode, Json<ErrorResponse>)> {
     // Restore secrets the UI never saw so a "save settings" round-trip from
     // a masked GET response cannot accidentally erase credentials.
     let existing = state.coordinator.config().await;
@@ -1170,7 +1170,7 @@ async fn add_rss_feed(
         })?;
 
     let id = uuid::Uuid::new_v4().to_string();
-    let row = amigo_core::storage::RssFeedRow {
+    let row = krake_core::storage::RssFeedRow {
         id: id.clone(),
         name: req.name.clone(),
         url: req.url.clone(),
@@ -1342,9 +1342,9 @@ async fn create_webhook(
     let secret = req
         .secret
         .filter(|s| !s.trim().is_empty())
-        .unwrap_or_else(amigo_core::config::generate_webhook_secret);
+        .unwrap_or_else(krake_core::config::generate_webhook_secret);
 
-    let endpoint = amigo_core::config::WebhookEndpoint {
+    let endpoint = krake_core::config::WebhookEndpoint {
         id: uuid::Uuid::new_v4().to_string(),
         name: req.name,
         url: req.url,
@@ -1390,7 +1390,7 @@ async fn test_webhook(
     }
 }
 
-fn row_to_response(row: amigo_core::storage::DownloadRow) -> DownloadResponse {
+fn row_to_response(row: krake_core::storage::DownloadRow) -> DownloadResponse {
     DownloadResponse {
         id: row.id,
         url: row.url,
@@ -1409,7 +1409,7 @@ fn row_to_response(row: amigo_core::storage::DownloadRow) -> DownloadResponse {
 #[cfg(test)]
 mod config_redact_tests {
     use super::*;
-    use amigo_core::config::{Config, WebhookEndpoint};
+    use krake_core::config::{Config, WebhookEndpoint};
 
     fn config_with_secrets() -> Config {
         let mut cfg = Config::default();
@@ -1513,7 +1513,7 @@ mod config_redact_tests {
 #[cfg(test)]
 mod plugin_response_tests {
     use super::*;
-    use amigo_plugin_runtime::types::{PluginMeta, PluginPermissions};
+    use krake_plugin_runtime::types::{PluginMeta, PluginPermissions};
 
     fn meta(domains: Option<Vec<String>>) -> PluginMeta {
         PluginMeta {

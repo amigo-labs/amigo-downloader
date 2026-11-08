@@ -2,9 +2,9 @@
 
 use std::sync::Arc;
 
-use amigo_core::protocol::{Protocol, ResolvedDownload, UrlResolver};
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::types::DownloadProtocol;
+use krake_core::protocol::{Protocol, ResolvedDownload, UrlResolver};
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::types::DownloadProtocol;
 
 /// Wraps `PluginLoader` to implement the core `UrlResolver` trait.
 pub struct PluginUrlResolver {

@@ -5,9 +5,9 @@
 
 use std::path::PathBuf;
 
-use amigo_core::chunk::{ChunkPlan, ChunkStatus};
-use amigo_core::queue::QueueStatus;
-use amigo_core::storage::{DownloadRow, RssFeedRow, Storage, UsenetServerRow};
+use krake_core::chunk::{ChunkPlan, ChunkStatus};
+use krake_core::queue::QueueStatus;
+use krake_core::storage::{DownloadRow, RssFeedRow, Storage, UsenetServerRow};
 
 /// Helper to create a DownloadRow with sensible defaults.
 fn make_download(id: &str, url: &str) -> DownloadRow {
@@ -62,7 +62,7 @@ async fn test_insert_download_rejects_active_duplicate() {
     let second = make_download("dl-2", "https://example.com/dupe.zip");
     let err = storage.insert_download(&second).await.unwrap_err();
     match err {
-        amigo_core::Error::DuplicateUrl(existing_id) => {
+        krake_core::Error::DuplicateUrl(existing_id) => {
             assert_eq!(existing_id, "dl-1");
         }
         other => panic!("expected DuplicateUrl, got {other:?}"),

@@ -1,5 +1,5 @@
 [package]
-name = "amigo-plugin-runtime"
+name = "krake-plugin-runtime"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,10 +8,10 @@ license.workspace = true
 workspace = true
 
 # Runs plugin JavaScript out of the daemon process (#79). Spawned by
-# `PluginLoader`; ships next to `amigo-server` and `amigo-dl`.
+# `PluginLoader`; ships next to `krake-server` and `krake`.
 [[bin]]
-name = "amigo-plugin-host"
-path = "src/bin/amigo-plugin-host.rs"
+name = "krake-plugin-host"
+path = "src/bin/krake-plugin-host.rs"
 
 [dependencies]
 tokio = { workspace = true }

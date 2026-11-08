@@ -9,22 +9,22 @@ built it cannot work: `tauri/src/main.rs` starts the `Coordinator` and
 Click'n'Load but no HTTP server, while the web-ui talks to `/api/v1/...` and
 `ws://<host>/api/v1/ws`. In the Tauri window those requests hit the bundled
 asset protocol and fail. Plugins cannot run either, because
-`amigo-plugin-host` is not bundled, and config, downloads, plugins and cache
+`krake-plugin-host` is not bundled, and config, downloads, plugins and cache
 land in the process's working directory.
 
 This spec makes the desktop app a working product and keeps it current:
 
-1. **Embedded server.** The app runs the full `amigo-server` stack on
+1. **Embedded server.** The app runs the full `krake-server` stack on
    `127.0.0.1` and opens its window at that origin. The web-ui stays exactly
    as it is.
 2. **Desktop session.** A per-launch random token is exchanged once for a
    session cookie. There is no setup wizard and no login, and no other local
    process can use the API without the token.
 3. **Platform paths and plugin host.** Everything lives in the OS app
-   directories, and `amigo-plugin-host` ships as a Tauri sidecar.
+   directories, and `krake-plugin-host` ships as a Tauri sidecar.
 4. **Tray, single instance, deep links.** Closing the window keeps downloads
    running in the tray. A second launch focuses the running app and hands
-   over its `amigo:`/`magnet:` link.
+   over its `krake:`/`magnet:` link.
 5. **Self-update**, modelled on amigo-pincel (`src-tauri/src/updater.rs`
    there):
    - a background check every `update.check_interval_hours` (default 24 h);
@@ -34,7 +34,7 @@ This spec makes the desktop app a working product and keeps it current:
    - only the AppImage updates itself on Linux.
 
    The existing core-update banner in the web-ui drives it through a hook in
-   `amigo-server`.
+   `krake-server`.
 6. **Release plumbing:**
    - `createUpdaterArtifacts`;
    - a Tauri-2 `latest.json`;
@@ -55,8 +55,8 @@ and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
 
 ### P1 — Embedded server
 
-- [ ] AC-1: `amigo_server::embedded::serve(opts)` starts the same routes and
-  layers as the `amigo-server` binary: API, WebSocket, updates, feedback,
+- [ ] AC-1: `krake_server::embedded::serve(opts)` starts the same routes and
+  layers as the `krake-server` binary: API, WebSocket, updates, feedback,
   NZBGet, static web-ui, CORS and security headers. It does so on a
   `TcpListener` the caller has already bound. The binary's `main` calls the
   same function, so the two cannot drift.
@@ -74,12 +74,12 @@ and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
 - [ ] AC-5: API requests with no cookie, token or `api_token` get `401` in
   desktop mode, as in server mode. Desktop mode adds no loopback trust.
 - [ ] AC-6: Desktop paths:
-  - `config.toml`, `amigo.db`, `plugins/` and `cache/` live under the Tauri
+  - `config.toml`, `krake.db`, `plugins/` and `cache/` live under the Tauri
     `app_data_dir`;
   - on first start `download_dir` defaults to
-    `<user Downloads>/amigo-downloader` and `temp_dir` to `<download_dir>/.tmp`;
+    `<user Downloads>/Krake` and `temp_dir` to `<download_dir>/.tmp`;
   - nothing is written to the working directory.
-- [ ] AC-7: `amigo-plugin-host` is bundled through `bundle.externalBin` for
+- [ ] AC-7: `krake-plugin-host` is bundled through `bundle.externalBin` for
   every desktop target. `process_host` finds it in the installed app, and
   a plugin URL (generic-http) resolves in a release build.
 - [ ] AC-8: Click'n'Load starts exactly once: by the embedded server, and not
@@ -93,9 +93,11 @@ and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
 - [ ] AC-10: A second launch does not start a second server. It focuses the
   running window, restoring it if it is minimized or hidden, and hands over
   its command-line arguments (tauri-plugin-single-instance).
-- [ ] AC-11: An `amigo://add?url=<encoded>` link, whether at launch or
+- [ ] AC-11: A `krake://add?url=<encoded>` link, whether at launch or
   handed over by AC-10, adds `<url>` to the queue as `POST /downloads` does
-  and shows the window. Malformed links are logged and ignored.
+  and shows the window. Malformed links are logged and ignored. The
+  pre-rename scheme `amigo://` stays registered and is handled the same way
+  (deprecated).
 - [ ] AC-12: A `magnet:` link shows a notification saying torrents are not
   supported, and adds nothing.
 
@@ -143,10 +145,10 @@ and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
   repository variable `UPDATER_SIGNING_KEY_ID`, as in amigo-pincel.
 - [ ] AC-22: Desktop release assets use stable names, so
   `releases/latest/download/<name>` always resolves:
-  - `amigo-downloader-windows-x64-setup.exe` and `amigo-downloader-windows-x64.msi`;
-  - `amigo-downloader-macos-x64.dmg` and `amigo-downloader-macos-arm64.dmg`;
-  - `amigo-downloader-macos-x64.app.tar.gz` and `amigo-downloader-macos-arm64.app.tar.gz`;
-  - `amigo-downloader-linux-x64.AppImage` and `amigo-downloader-linux-x64.deb`;
+  - `krake-windows-x64-setup.exe` and `krake-windows-x64.msi`;
+  - `krake-macos-x64.dmg` and `krake-macos-arm64.dmg`;
+  - `krake-macos-x64.app.tar.gz` and `krake-macos-arm64.app.tar.gz`;
+  - `krake-linux-x64.AppImage` and `krake-linux-x64.deb`;
   - each updater artifact also has its `.sig`.
 - [ ] AC-23: The site's "Desktop" install tab
   (`site/src/components/sections/InstallTabs.svelte`) links the AC-22 assets
@@ -165,7 +167,7 @@ and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
 /// Everything `serve` needs; the binary builds it from env/CLI, the desktop
 /// app from Tauri's path resolver.
 pub struct ServeOptions {
-    pub config: amigo_core::config::Config,
+    pub config: krake_core::config::Config,
     /// Where setup / PUT /config persist the config.
     pub config_path: std::path::PathBuf,
     pub db_path: std::path::PathBuf,
@@ -188,7 +190,7 @@ pub struct DesktopOptions {
 /// Handle returned by `serve`; dropping it does not stop the server.
 pub struct ServerHandle {
     pub local_addr: std::net::SocketAddr,
-    pub coordinator: std::sync::Arc<amigo_core::coordinator::Coordinator>,
+    pub coordinator: std::sync::Arc<krake_core::coordinator::Coordinator>,
     pub shutdown: tokio::sync::oneshot::Sender<()>,
 }
 
@@ -281,14 +283,14 @@ pub struct DesktopState {
   `async-trait` if the trait needs it.
 - `tauri/tauri.conf.json`:
   - no static window (it is created at runtime with an external URL);
-  - `bundle.externalBin: ["binaries/amigo-plugin-host"]`;
+  - `bundle.externalBin: ["binaries/krake-plugin-host"]`;
   - `bundle.createUpdaterArtifacts: true`;
   - the `"active"` key removed (Tauri v1 leftover);
   - no IPC capability for the remote origin.
 - `crates/plugin-runtime/src/process_host.rs`: also look for the sidecar
   name with Tauri's target-triple suffix, if needed.
 - `.github/workflows/release-build.yml`:
-  - build `amigo-plugin-host` per target into `tauri/binaries/`;
+  - build `krake-plugin-host` per target into `tauri/binaries/`;
   - rename to the stable names;
   - write `latest.json` for Tauri 2;
   - signature key-ID guard;
@@ -302,17 +304,17 @@ pub struct DesktopState {
 
 | Scenario | Expected Behavior |
 |----------|------------------|
-| Stored port taken by another program (e.g. a separate `amigo-server` on 1516) | Bind `127.0.0.1:0`, store the new port, continue. `localStorage` settings reset once. |
+| Stored port taken by another program (e.g. a separate `krake-server` on 1516) | Bind `127.0.0.1:0`, store the new port, continue. `localStorage` settings reset once. |
 | Session URL opened in an external browser with an old token | `401`; the token was single-use and per launch. |
 | Another local process calls the API without cookie or token | `401` (AC-5). |
-| Second launch with `amigo://add?url=…` while the first instance is minimized to the tray | The first instance shows its window and queues the URL; the second exits with no second server. |
+| Second launch with `krake://add?url=…` while the first instance is minimized to the tray | The first instance shows its window and queues the URL; the second exits with no second server. |
 | `magnet:` link | Notification "torrents are not supported"; nothing queued. |
 | Update found while downloads are running | Download and verify only; install takes effect at the next start (Windows: on Quit). Downloads continue. |
 | Signature does not match the pubkey | Nothing installed; `POST /updates/core` → 502 with the reason; background check logs it and retries after the interval. |
 | `latest.json` unreachable (offline) | Background check logs and records the check; banner shows no update; no error toast. |
 | App runs from `.deb`/`.rpm` | `can_self_update: false`; banner shows "update with your package manager". |
 | Windows: Quit while an update download is still in progress | Quit is not delayed. Nothing is installed; the next start checks again. |
-| `amigo-plugin-host` missing from a broken install | Plugin downloads fail with the existing "plugin host not found" error; built-in protocols keep working. |
+| `krake-plugin-host` missing from a broken install | Plugin downloads fail with the existing "plugin host not found" error; built-in protocols keep working. |
 | Release built with a repository secret that shadows the org key | AC-21 stops the upload, naming the file and both key IDs. |
 
 ## Test Plan
@@ -328,7 +330,7 @@ pub struct DesktopState {
   - `serve` on `127.0.0.1:0`: `/api/v1/status` without auth → 401 (AC-5);
   - with the desktop cookie → 200;
   - the static `index.html` is served (AC-1).
-- [ ] Integration: the `amigo-server` binary still starts with the same routes
+- [ ] Integration: the `krake-server` binary still starts with the same routes
   through `serve`: an existing integration test or a new smoke test (AC-1).
 - [ ] Unit (`crates/server`), `update_api` with a fake `DesktopUpdater`:
   - check (update / none);
@@ -340,12 +342,13 @@ pub struct DesktopState {
   - port fallback when the stored port is taken (AC-2);
   - `is_due` interval and clock-went-back cases (AC-13);
   - `can_self_update` in debug, with `APPIMAGE` and without it (AC-16);
-  - deep-link parsing: `amigo://add?url=` valid, malformed, and `magnet:`
+  - deep-link parsing: `krake://add?url=` (and `amigo://add?url=`) valid,
+    malformed, and `magnet:`
     (AC-11, AC-12).
 - [ ] Unit (`tauri`): `tauri.conf.json` has `createUpdaterArtifacts`,
   `externalBin` and the org pubkey (key ID `3098504C1538B8F6`) (AC-7, AC-14,
   AC-19).
-- [ ] CI: a `cargo check -p amigo-desktop --features tauri` job with the GTK
+- [ ] CI: a `cargo check -p krake-desktop --features tauri` job with the GTK
   and WebKit libraries, so the Tauri code is compiled on every PR (today
   nothing compiles it).
 - [ ] Workflow:
@@ -360,7 +363,7 @@ pub struct DesktopState {
   - download through a plugin;
   - close to tray, reopen;
   - second launch focuses;
-  - `amigo://add` link;
+  - `krake://add` link;
   - update from version N to N+1 through the banner (AC-9 to AC-18).
 - [ ] Manual: the website links resolve after the release (AC-22, AC-23).
 

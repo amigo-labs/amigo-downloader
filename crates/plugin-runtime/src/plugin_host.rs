@@ -1,6 +1,6 @@
 //! The plugin host: the child process that runs plugin JavaScript.
 //!
-//! The `amigo-plugin-host` binary calls [`run`]. It owns every QuickJS
+//! The `krake-plugin-host` binary calls [`run`]. It owns every QuickJS
 //! runtime; the daemon owns none. It reads [`ToChild`] frames from stdin and
 //! writes [`ToParent`] frames to stdout (see [`crate::ipc`]).
 //!
@@ -57,7 +57,7 @@ pub fn run() -> i32 {
             // The daemon closed our stdin: it is shutting down or gone.
             Ok(None) => return 0,
             Err(e) => {
-                eprintln!("amigo-plugin-host: bad frame from daemon: {e}");
+                eprintln!("krake-plugin-host: bad frame from daemon: {e}");
                 return 2;
             }
         };
@@ -242,7 +242,7 @@ impl Host {
         // Bind the host API after the module body ran (so the plugin's
         // declared identity is known to the daemon) and before `resolve()` or
         // any callback can run — the module body only defines exports and
-        // never touches `amigo`. The daemon maps the handle to the plugin's
+        // never touches `krake`. The daemon maps the handle to the plugin's
         // id, allowlist and request budget; JS can see neither.
         let handle = self.next_handle.fetch_add(1, Ordering::Relaxed);
         let request = Arc::new(AtomicU64::new(0));

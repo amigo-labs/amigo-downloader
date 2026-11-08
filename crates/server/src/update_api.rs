@@ -8,7 +8,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 
-use amigo_core::updater::{self, CoreUpdateStatus};
+use krake_core::updater::{self, CoreUpdateStatus};
 
 use crate::api::AppState;
 
@@ -261,16 +261,16 @@ async fn list_available_plugins(
 /// Map a plugin-runtime error to an HTTP status. NotFound and registry
 /// failures are user-actionable; checksum/version issues are integrity
 /// problems; everything else is treated as an internal failure.
-fn plugin_error_status(err: &amigo_plugin_runtime::Error) -> StatusCode {
+fn plugin_error_status(err: &krake_plugin_runtime::Error) -> StatusCode {
     match err {
-        amigo_plugin_runtime::Error::NotFound(_) => StatusCode::NOT_FOUND,
-        amigo_plugin_runtime::Error::RegistryUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
-        amigo_plugin_runtime::Error::ChecksumMismatch(_) => StatusCode::BAD_GATEWAY,
-        amigo_plugin_runtime::Error::IncompatibleVersion { .. } => StatusCode::CONFLICT,
-        amigo_plugin_runtime::Error::PermissionApprovalRequired(_) => {
+        krake_plugin_runtime::Error::NotFound(_) => StatusCode::NOT_FOUND,
+        krake_plugin_runtime::Error::RegistryUnavailable(_) => StatusCode::SERVICE_UNAVAILABLE,
+        krake_plugin_runtime::Error::ChecksumMismatch(_) => StatusCode::BAD_GATEWAY,
+        krake_plugin_runtime::Error::IncompatibleVersion { .. } => StatusCode::CONFLICT,
+        krake_plugin_runtime::Error::PermissionApprovalRequired(_) => {
             StatusCode::PRECONDITION_REQUIRED
         }
-        amigo_plugin_runtime::Error::SandboxViolation(_) => StatusCode::BAD_GATEWAY,
+        krake_plugin_runtime::Error::SandboxViolation(_) => StatusCode::BAD_GATEWAY,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     }
 }

@@ -16,7 +16,7 @@ pub struct WebhookEndpoint {
     pub name: String,
     pub url: String,
     /// HMAC-SHA256 signing secret. Always present — every dispatched payload is
-    /// signed with `X-Amigo-Signature: sha256=<hmac>` so receivers can
+    /// signed with `X-Krake-Signature: sha256=<hmac>` so receivers can
     /// authenticate events. A random secret is generated when an endpoint is
     /// created (or when an older config without one is loaded) so signing can
     /// never be silently disabled. An explicit empty/whitespace-only secret in
@@ -122,7 +122,7 @@ pub struct ServerConfig {
     /// except `/api/v1/setup/*` return 503 with `{"error": "setup_required"}`.
     #[serde(default)]
     pub setup_complete: bool,
-    /// Admin username chosen in the setup wizard (or via `AMIGO_SETUP_USER`).
+    /// Admin username chosen in the setup wizard (or via `KRAKE_SETUP_USER`).
     #[serde(default)]
     pub admin_username: Option<String>,
     /// Argon2id hash of the admin password (PHC-formatted). Never the plaintext.
@@ -147,7 +147,7 @@ fn default_session_ttl_secs() -> i64 {
 impl ServerConfig {
     /// `true` if the bind address is a loopback host (127.0.0.1 / ::1 /
     /// localhost). On loopback we skip setup entirely — a Tauri desktop,
-    /// a local `amigo-server` run, or a dev run are trusted by construction.
+    /// a local `krake-server` run, or a dev run are trusted by construction.
     pub fn is_bind_loopback(&self) -> bool {
         let host = self
             .bind
@@ -247,7 +247,7 @@ pub struct FeedbackConfig {
     /// Enable in-app feedback (requires github_token).
     pub enabled: bool,
     /// GitHub Personal Access Token with `repo` scope.
-    /// Can also be set via AMIGO_GITHUB_TOKEN env var.
+    /// Can also be set via KRAKE_GITHUB_TOKEN env var.
     pub github_token: String,
     /// Target GitHub repo for issues (owner/repo).
     pub github_repo: String,
@@ -311,8 +311,8 @@ impl Default for FeedbackConfig {
     fn default() -> Self {
         Self {
             enabled: false,
-            github_token: std::env::var("AMIGO_GITHUB_TOKEN").unwrap_or_default(),
-            github_repo: "amigo-labs/amigo-downloader".into(),
+            github_token: crate::env::var("KRAKE_GITHUB_TOKEN").unwrap_or_default(),
+            github_repo: "amigo-labs/amigo-krake".into(),
             max_issues_per_hour: 5,
         }
     }
@@ -337,7 +337,7 @@ impl Default for UpdateConfig {
             auto_check: true,
             check_interval_hours: 24,
             plugin_registry_url: "https://raw.githubusercontent.com/amigo-labs/amigo-downloader-plugins/main/index.json".into(),
-            github_repo: "amigo-labs/amigo-downloader".into(),
+            github_repo: "amigo-labs/amigo-krake".into(),
             auto_update_plugins: false,
         }
     }
@@ -348,7 +348,7 @@ impl Default for HttpConfig {
         Self {
             max_chunks_per_download: 8,
             max_connections_per_host: 4,
-            user_agent: "amigo-downloader/0.1.0".into(),
+            user_agent: "krake/0.1.0".into(),
             timeout_connect_secs: 30,
             timeout_read_secs: 120,
         }
@@ -387,18 +387,18 @@ impl Config {
 
     /// Resolve the config file path (first writable standard path).
     pub fn resolve_path() -> std::path::PathBuf {
-        if let Ok(dir) = std::env::var("AMIGO_CONFIG_DIR") {
+        if let Ok(dir) = crate::env::var("KRAKE_CONFIG_DIR") {
             return std::path::PathBuf::from(dir).join("config.toml");
         }
         std::path::PathBuf::from("config.toml")
     }
 
     /// Load config, trying standard paths in order:
-    /// 1. $AMIGO_CONFIG_DIR/config.toml
+    /// 1. $KRAKE_CONFIG_DIR/config.toml
     /// 2. ./config.toml
     pub fn load_auto() -> Self {
         let paths = [
-            std::env::var("AMIGO_CONFIG_DIR")
+            crate::env::var("KRAKE_CONFIG_DIR")
                 .map(|d| std::path::PathBuf::from(d).join("config.toml"))
                 .ok(),
             Some(std::path::PathBuf::from("config.toml")),
@@ -543,7 +543,7 @@ mod tests {
 
     #[test]
     fn test_config_save_and_load() {
-        let dir = std::env::temp_dir().join("amigo-config-test");
+        let dir = std::env::temp_dir().join("krake-config-test");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
 
@@ -588,7 +588,7 @@ mod tests {
     #[test]
     fn test_config_load_missing_file_creates_default() {
         let path = std::env::temp_dir()
-            .join("amigo-config-test-missing")
+            .join("krake-config-test-missing")
             .join("config.toml");
         let _ = std::fs::remove_file(&path);
 
@@ -642,7 +642,7 @@ mod tests {
         // rather than panic later in RetryPolicy::from (Duration::from_secs_f64).
         // Serialize a full, otherwise-valid config so load() parses cleanly and
         // fails at the validation step, not at the parse step.
-        let dir = std::env::temp_dir().join("amigo-config-test-invalid");
+        let dir = std::env::temp_dir().join("krake-config-test-invalid");
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join("config.toml");
         let mut cfg = Config::default();

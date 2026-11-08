@@ -3,11 +3,11 @@
   import { completeSetup, getSetupStatus } from "../lib/api";
   import { setupRequired } from "../lib/stores";
   import { locale, tr } from "../lib/i18n";
-  import Card from "@amigo/ui/components/Card.svelte";
-  import Button from "@amigo/ui/components/Button.svelte";
-  import Field from "@amigo/ui/components/Field.svelte";
-  import Banner from "@amigo/ui/components/Banner.svelte";
-  import ProgressBar from "@amigo/ui/components/ProgressBar.svelte";
+  import Card from "@amigo-labs/krake-ui/components/Card.svelte";
+  import Button from "@amigo-labs/krake-ui/components/Button.svelte";
+  import Field from "@amigo-labs/krake-ui/components/Field.svelte";
+  import Banner from "@amigo-labs/krake-ui/components/Banner.svelte";
+  import ProgressBar from "@amigo-labs/krake-ui/components/ProgressBar.svelte";
 
   // Like Login, this screen was outside the design system: Svelte 4 syntax,
   // undefined CSS variables falling through to hardcoded hexes, no i18n and
@@ -105,7 +105,7 @@
 <div class="setup-wrap">
   <Card padding="lg" elevation={3} class="setup-card">
     <div class="text-center mb-4">
-      <img src="/amigo-logo.png" alt="" width="48" height="48" class="mx-auto rounded-full" />
+      <img src="/icon.svg" alt="" width="48" height="48" class="mx-auto" />
       <h1 class="mt-3 text-lg font-bold" style="color: var(--text-primary)">
         {tr($locale, "setup.title")}
       </h1>

@@ -175,7 +175,7 @@ Wire the existing `plugin.spec.ts` files into CI.
 **Acceptance Criteria:**
 - [ ] A Rust integration test (or CI script) invokes the plugin test runner for `plugins/extractors/youtube/plugin.spec.ts`.
 - [ ] A Rust integration test invokes the plugin test runner for `plugins/hosters/generic-http/plugin.spec.ts`.
-- [ ] Tests that require network access (YouTube reachability) are skipped in CI by default, runnable with an opt-in flag (e.g., `AMIGO_NETWORK_TESTS=1`).
+- [ ] Tests that require network access (YouTube reachability) are skipped in CI by default, runnable with an opt-in flag (e.g., `KRAKE_NETWORK_TESTS=1`).
 - [ ] Plugin spec test results appear in CI output with pass/fail per test case.
 - [ ] CI pipeline runs plugin spec tests on every PR.
 

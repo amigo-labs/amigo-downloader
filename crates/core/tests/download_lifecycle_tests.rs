@@ -8,9 +8,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use amigo_core::config::Config;
-use amigo_core::coordinator::{Coordinator, DownloadEvent};
-use amigo_core::storage::Storage;
+use krake_core::config::Config;
+use krake_core::coordinator::{Coordinator, DownloadEvent};
+use krake_core::storage::Storage;
 use tokio::sync::broadcast::Receiver;
 use tokio::time::timeout;
 use wiremock::matchers::{method, path};

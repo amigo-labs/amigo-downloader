@@ -1,6 +1,6 @@
 {
-  "name": "amigo-downloader",
-  "short_name": "Amigo",
+  "name": "Krake",
+  "short_name": "Krake",
   "description": "Fast, modular download manager",
   "start_url": "/",
   "scope": "/",
@@ -9,12 +9,9 @@
   "theme_color": "#1e1e1e",
   "background_color": "#1e1e1e",
   "icons": [
-    {
-      "src": "/amigo-logo.png",
-      "sizes": "512x512",
-      "type": "image/png",
-      "purpose": "any maskable"
-    }
+    { "src": "/icon-256.png", "sizes": "256x256", "type": "image/png", "purpose": "any" },
+    { "src": "/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ],
   "share_target": {
     "action": "/?share=true",

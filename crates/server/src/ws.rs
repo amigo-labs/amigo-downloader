@@ -18,7 +18,7 @@ use tracing::{debug, warn};
 
 use crate::api::AppState;
 use crate::auth::Principal;
-use amigo_core::coordinator::{Coordinator, DownloadEvent};
+use krake_core::coordinator::{Coordinator, DownloadEvent};
 
 pub fn ws_router(state: AppState) -> Router {
     Router::new()

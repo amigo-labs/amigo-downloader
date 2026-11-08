@@ -1,4 +1,4 @@
-/// <reference path="../../types/amigo.d.ts" />
+/// <reference path="../../types/krake.d.ts" />
 
 // Generic HTTP Plugin — enhanced with media detection.
 // Acts as the ultimate fallback when no specific plugin matches.
@@ -52,7 +52,7 @@ function protocolForUrl(url: string): DownloadProtocol {
 }
 
 function filenameFromContentDisposition(header: string): string | null {
-    return amigo.regexMatch('filename\\*?=["\']?(?:UTF-8\'\')?([^"\'\\s;]+)', header);
+    return krake.regexMatch('filename\\*?=["\']?(?:UTF-8\'\')?([^"\'\\s;]+)', header);
 }
 
 function scoreLink(href: string, text: string): number {
@@ -73,17 +73,17 @@ function scoreLink(href: string, text: string): number {
     if (hrefLower.includes("facebook") || hrefLower.includes("twitter")) score -= 50;
     if (hrefLower.includes("mailto:")) score -= 100;
 
-    if (amigo.regexTest("download\\s*(now|here|file)?", textLower)) score += 30;
-    if (amigo.regexTest("click\\s*here\\s*to\\s*download", textLower)) score += 25;
-    if (amigo.regexTest("get\\s*(file|download)", textLower)) score += 20;
-    if (amigo.regexTest("\\.\\w{2,4}\\s*\\([\\d.]+ ?(KB|MB|GB)\\)", textLower)) score += 25;
+    if (krake.regexTest("download\\s*(now|here|file)?", textLower)) score += 30;
+    if (krake.regexTest("click\\s*here\\s*to\\s*download", textLower)) score += 25;
+    if (krake.regexTest("get\\s*(file|download)", textLower)) score += 20;
+    if (krake.regexTest("\\.\\w{2,4}\\s*\\([\\d.]+ ?(KB|MB|GB)\\)", textLower)) score += 25;
 
     return score;
 }
 
 /** Probe a URL via HEAD and build a DownloadInfo. */
 function probeUrl(url: string, protocol?: DownloadProtocol): DownloadInfo {
-    const head = amigo.httpHead(url);
+    const head = krake.httpHead(url);
     let filename: string | null = null;
     let filesize: number | null = null;
     let acceptsRanges = false;
@@ -91,7 +91,7 @@ function probeUrl(url: string, protocol?: DownloadProtocol): DownloadInfo {
     if (head.headers["content-disposition"]) {
         filename = filenameFromContentDisposition(head.headers["content-disposition"]);
     }
-    if (!filename) filename = amigo.urlFilename(url);
+    if (!filename) filename = krake.urlFilename(url);
     if (head.headers["content-length"]) {
         filesize = parseInt(head.headers["content-length"], 10) || null;
     }
@@ -116,8 +116,8 @@ function findDownloadLinks(html: string, pageUrl: string): ScoredLink[] {
     // (stylesheets, images) but text only from `<a>`, so the two arrays
     // drifted out of alignment and real download links scored on unrelated
     // text — often dropping below the threshold entirely.
-    const hrefs = amigo.htmlQueryAllAttrs(html, "a[href]", "href");
-    const anchors = amigo.htmlQueryAll(html, "a[href]");
+    const hrefs = krake.htmlQueryAllAttrs(html, "a[href]", "href");
+    const anchors = krake.htmlQueryAll(html, "a[href]");
 
     const links: ScoredLink[] = [];
     const seen = new Set<string>();
@@ -125,7 +125,7 @@ function findDownloadLinks(html: string, pageUrl: string): ScoredLink[] {
     for (let i = 0; i < hrefs.length; i++) {
         let href = hrefs[i];
         if (!href.startsWith("http")) {
-            try { href = amigo.urlResolve(pageUrl, href); } catch { continue; }
+            try { href = krake.urlResolve(pageUrl, href); } catch { continue; }
         }
         // Anchor inner text: strip tags from the element's outer HTML. Strip
         // repeatedly until stable — a single pass can leave a residual `<tag`
@@ -161,19 +161,19 @@ function findMetaMedia(html: string, pageUrl: string): DownloadInfo[] {
     // OpenGraph video tags
     const ogTags = ["og:video", "og:video:url", "og:video:secure_url"];
     for (const tag of ogTags) {
-        const content = amigo.htmlSearchMeta(html, tag);
+        const content = krake.htmlSearchMeta(html, tag);
         if (content && isMediaUrl(content) && !seen.has(content)) {
             seen.add(content);
             let url = content;
             if (!url.startsWith("http")) {
-                try { url = amigo.urlResolve(pageUrl, url); } catch { continue; }
+                try { url = krake.urlResolve(pageUrl, url); } catch { continue; }
             }
             results.push(probeUrl(url));
         }
     }
 
     // Twitter player stream
-    const twitterStream = amigo.htmlSearchMeta(html, "twitter:player:stream");
+    const twitterStream = krake.htmlSearchMeta(html, "twitter:player:stream");
     if (twitterStream && isMediaUrl(twitterStream) && !seen.has(twitterStream)) {
         seen.add(twitterStream);
         results.push(probeUrl(twitterStream));
@@ -188,13 +188,13 @@ function findHtml5Media(html: string, pageUrl: string): DownloadInfo[] {
     const seen = new Set<string>();
 
     // <video src="..."> and <audio src="...">
-    const videoSrcs = amigo.htmlQueryAllAttrs(html, "video[src]", "src");
-    const audioSrcs = amigo.htmlQueryAllAttrs(html, "audio[src]", "src");
+    const videoSrcs = krake.htmlQueryAllAttrs(html, "video[src]", "src");
+    const audioSrcs = krake.htmlQueryAllAttrs(html, "audio[src]", "src");
 
     for (const src of [...videoSrcs, ...audioSrcs]) {
         let url = src;
         if (!url.startsWith("http")) {
-            try { url = amigo.urlResolve(pageUrl, url); } catch { continue; }
+            try { url = krake.urlResolve(pageUrl, url); } catch { continue; }
         }
         if (!seen.has(url)) {
             seen.add(url);
@@ -203,11 +203,11 @@ function findHtml5Media(html: string, pageUrl: string): DownloadInfo[] {
     }
 
     // <source src="...">
-    const sourceSrcs = amigo.htmlQueryAllAttrs(html, "video source, audio source", "src");
+    const sourceSrcs = krake.htmlQueryAllAttrs(html, "video source, audio source", "src");
     for (const src of sourceSrcs) {
         let url = src;
         if (!url.startsWith("http")) {
-            try { url = amigo.urlResolve(pageUrl, url); } catch { continue; }
+            try { url = krake.urlResolve(pageUrl, url); } catch { continue; }
         }
         if (!seen.has(url)) {
             seen.add(url);
@@ -224,7 +224,7 @@ function findScriptMedia(html: string): DownloadInfo[] {
     const seen = new Set<string>();
 
     // HLS manifests
-    const m3u8Urls = amigo.regexMatchAll('["\']?(https?://[^"\'\\s]+\\.m3u8(?:\\?[^"\'\\s]*)?)["\']?', html);
+    const m3u8Urls = krake.regexMatchAll('["\']?(https?://[^"\'\\s]+\\.m3u8(?:\\?[^"\'\\s]*)?)["\']?', html);
     for (const url of m3u8Urls) {
         if (!seen.has(url)) {
             seen.add(url);
@@ -238,7 +238,7 @@ function findScriptMedia(html: string): DownloadInfo[] {
     }
 
     // DASH manifests
-    const mpdUrls = amigo.regexMatchAll('["\']?(https?://[^"\'\\s]+\\.mpd(?:\\?[^"\'\\s]*)?)["\']?', html);
+    const mpdUrls = krake.regexMatchAll('["\']?(https?://[^"\'\\s]+\\.mpd(?:\\?[^"\'\\s]*)?)["\']?', html);
     for (const url of mpdUrls) {
         if (!seen.has(url)) {
             seen.add(url);
@@ -264,7 +264,7 @@ function findJWPlayerMedia(html: string): DownloadInfo[] {
     const seen = new Set<string>();
 
     // file: "..." in jwplayer config
-    const files = amigo.regexMatchAll('["\'\\s]file["\'\\s]*:\\s*["\'](https?://[^"\']+)["\']', html);
+    const files = krake.regexMatchAll('["\'\\s]file["\'\\s]*:\\s*["\'](https?://[^"\']+)["\']', html);
     for (const url of files) {
         if (isMediaUrl(url) && !seen.has(url)) {
             seen.add(url);
@@ -294,7 +294,7 @@ module.exports = {
 
     resolve(url: string): DownloadPackage {
         // Step 1: HEAD to check if URL is a direct file/media download
-        const head = amigo.httpHead(url);
+        const head = krake.httpHead(url);
         const contentType = head.headers["content-type"] || "";
         const isHtml = contentType.includes("text/html");
         const hasContentDisposition = !!head.headers["content-disposition"];
@@ -303,15 +303,15 @@ module.exports = {
         if (!isHtml || hasContentDisposition || isDirectFileUrl(url)) {
             const dl = probeUrl(url);
             return {
-                name: dl.filename || amigo.urlFilename(url) || "Download",
+                name: dl.filename || krake.urlFilename(url) || "Download",
                 downloads: [dl],
             };
         }
 
         // Step 2: Fetch the HTML page
-        amigo.logInfo("Page is HTML, running detection pipeline...");
-        const page = amigo.httpGet(url);
-        const title = amigo.htmlExtractTitle(page.body) || "Download";
+        krake.logInfo("Page is HTML, running detection pipeline...");
+        const page = krake.httpGet(url);
+        const title = krake.htmlExtractTitle(page.body) || "Download";
 
         // Step 3: Media detection pipeline (try each method)
         const mediaDownloads: DownloadInfo[] = [];
@@ -329,22 +329,22 @@ module.exports = {
         mediaDownloads.push(...findScriptMedia(page.body));
 
         if (mediaDownloads.length > 0) {
-            amigo.logInfo("Found " + mediaDownloads.length + " media stream(s)");
+            krake.logInfo("Found " + mediaDownloads.length + " media stream(s)");
             return { name: title, downloads: mediaDownloads };
         }
 
         // Step 4: Fallback — download link scraping
-        amigo.logInfo("No media found, scanning for download links...");
+        krake.logInfo("No media found, scanning for download links...");
         const links = findDownloadLinks(page.body, url);
 
         if (links.length === 0) {
             throw new Error("No download links or media found on page: " + url);
         }
 
-        amigo.logInfo("Found " + links.length + " download link(s)");
+        krake.logInfo("Found " + links.length + " download link(s)");
 
         const downloads: DownloadInfo[] = links.map(link => {
-            amigo.logDebug("  > " + link.href + " (score: " + link.score + ")");
+            krake.logDebug("  > " + link.href + " (score: " + link.score + ")");
             return probeUrl(link.href);
         });
 
@@ -352,9 +352,9 @@ module.exports = {
     },
 
     checkOnline(url: string): "online" | "offline" | "unknown" {
-        const resp = amigo.httpHead(url);
+        const resp = krake.httpHead(url);
         if (resp.status === 200) return "online";
         if (resp.status === 404) return "offline";
         return "unknown";
     },
-} satisfies AmigoPlugin;
+} satisfies KrakePlugin;

@@ -1,7 +1,7 @@
 //! Plugin discovery, loading, validation, and URL matching.
 //!
 //! Loads JavaScript (.js) and TypeScript (.ts) plugins. The plugins' JS runs
-//! in the `amigo-plugin-host` child process (see [`crate::plugin_host`]); this
+//! in the `krake-plugin-host` child process (see [`crate::plugin_host`]); this
 //! side keeps the metadata, URL matching, enable flags, the per-plugin exec
 //! locks and the scoped [`HostApi`]s, and holds no QuickJS runtime.
 
@@ -209,8 +209,8 @@ impl PluginLoader {
         self
     }
 
-    /// Run plugins with the `amigo-plugin-host` binary at `path` instead of
-    /// looking it up (`$AMIGO_PLUGIN_HOST_BIN`, then next to the current
+    /// Run plugins with the `krake-plugin-host` binary at `path` instead of
+    /// looking it up (`$KRAKE_PLUGIN_HOST_BIN`, then next to the current
     /// executable).
     pub fn with_plugin_host_binary(mut self, path: PathBuf) -> Self {
         self.runtime_mut().process = ProcessHost::new(Some(path));
@@ -765,7 +765,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_load_and_match_js_plugin() {
-        let dir = std::env::temp_dir().join("amigo-test-plugins-js2");
+        let dir = std::env::temp_dir().join("krake-test-plugins-js2");
         let plugin_dir = dir.join("test-hoster");
         std::fs::create_dir_all(&plugin_dir).unwrap();
 
@@ -809,7 +809,7 @@ module.exports = {
         // resolve(). Before the fix the host API was bound to the file stem
         // ("plugin") for both, so they shared one namespace and could read each
         // other's secrets; now it is bound to the declared plugin id.
-        let dir = std::env::temp_dir().join("amigo-test-plugin-isolation");
+        let dir = std::env::temp_dir().join("krake-test-plugin-isolation");
         std::fs::remove_dir_all(&dir).ok();
         for (folder, id) in [("alpha", "alpha-hoster"), ("beta", "beta-hoster")] {
             let plugin_dir = dir.join(folder);
@@ -824,7 +824,7 @@ module.exports = {{
     version: "1.0.0",
     urlPattern: "https?://{folder}\\.com/.+",
     resolve(url) {{
-        amigo.storageSet("secret", "{id}-value");
+        krake.storageSet("secret", "{id}-value");
         return {{ name: "x", downloads: [{{ url: url, filename: null, filesize: null, chunks_supported: true, max_chunks: null, headers: null, cookies: null, wait_seconds: null, mirrors: [] }}] }};
     }},
 }};
@@ -864,7 +864,7 @@ module.exports = {{
 
     #[tokio::test]
     async fn test_load_typescript_plugin() {
-        let dir = std::env::temp_dir().join("amigo-test-plugins-ts2");
+        let dir = std::env::temp_dir().join("krake-test-plugins-ts2");
         let plugin_dir = dir.join("ts-hoster");
         std::fs::create_dir_all(&plugin_dir).unwrap();
 
@@ -906,7 +906,7 @@ module.exports = {
 
     #[tokio::test]
     async fn test_load_from_category_subfolder() {
-        let dir = std::env::temp_dir().join("amigo-test-plugins-cat");
+        let dir = std::env::temp_dir().join("krake-test-plugins-cat");
         let plugin_dir = dir.join("hosters").join("cat-hoster");
         std::fs::create_dir_all(&plugin_dir).unwrap();
 

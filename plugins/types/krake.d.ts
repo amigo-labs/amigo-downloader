@@ -1,10 +1,10 @@
-// Type declarations for amigo-downloader plugin API.
+// Type declarations for Krake plugin API.
 // Include in your plugin project for IDE autocomplete and type checking.
 
 // ─── Plugin Contract ────────────────────────────────────────────────
 
 /** The object your plugin must assign to `module.exports`. */
-interface AmigoPlugin {
+interface KrakePlugin {
     // ── Required properties ──
 
     /** Unique plugin identifier (e.g. "mega-nz"). */
@@ -15,7 +15,7 @@ interface AmigoPlugin {
     version: string;
     /** Regex pattern matching URLs this plugin handles. */
     urlPattern: string;
-    /** Major version of the `amigo.*` host API the plugin is written against.
+    /** Major version of the `krake.*` host API the plugin is written against.
      *  Currently `1`. A plugin declaring a major the host does not support is
      *  refused at load. Omitting it is accepted as `1` for now (with a
      *  warning) but will become an error. */
@@ -60,7 +60,7 @@ interface AmigoPlugin {
 
 /** Capabilities a plugin declares. */
 interface PluginPermissions {
-    /** Hosts the plugin may reach through `amigo.http*` — exact hosts
+    /** Hosts the plugin may reach through `krake.http*` — exact hosts
      *  (`"api.real-debrid.com"`) or one leading wildcard label
      *  (`"*.rdeb.io"`, subdomains only). No schemes, paths, ports or bare
      *  `"*"`. Every request and every redirect hop outside this list fails.
@@ -108,25 +108,25 @@ interface DownloadInfo {
     protocol?: DownloadProtocol;
 }
 
-/** HTTP response returned by amigo.httpGet/httpPost. */
+/** HTTP response returned by krake.httpGet/httpPost. */
 interface HttpResponse {
     status: number;
     body: string;
     headers: Record<string, string>;
 }
 
-/** Extended HTTP response with parsed JSON body, returned by amigo.httpGetJson. */
+/** Extended HTTP response with parsed JSON body, returned by krake.httpGetJson. */
 interface HttpJsonResponse extends HttpResponse {
     data: any;
 }
 
-/** HEAD response returned by amigo.httpHead. */
+/** HEAD response returned by krake.httpHead. */
 interface HeadResponse {
     status: number;
     headers: Record<string, string>;
 }
 
-/** Parsed URL components returned by amigo.urlParse. */
+/** Parsed URL components returned by krake.urlParse. */
 interface ParsedUrl {
     protocol: string;
     host: string;
@@ -164,8 +164,8 @@ interface HttpRequestOptions {
 
 // ─── Host API ───────────────────────────────────────────────────────
 
-/** Host API injected by the runtime. Available as `amigo.*` in all plugins. */
-declare const amigo: {
+/** Host API injected by the runtime. Available as `krake.*` in all plugins. */
+declare const krake: {
     // ── Network (all requests go through the sandbox) ──
 
     /** HTTP GET — returns parsed response object directly. */
@@ -286,6 +286,17 @@ declare const amigo: {
     storageSet(key: string, value: string): void;
     storageDelete(key: string): void;
 };
+
+// ─── Deprecated pre-rename names ────────────────────────────────────
+
+/** @deprecated Use {@link KrakePlugin}. Kept so existing plugins still type-check. */
+type AmigoPlugin = KrakePlugin;
+
+/**
+ * @deprecated Use {@link krake}. The runtime still exposes the host API
+ * under its pre-rename name `amigo`, as the same object.
+ */
+declare const amigo: typeof krake;
 
 // ─── Module ─────────────────────────────────────────────────────────
 

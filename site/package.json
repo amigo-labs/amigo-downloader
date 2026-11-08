@@ -10,7 +10,7 @@
     "check": "astro check"
   },
   "dependencies": {
-    "@amigo/ui": "workspace:*",
+    "@amigo-labs/krake-ui": "workspace:*",
     "@astrojs/check": "^0.9.9",
     "@astrojs/mdx": "^7.0.3",
     "@astrojs/sitemap": "^3.7.3",

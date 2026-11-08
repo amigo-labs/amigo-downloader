@@ -20,7 +20,7 @@ pub struct SandboxLimits {
     pub max_storage_bytes: u64,
     /// Allow plugin HTTP requests to reach private / loopback / link-local IPs.
     /// Defaults to `false` — a blocked request returns an error from
-    /// `amigo.httpGet`/`httpPost`/`httpHead`/etc. Set to `true` only if you
+    /// `krake.httpGet`/`httpPost`/`httpHead`/etc. Set to `true` only if you
     /// trust every installed plugin and need to talk to LAN hosts.
     #[serde(default)]
     pub allow_private_network: bool,

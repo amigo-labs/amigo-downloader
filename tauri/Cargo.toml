@@ -1,5 +1,5 @@
 [package]
-name = "amigo-desktop"
+name = "krake-desktop"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -9,19 +9,20 @@ license.workspace = true
 #   2. cd web-ui && npm ci && npx vite build && cd ..
 #   3. cd tauri && cargo tauri build
 #
-# Plain `cargo build -p amigo-desktop` builds only the stub (no Tauri feature).
-# `cargo tauri build` enables the "tauri" feature automatically.
+# Plain `cargo build -p krake-desktop` builds only the stub (no Tauri feature).
+# `cargo tauri build` enables the "tauri" feature automatically and names the
+# installed executable "Krake" (`mainBinaryName` in tauri.conf.json).
 
 [lints]
 workspace = true
 
 [features]
 default = []
-tauri = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-shell", "dep:tauri-plugin-notification", "dep:tauri-plugin-deep-link", "dep:tauri-plugin-updater", "dep:amigo-server"]
+tauri = ["dep:tauri", "dep:tauri-build", "dep:tauri-plugin-shell", "dep:tauri-plugin-notification", "dep:tauri-plugin-deep-link", "dep:tauri-plugin-updater", "dep:krake-server"]
 
 [dependencies]
-amigo-core = { workspace = true }
-amigo-plugin-runtime = { workspace = true }
+krake-core = { workspace = true }
+krake-plugin-runtime = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
@@ -34,7 +35,7 @@ tauri-plugin-shell = { version = "2", optional = true }
 tauri-plugin-notification = { version = "2", optional = true }
 tauri-plugin-deep-link = { version = "2", optional = true }
 tauri-plugin-updater = { version = "2", optional = true }
-amigo-server = { path = "../crates/server", optional = true }
+krake-server = { path = "../crates/server", optional = true }
 
 [build-dependencies]
 tauri-build = { version = "2", features = ["codegen"], optional = true }

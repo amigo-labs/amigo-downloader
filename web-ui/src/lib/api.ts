@@ -1,4 +1,4 @@
-// REST + WebSocket client for amigo-downloader API
+// REST + WebSocket client for the Krake API
 import type { Download } from "./stores";
 import { authRequired, setupRequired, wsConnected } from "./stores";
 

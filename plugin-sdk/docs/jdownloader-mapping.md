@@ -1,6 +1,6 @@
-# JDownloader → amigo-plugin-sdk mapping
+# JDownloader → krake-plugin-sdk mapping
 
-Reference for porting JDownloader plugins to `@amigo/plugin-sdk`. The SDK keeps the same conceptual model but spells out names in full (no `br`, `ctx`, `fmt`).
+Reference for porting JDownloader plugins to `@amigo-labs/krake-plugin-sdk`. The SDK keeps the same conceptual model but spells out names in full (no `br`, `ctx`, `fmt`).
 
 ## Core objects
 

@@ -1,5 +1,5 @@
 //! Tests for the out-of-process plugin host (issue #79, SH-7a): plugin JS
-//! runs in `amigo-plugin-host`, a dying child fails only the calls it was
+//! runs in `krake-plugin-host`, a dying child fails only the calls it was
 //! running, and the daemon keeps every piece of state that must survive it.
 //! Tests that kill or stop the child use Unix signals and are Unix-only.
 
@@ -7,10 +7,10 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::Duration;
 
-use amigo_plugin_runtime::Error;
-use amigo_plugin_runtime::host_api::{CaptchaFuture, HostApi};
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::sandbox::SandboxLimits;
+use krake_plugin_runtime::Error;
+use krake_plugin_runtime::host_api::{CaptchaFuture, HostApi};
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::sandbox::SandboxLimits;
 
 fn write_plugin(root: &Path, id: &str, resolve_body: &str) {
     let dir = root.join(id);
@@ -149,12 +149,12 @@ async fn plugin_state_survives_a_child_restart() {
         "stateful",
         &format!(
             r#"if (url.indexOf('write') >= 0) {{
-            amigo.storageSet("token", "t-123");
-            amigo.setCookie("stateful.test", "sid", "c-456");
+            krake.storageSet("token", "t-123");
+            krake.setCookie("stateful.test", "sid", "c-456");
         }}
         {}"#,
             returning(
-                r#"amigo.storageGet("token") + "/" + amigo.getCookie("stateful.test", "sid")"#
+                r#"krake.storageGet("token") + "/" + krake.getCookie("stateful.test", "sid")"#
             )
         ),
     );
@@ -235,7 +235,7 @@ async fn captcha_callback_round_trips_through_the_parent() {
     write_plugin(
         tmp.path(),
         "cap",
-        &returning(r#"amigo.solveCaptcha("https://cap.test/img.png")"#),
+        &returning(r#"krake.solveCaptcha("https://cap.test/img.png")"#),
     );
     let loader = PluginLoader::new_with_host_api(
         tmp.path().to_path_buf(),
@@ -259,7 +259,7 @@ async fn a_pending_captcha_does_not_trip_the_watchdog() {
     write_plugin(
         tmp.path(),
         "slowcap",
-        r#"amigo.solveCaptcha("https://slowcap.test/img.png"); while (true) {}"#,
+        r#"krake.solveCaptcha("https://slowcap.test/img.png"); while (true) {}"#,
     );
     let loader = PluginLoader::new_with_host_api(
         tmp.path().to_path_buf(),
@@ -291,7 +291,7 @@ async fn missing_host_binary_is_a_clear_error() {
     write_plugin(tmp.path(), "orphan", &returning("null"));
     let loader = PluginLoader::new(tmp.path().to_path_buf(), limits(5))
         .unwrap()
-        .with_plugin_host_binary("/nonexistent/amigo-plugin-host".into());
+        .with_plugin_host_binary("/nonexistent/krake-plugin-host".into());
 
     let err = loader
         .load_plugin(&tmp.path().join("orphan/plugin.js"))

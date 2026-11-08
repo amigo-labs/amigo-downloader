@@ -1,4 +1,4 @@
-# Architecture Review: amigo-downloader
+# Architecture Review: Krake
 
 **Date**: 2026-03-29
 **Scope**: Full architecture evaluation of crate structure, core engine, plugin system, web-ui, and deployment

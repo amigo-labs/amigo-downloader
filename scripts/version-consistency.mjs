@@ -14,7 +14,7 @@
  *   - `[workspace.package].version` is the single source of truth,
  *   - every workspace member inherits it instead of pinning its own version
  *     (a pinned one would silently stay behind at every release),
- *   - the `amigo-*` entries in `Cargo.lock` match it, because CI builds with
+ *   - the `krake-*` entries in `Cargo.lock` match it, because CI builds with
  *     `--locked` and a stale lockfile fails the release PR,
  *   - the JSON files that carry the same version agree with it, and
  *   - every one of those files is actually listed in `extra-files`.
@@ -70,7 +70,7 @@ for (const member of members) {
 const lockedCrates = new Set();
 for (const block of read("Cargo.lock").split("[[package]]").slice(1)) {
   const name = /^name\s*=\s*"([^"]+)"/m.exec(block)?.[1];
-  if (!name?.startsWith("amigo-")) continue;
+  if (!name?.startsWith("krake-")) continue;
   lockedCrates.add(name);
   const version = /^version\s*=\s*"([^"]+)"/m.exec(block)?.[1];
   if (version !== expected) fail(`Cargo.lock: ${name} is ${version}, expected ${expected}`);

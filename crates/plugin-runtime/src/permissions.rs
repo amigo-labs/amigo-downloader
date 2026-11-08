@@ -1,7 +1,7 @@
 //! Per-plugin capability scoping.
 //!
 //! A plugin may declare `permissions.domains` — the hosts it is allowed to
-//! reach through `amigo.http*`. The list is validated once at load time,
+//! reach through `krake.http*`. The list is validated once at load time,
 //! compiled into a [`DomainAllowlist`] and bound into that plugin's host-API
 //! bindings, where JS cannot see or change it. Every request (and every
 //! redirect hop) is checked against it in `HostApi::check_url_allowed`.

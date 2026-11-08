@@ -1,6 +1,6 @@
 //! Daemon side of the out-of-process plugin host (#79).
 //!
-//! [`ProcessHost`] spawns `amigo-plugin-host` lazily, speaks [`crate::ipc`]
+//! [`ProcessHost`] spawns `krake-plugin-host` lazily, speaks [`crate::ipc`]
 //! with it, executes its host callbacks against the plugins' scoped
 //! [`HostApi`]s, and replaces it when it dies:
 //!
@@ -31,10 +31,15 @@ use crate::host_fns::{self, HostArgs, HostResult};
 use crate::ipc::{self, Handle, Payload, Request, ToChild, ToParent};
 
 /// File name of the plugin host binary.
-pub(crate) const HOST_BINARY: &str = "amigo-plugin-host";
+pub(crate) const HOST_BINARY: &str = "krake-plugin-host";
 
 /// Overrides where the plugin host binary is looked up.
-pub(crate) const HOST_BINARY_ENV: &str = "AMIGO_PLUGIN_HOST_BIN";
+pub(crate) const HOST_BINARY_ENV: &str = "KRAKE_PLUGIN_HOST_BIN";
+
+/// Pre-rename name of [`HOST_BINARY_ENV`], still honoured (deprecated).
+/// This crate does not depend on `krake-core`, whose `env` module does the
+/// same for the daemon's other variables.
+const LEGACY_HOST_BINARY_ENV: &str = "AMIGO_PLUGIN_HOST_BIN";
 
 const MAX_SPAWNS_PER_WINDOW: usize = 5;
 const SPAWN_WINDOW: Duration = Duration::from_mins(1);
@@ -134,11 +139,20 @@ impl ProcessHost {
     }
 }
 
-/// Find `amigo-plugin-host`: `$AMIGO_PLUGIN_HOST_BIN`, else next to the
+/// Find `krake-plugin-host`: `$KRAKE_PLUGIN_HOST_BIN`, else next to the
 /// current executable, else one level up when the executable lives in
 /// Cargo's `deps/` (integration-test binaries).
 fn locate_binary() -> Result<PathBuf, crate::Error> {
     if let Some(path) = std::env::var_os(HOST_BINARY_ENV) {
+        return Ok(PathBuf::from(path));
+    }
+    if let Some(path) = std::env::var_os(LEGACY_HOST_BINARY_ENV) {
+        static WARNED: std::sync::Once = std::sync::Once::new();
+        WARNED.call_once(|| {
+            tracing::warn!(
+                "{LEGACY_HOST_BINARY_ENV} is deprecated and will be removed; set {HOST_BINARY_ENV} instead"
+            );
+        });
         return Ok(PathBuf::from(path));
     }
     let exe = std::env::current_exe()

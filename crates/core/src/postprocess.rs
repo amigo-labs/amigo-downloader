@@ -718,7 +718,7 @@ mod tests {
                 &tar_path.to_string_lossy(),
                 "-C",
                 &staging.to_string_lossy(),
-                "--transform=s,evil,../../../tmp/amigo-evil,",
+                "--transform=s,evil,../../../tmp/krake-evil,",
                 "evil",
             ])
             .status();
@@ -748,7 +748,7 @@ mod tests {
             "extract_tar must refuse an archive with a traversing member"
         );
         assert!(
-            !std::path::Path::new("/tmp/amigo-evil").exists(),
+            !std::path::Path::new("/tmp/krake-evil").exists(),
             "traversing member must not be written outside output_dir"
         );
     }

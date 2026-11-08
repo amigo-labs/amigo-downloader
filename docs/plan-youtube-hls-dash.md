@@ -4,7 +4,7 @@
 
 ## Context
 
-YouTube-Downloads funktionieren nicht, weil der aktuelle `ANDROID` innertube-Client keine direkten URLs mehr liefert. Außerdem fehlen HLS- und DASH-Downloader komplett — ohne die kann amigo-dl keine Streaming-Formate laden. Die YouTube-Logik liegt aktuell falsch im Core-Crate statt in einem eigenen Extractor.
+YouTube-Downloads funktionieren nicht, weil der aktuelle `ANDROID` innertube-Client keine direkten URLs mehr liefert. Außerdem fehlen HLS- und DASH-Downloader komplett — ohne die kann krake keine Streaming-Formate laden. Die YouTube-Logik liegt aktuell falsch im Core-Crate statt in einem eigenen Extractor.
 
 **Ziel:** YouTube-Downloads zum Laufen bringen, HLS/DASH als Protokolle unterstützen, YouTube aus Core rausnehmen, `--verbose` Flag fürs Debugging.
 
@@ -42,8 +42,8 @@ YouTube-Downloads funktionieren nicht, weil der aktuelle `ANDROID` innertube-Cli
 ### Phase 0: Branch + Scaffolding
 1. Branch `feat/youtube-hls-dash` erstellen
 2. `crates/extractors/` mit `Cargo.toml` + `src/lib.rs` anlegen
-3. Workspace-Root: `amigo-extractors` registrieren
-4. CLI: `amigo-extractors` als Dependency
+3. Workspace-Root: `krake-extractors` registrieren
+4. CLI: `krake-extractors` als Dependency
 5. `cargo check` verifizieren
 
 ### Phase 1: YouTube aus Core rausnehmen
@@ -53,7 +53,7 @@ YouTube-Downloads funktionieren nicht, weil der aktuelle `ANDROID` innertube-Cli
    - `formats.rs` — Format-Parsing, Qualitäts-Auswahl
    - `mod.rs` — Public API
 7. `Extractor` Trait + `ExtractedMedia` Types in `crates/extractors/src/`
-8. CLI updaten: `amigo_extractors` statt `amigo_core::protocol::youtube`
+8. CLI updaten: `krake_extractors` statt `krake_core::protocol::youtube`
 9. `pub mod youtube;` aus `crates/core/src/protocol/mod.rs` entfernen
 10. Tests migrieren, `cargo test` verifizieren
 
@@ -132,7 +132,7 @@ Cargo.toml                              — workspace members + deps (rquickjs, 
 crates/core/Cargo.toml                  — m3u8-rs, dash-mpd
 crates/core/src/protocol/mod.rs         — youtube entfernen, hls/dash hinzu, Protocol enum
 crates/core/src/coordinator.rs          — HLS/DASH dispatch
-crates/cli/Cargo.toml                   — amigo-extractors dep
+crates/cli/Cargo.toml                   — krake-extractors dep
 crates/cli/src/main.rs                  — verbose flag, extractor integration, protocol dispatch
 ```
 
@@ -182,8 +182,8 @@ pub enum StreamProtocol { Http, Hls, Dash }
 
 1. `cargo test --workspace` — alle Tests grün
 2. `cargo clippy --workspace` — keine Warnings
-3. `amigo-dl --verbose https://www.youtube.com/watch?v=1mzl2Oo8Ncw` — zeigt Debug-Output, lädt Video runter
-4. `amigo-dl https://example.com/file.zip` — normaler HTTP-Download funktioniert weiterhin
+3. `krake --verbose https://www.youtube.com/watch?v=1mzl2Oo8Ncw` — zeigt Debug-Output, lädt Video runter
+4. `krake https://example.com/file.zip` — normaler HTTP-Download funktioniert weiterhin
 5. Download-Speed >1 MB/s (N-Parameter korrekt gelöst)
 
 ---

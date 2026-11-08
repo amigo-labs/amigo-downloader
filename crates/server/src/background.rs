@@ -4,8 +4,8 @@
 use std::path::Path;
 use std::sync::{Arc, LazyLock};
 
-use amigo_core::coordinator::Coordinator;
-use amigo_plugin_runtime::updater::PluginUpdater;
+use krake_core::coordinator::Coordinator;
+use krake_plugin_runtime::updater::PluginUpdater;
 use regex::Regex;
 use tokio::time::{Duration, interval};
 use tracing::{debug, info, warn};
@@ -94,7 +94,7 @@ fn spawn_plugin_auto_update(coordinator: Arc<Coordinator>, plugin_updater: Arc<P
 }
 
 /// Check the NZB watch folder for new .nzb files and import them.
-async fn check_nzb_watch_folder(coordinator: &Arc<Coordinator>) -> Result<(), amigo_core::Error> {
+async fn check_nzb_watch_folder(coordinator: &Arc<Coordinator>) -> Result<(), krake_core::Error> {
     let watch_dir = coordinator
         .storage()
         .get_update_state("nzb_watch_dir")
@@ -137,7 +137,7 @@ async fn check_nzb_watch_folder(coordinator: &Arc<Coordinator>) -> Result<(), am
                 continue;
             }
         };
-        let Ok(nzb) = amigo_core::protocol::usenet::nzb::parse_nzb(&nzb_data) else {
+        let Ok(nzb) = krake_core::protocol::usenet::nzb::parse_nzb(&nzb_data) else {
             warn!("Invalid NZB in watch folder: {path:?}");
             continue;
         };
@@ -191,7 +191,7 @@ async fn check_nzb_watch_folder(coordinator: &Arc<Coordinator>) -> Result<(), am
 async fn poll_rss_feeds(
     coordinator: &Arc<Coordinator>,
     http_client: &reqwest::Client,
-) -> Result<(), amigo_core::Error> {
+) -> Result<(), krake_core::Error> {
     // Check if RSS feature is enabled
     let flags = coordinator
         .storage()
@@ -255,18 +255,18 @@ async fn poll_rss_feeds(
 async fn fetch_and_process_feed(
     coordinator: &Arc<Coordinator>,
     http_client: &reqwest::Client,
-    feed: &amigo_core::storage::RssFeedRow,
-) -> Result<u32, amigo_core::Error> {
+    feed: &krake_core::storage::RssFeedRow,
+) -> Result<u32, krake_core::Error> {
     // Re-validate the feed URL on every poll. Even though add_rss_feed
     // checked it at insert time, a DNS A-record can later flip to a private
     // IP — a textbook SSRF rebinding pattern.
     crate::net_guard::validate_outbound_url(&feed.url, false)
         .await
-        .map_err(|e| amigo_core::Error::Other(format!("RSS feed URL rejected: {e}")))?;
+        .map_err(|e| krake_core::Error::Other(format!("RSS feed URL rejected: {e}")))?;
 
     let resp = http_client
         .get(&feed.url)
-        .header("User-Agent", "amigo-downloader/0.1.0")
+        .header("User-Agent", "krake/0.1.0")
         .send()
         .await?;
 

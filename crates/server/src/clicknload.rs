@@ -21,7 +21,7 @@ use axum::{
 };
 use tracing::{info, warn};
 
-use amigo_core::coordinator::Coordinator;
+use krake_core::coordinator::Coordinator;
 
 /// Plain `flash/add` payload is one URL per line. 256 KiB is plenty for any
 /// realistic batch and refuses obvious DoS payloads.
@@ -108,7 +108,7 @@ async fn flash_addcrypted2(
     if let Some(data) = crypted {
         // Try to parse as DLC
         let decoded = urlencoding_decode(&data);
-        match amigo_core::container::import_dlc(decoded.as_bytes()) {
+        match krake_core::container::import_dlc(decoded.as_bytes()) {
             Ok(packages) => {
                 let link_count: usize = packages.iter().map(|p| p.links.len()).sum();
                 info!("Click'n'Load: DLC with {} links", link_count);

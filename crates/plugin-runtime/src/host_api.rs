@@ -2,7 +2,7 @@
 //!
 //! All network/filesystem access is proxied through these functions.
 //! Plugins have NO direct access to the network or filesystem.
-//! [`crate::host_fns`] registers them under `globalThis.amigo.*`; the stateful
+//! [`crate::host_fns`] registers them under `globalThis.krake.*`; the stateful
 //! ones run here, in the daemon, via [`HostApi::dispatch`].
 
 use std::collections::HashMap;
@@ -34,7 +34,7 @@ type CookieJars = HashMap<String, HashMap<String, HashMap<String, String>>>;
 // --- Input-size limits for the parsing helpers (audit finding #11) ---
 //
 // All of these guard the host *outside* the QuickJS context. The 64 MiB
-// memory cap on the JS side does not protect against `amigo.htmlQueryAll`
+// memory cap on the JS side does not protect against `krake.htmlQueryAll`
 // allocating gigabytes on the host heap, so we cap inputs before they reach
 // `scraper`, `regex`, or the base64 decoder.
 
@@ -166,7 +166,7 @@ impl HostApi {
     pub fn new(max_requests: u32) -> Self {
         Self {
             http_client: reqwest::Client::builder()
-                .user_agent("amigo-downloader/0.1.0")
+                .user_agent("krake/0.1.0")
                 // Never let reqwest follow redirects on its own: `check_url_allowed`
                 // only validates the *initial* URL, so an auto-followed 3xx to an
                 // internal address would bypass the SSRF guard. We follow manually

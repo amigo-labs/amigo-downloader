@@ -1,4 +1,4 @@
-//! Tauri v2 desktop application for amigo-downloader.
+//! Tauri v2 desktop application for Krake.
 //!
 //! This embeds the core download engine and serves the web-ui
 //! in a native window with system tray integration.
@@ -25,19 +25,19 @@ fn main() {
     use std::sync::Arc;
     use tauri::Manager;
 
-    // Signal to amigo-core that we are running inside Tauri.
+    // Signal to krake-core that we are running inside Tauri.
     // This must be set before any core initialization so that
     // detect_distribution() returns Distribution::Tauri.
     // SAFETY: Called at the very start of main, before any threads are spawned.
     unsafe {
-        std::env::set_var("AMIGO_TAURI", "1");
+        std::env::set_var("KRAKE_TAURI", "1");
     }
 
     // Initialize logging
     tracing_subscriber::fmt().with_env_filter("info").init();
 
     // Load config
-    let config = amigo_core::config::Config::load_auto();
+    let config = krake_core::config::Config::load_auto();
 
     // Build Tauri app — storage is initialized in setup() where we have
     // access to the app handle for resolving platform-specific data dirs.
@@ -54,14 +54,32 @@ fn main() {
                 .app_data_dir()
                 .unwrap_or_else(|_| PathBuf::from("."));
             std::fs::create_dir_all(&data_dir).expect("Failed to create app data directory");
-            let db_path = data_dir.join("amigo.db");
+            let db_path = data_dir.join("krake.db");
+            // Before the rename the database was `amigo.db`, and the app's
+            // data dir was named after the identifier `com.amigo-labs.downloader`.
+            let legacy_dbs = [
+                data_dir.join("amigo.db"),
+                data_dir
+                    .parent()
+                    .map(|p| p.join("com.amigo-labs.downloader").join("amigo.db"))
+                    .unwrap_or_default(),
+            ];
+            for legacy in legacy_dbs.iter().filter(|p| !p.as_os_str().is_empty()) {
+                if let Err(e) = krake_core::migrate::migrate_db(legacy, &db_path) {
+                    tracing::warn!(
+                        "Could not move {} to {}: {e}",
+                        legacy.display(),
+                        db_path.display()
+                    );
+                }
+            }
             let download_dir = PathBuf::from(&config.download_dir);
             let temp_dir = PathBuf::from(&config.temp_dir);
 
-            let storage = amigo_core::storage::Storage::open(db_path, download_dir, temp_dir)
+            let storage = krake_core::storage::Storage::open(db_path, download_dir, temp_dir)
                 .expect("Failed to initialize storage");
 
-            let coordinator = Arc::new(amigo_core::coordinator::Coordinator::new(
+            let coordinator = Arc::new(krake_core::coordinator::Coordinator::new(
                 config.clone(),
                 storage,
             ));
@@ -79,7 +97,7 @@ fn main() {
                     // Start Click'n'Load listener on port 9666
                     let cnl_coord = coord.clone();
                     tokio::spawn(async move {
-                        if let Err(e) = amigo_server::clicknload::start_clicknload(cnl_coord).await
+                        if let Err(e) = krake_server::clicknload::start_clicknload(cnl_coord).await
                         {
                             tracing::warn!("Click'n'Load failed to start: {e}");
                         }
@@ -93,14 +111,14 @@ fn main() {
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("Error running amigo-downloader desktop app");
+        .expect("Error running the Krake desktop app");
 }
 
 // Tauri commands (callable from JavaScript)
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn cmd_add_download(
-    coordinator: tauri::State<'_, std::sync::Arc<amigo_core::coordinator::Coordinator>>,
+    coordinator: tauri::State<'_, std::sync::Arc<krake_core::coordinator::Coordinator>>,
     url: String,
 ) -> Result<String, String> {
     coordinator
@@ -112,7 +130,7 @@ async fn cmd_add_download(
 #[cfg(feature = "tauri")]
 #[tauri::command]
 async fn cmd_get_stats(
-    coordinator: tauri::State<'_, std::sync::Arc<amigo_core::coordinator::Coordinator>>,
+    coordinator: tauri::State<'_, std::sync::Arc<krake_core::coordinator::Coordinator>>,
 ) -> Result<serde_json::Value, String> {
     let active = coordinator.active_count().await;
     let speed = coordinator.total_speed().await;
@@ -125,12 +143,12 @@ async fn cmd_get_stats(
 // When built without Tauri (regular cargo build), show instructions
 #[cfg(not(feature = "tauri"))]
 fn main() {
-    eprintln!("amigo-downloader desktop app");
+    eprintln!("Krake desktop app");
     eprintln!();
     eprintln!("This binary must be built with the Tauri CLI:");
     eprintln!("  1. cargo install tauri-cli");
     eprintln!("  2. cd web-ui && npm ci && npx vite build && cd ..");
     eprintln!("  3. cd tauri && cargo tauri build");
     eprintln!();
-    eprintln!("For headless/server use, run `amigo-server` instead.");
+    eprintln!("For headless/server use, run `krake-server` instead.");
 }

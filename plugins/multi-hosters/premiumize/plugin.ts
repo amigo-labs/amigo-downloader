@@ -1,4 +1,4 @@
-/// <reference path="../../types/amigo.d.ts" />
+/// <reference path="../../types/krake.d.ts" />
 
 // Premiumize Multi-Hoster Plugin
 // Converts premium hoster links to direct download links via Premiumize API.
@@ -19,7 +19,7 @@ function buildUrlPattern(): string {
 }
 
 function getApiKey(): string {
-    const key = amigo.storageGet("api_key");
+    const key = krake.storageGet("api_key");
     if (!key) {
         throw new Error(
             "Premiumize API key not configured. Go to Settings → Plugins → Premiumize and enter your API key."
@@ -50,7 +50,7 @@ module.exports = {
     resolve(url: string): DownloadPackage {
         const apiKey = getApiKey();
 
-        const resp = amigo.httpPostForm(
+        const resp = krake.httpPostForm(
             API_BASE + "/transfer/directdl",
             { src: url },
             { headers: { "Authorization": "Bearer " + apiKey } },
@@ -91,26 +91,26 @@ module.exports = {
     login(username: string, password: string): boolean {
         // Validate the key BEFORE persisting it, so a bad key isn't left in
         // storage on failure and reused by resolve()/checkOnline().
-        const resp = amigo.httpGet(API_BASE + "/account/info", {
+        const resp = krake.httpGet(API_BASE + "/account/info", {
             headers: { "Authorization": "Bearer " + password },
         });
         if (resp.status === 200) {
             const user = parseApiJson(resp.body, "/account/info");
             if (user.status === "success") {
-                amigo.storageSet("api_key", password);
-                amigo.logInfo("Authenticated as: " + user.customer_id + " (Premium until: " + user.premium_until + ")");
+                krake.storageSet("api_key", password);
+                krake.logInfo("Authenticated as: " + user.customer_id + " (Premium until: " + user.premium_until + ")");
                 return true;
             }
         }
-        amigo.logError("Premiumize authentication failed: " + resp.body);
+        krake.logError("Premiumize authentication failed: " + resp.body);
         return false;
     },
 
     checkOnline(url: string): "online" | "offline" | "unknown" {
-        const apiKey = amigo.storageGet("api_key");
+        const apiKey = krake.storageGet("api_key");
         if (!apiKey) return "unknown";
 
-        const resp = amigo.httpPostForm(
+        const resp = krake.httpPostForm(
             API_BASE + "/transfer/directdl",
             { src: url },
             { headers: { "Authorization": "Bearer " + apiKey } },
@@ -122,4 +122,4 @@ module.exports = {
         }
         return "unknown";
     },
-} satisfies AmigoPlugin;
+} satisfies KrakePlugin;

@@ -46,7 +46,7 @@ default-members = [
 ]
 ```
 
-This way `cargo build` builds only the default members, while `cargo build -p amigo-desktop` or `cargo tauri build` explicitly builds the Tauri crate.
+This way `cargo build` builds only the default members, while `cargo build -p krake-desktop` or `cargo tauri build` explicitly builds the Tauri crate.
 
 ### 2. Uncomment Tauri dependencies behind a feature flag
 
@@ -78,7 +78,7 @@ The empty `"pubkey": ""` in `tauri/tauri.conf.json` must be replaced with either
 - Or the updater plugin section should be removed/disabled until a key is generated
 
 **Implementation approach:**
-- Add a `scripts/generate-tauri-signing-key.sh` script that wraps `tauri signer generate -w ~/.tauri/amigo-downloader.key` and outputs the public key
+- Add a `scripts/generate-tauri-signing-key.sh` script that wraps `tauri signer generate -w ~/.tauri/krake.key` and outputs the public key
 - Document the key generation in the Tauri build instructions
 - Set a placeholder comment in `tauri.conf.json` explaining the key must be generated before release builds
 - In CI, the signing key should come from a secret; local dev builds can disable the updater
@@ -88,7 +88,7 @@ For development, disable the updater plugin to avoid the empty-key error:
 "updater": {
     "active": false,
     "endpoints": [
-        "https://github.com/amigo-labs/amigo-downloader/releases/latest/download/latest.json"
+        "https://github.com/amigo-labs/amigo-krake/releases/latest/download/latest.json"
     ],
     "pubkey": "REPLACE_WITH_REAL_KEY_BEFORE_RELEASE"
 }
@@ -99,14 +99,14 @@ For development, disable the updater plugin to avoid the empty-key error:
 In `crates/core/src/updater.rs`, the `detect_distribution()` function needs to identify when running inside Tauri. Since the core crate cannot depend on Tauri, use an environment variable or compile-time feature flag:
 
 **Option A — Environment variable (preferred):**
-The Tauri `main.rs` sets `AMIGO_TAURI=1` at startup (before any core initialization), mirroring the existing `AMIGO_DOCKER` pattern:
+The Tauri `main.rs` sets `KRAKE_TAURI=1` at startup (before any core initialization), mirroring the existing `KRAKE_DOCKER` pattern:
 
 ```rust
 pub fn detect_distribution() -> Distribution {
-    if std::env::var("AMIGO_DOCKER").is_ok() {
+    if std::env::var("KRAKE_DOCKER").is_ok() {
         return Distribution::Docker;
     }
-    if std::env::var("AMIGO_TAURI").is_ok() {
+    if std::env::var("KRAKE_TAURI").is_ok() {
         return Distribution::Tauri;
     }
     // Check binary name as a heuristic
@@ -114,7 +114,7 @@ pub fn detect_distribution() -> Distribution {
         .ok()
         .and_then(|p| p.file_stem().map(|s| s.to_string_lossy().to_string()))
     {
-        if name.contains("amigo-desktop") || name.contains("amigo-downloader") {
+        if name.contains("krake-desktop") || name.contains("krake") {
             // Could be Tauri, but without env var we can't be sure
         }
     }
@@ -124,7 +124,7 @@ pub fn detect_distribution() -> Distribution {
 
 In `tauri/src/main.rs`, at the top of the Tauri main function:
 ```rust
-std::env::set_var("AMIGO_TAURI", "1");
+std::env::set_var("KRAKE_TAURI", "1");
 ```
 
 **Behavior when `Distribution::Tauri` is detected:**
@@ -137,15 +137,15 @@ std::env::set_var("AMIGO_TAURI", "1");
 
 ### AC1: Workspace membership
 - [ ] `tauri` appears in `[workspace.members]` in root `Cargo.toml`
-- [ ] `cargo metadata --no-deps` includes `amigo-desktop` in the package list
+- [ ] `cargo metadata --no-deps` includes `krake-desktop` in the package list
 - [ ] `cargo check --workspace` succeeds without Tauri system libraries installed (the `tauri` feature is not enabled by default)
-- [ ] `cargo build -p amigo-desktop` compiles the stub binary (prints instructions) without errors
+- [ ] `cargo build -p krake-desktop` compiles the stub binary (prints instructions) without errors
 
 ### AC2: Feature-gated Tauri dependencies
 - [ ] `tauri/Cargo.toml` has no commented-out dependencies
 - [ ] All Tauri crate dependencies are declared as `optional = true` and gated behind a `tauri` feature
 - [ ] `#[cfg(feature = "tauri")]` blocks in `main.rs` compile when the feature is enabled
-- [ ] `cargo clippy -p amigo-desktop` passes (without `tauri` feature, checking the stub path)
+- [ ] `cargo clippy -p krake-desktop` passes (without `tauri` feature, checking the stub path)
 
 ### AC3: Updater public key
 - [ ] `tauri/tauri.conf.json` does not contain `"pubkey": ""`
@@ -153,8 +153,8 @@ std::env::set_var("AMIGO_TAURI", "1");
 - [ ] A script or documentation describes how to generate and configure the signing key
 
 ### AC4: Distribution detection
-- [ ] `detect_distribution()` returns `Distribution::Tauri` when `AMIGO_TAURI` env var is set
-- [ ] The Tauri `main.rs` sets `AMIGO_TAURI=1` before initializing the core
+- [ ] `detect_distribution()` returns `Distribution::Tauri` when `KRAKE_TAURI` env var is set
+- [ ] The Tauri `main.rs` sets `KRAKE_TAURI=1` before initializing the core
 - [ ] When distribution is `Tauri`, `can_self_update` is `false` (Tauri manages its own updates)
 - [ ] Unit test: `detect_distribution()` returns correct variant for each env var combination
 
@@ -171,7 +171,7 @@ std::env::set_var("AMIGO_TAURI", "1");
 ### Workspace `default-members`
 Using `default-members` is important because Tauri v2 requires system libraries (GTK, WebKit on Linux) that may not be present on all developer machines or CI runners. Without `default-members`, adding `tauri` to `members` would cause `cargo build` to fail on machines without those libraries — even though the `tauri` feature is not active — because Cargo still resolves and downloads all workspace members.
 
-With `default-members`, plain `cargo build` only builds the server/CLI crates. The Tauri crate is only built when explicitly requested via `cargo build -p amigo-desktop` or `cargo tauri build`.
+With `default-members`, plain `cargo build` only builds the server/CLI crates. The Tauri crate is only built when explicitly requested via `cargo build -p krake-desktop` or `cargo tauri build`.
 
 ### Feature flag naming
 The feature is named `tauri` to match the existing `#[cfg(feature = "tauri")]` guards already present in `tauri/src/main.rs`. No code changes needed in the cfg attributes.
@@ -194,7 +194,7 @@ The feature is named `tauri` to match the existing `#[cfg(feature = "tauri")]` g
 | Tauri dependency versions conflict with workspace deps | Medium — version resolution failures | Pin Tauri deps explicitly, test lockfile resolution |
 | `cargo tauri build` may not respect workspace feature flags | Medium — build failure | Test with Tauri CLI v2, add `build.features = ["tauri"]` to `tauri.conf.json` if needed |
 | Signing key management adds operational complexity | Low — only affects release process | Document key generation, store private key in CI secrets only |
-| `AMIGO_TAURI` env var could be set accidentally by users | Low — wrong update path selected | Use a specific value check (`AMIGO_TAURI=1`) rather than just presence, document the variable |
+| `KRAKE_TAURI` env var could be set accidentally by users | Low — wrong update path selected | Use a specific value check (`KRAKE_TAURI=1`) rather than just presence, document the variable |
 
 ---
 

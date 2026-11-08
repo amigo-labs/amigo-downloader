@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::Mutex;
 use tracing::{error, info, warn};
 
-use amigo_core::queue::QueueStatus;
+use krake_core::queue::QueueStatus;
 
 use crate::api::AppState;
 
@@ -193,7 +193,7 @@ async fn submit_feedback(
         return Err((
             StatusCode::SERVICE_UNAVAILABLE,
             Json(ErrorResponse {
-                error: "Feedback not configured. Set AMIGO_GITHUB_TOKEN or configure feedback.github_token.".into(),
+                error: "Feedback not configured. Set KRAKE_GITHUB_TOKEN or configure feedback.github_token.".into(),
             }),
         ));
     };
@@ -278,7 +278,7 @@ async fn submit_feedback(
         // Note: We intentionally don't include the URL to avoid leaking private links
     }
 
-    body.push_str("\n---\n*Submitted via amigo-downloader in-app feedback*\n");
+    body.push_str("\n---\n*Submitted via Krake in-app feedback*\n");
 
     // Labels
     let labels = match req.feedback_type {
@@ -313,7 +313,7 @@ async fn submit_feedback(
         }
         title.hash(&mut hasher);
         env!("CARGO_PKG_VERSION").hash(&mut hasher);
-        format!("amigo-dedup-{:016x}", hasher.finish())
+        format!("krake-dedup-{:016x}", hasher.finish())
     };
 
     let repo = &config.feedback.github_repo;
@@ -357,7 +357,7 @@ async fn submit_feedback(
         .header("Authorization", format!("Bearer {token}"))
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
-        .header("User-Agent", "amigo-downloader")
+        .header("User-Agent", "krake")
         .json(&issue)
         .send()
         .await
@@ -426,7 +426,7 @@ async fn check_duplicate_issue(
         .header("Authorization", format!("Bearer {token}"))
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
-        .header("User-Agent", "amigo-downloader")
+        .header("User-Agent", "krake")
         .send()
         .await
         .map_err(|e| e.to_string())?;
@@ -622,7 +622,7 @@ mod tests {
             host.hash(&mut hasher);
             title.hash(&mut hasher);
             "0.1.0".hash(&mut hasher);
-            format!("amigo-dedup-{:016x}", hasher.finish())
+            format!("krake-dedup-{:016x}", hasher.finish())
         }
 
         // Same error + same host = same hash

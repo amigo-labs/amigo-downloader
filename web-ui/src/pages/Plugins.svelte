@@ -8,12 +8,12 @@
   import { addToast } from "../lib/toast";
   import { locale, tr } from "../lib/i18n";
   import SkeletonCard from "../components/SkeletonCard.svelte";
-  import Card from "@amigo/ui/components/Card.svelte";
-  import Button from "@amigo/ui/components/Button.svelte";
-  import Chip from "@amigo/ui/components/Chip.svelte";
-  import Banner from "@amigo/ui/components/Banner.svelte";
-  import EmptyState from "@amigo/ui/components/EmptyState.svelte";
-  import Icon from "@amigo/ui/components/Icon.svelte";
+  import Card from "@amigo-labs/krake-ui/components/Card.svelte";
+  import Button from "@amigo-labs/krake-ui/components/Button.svelte";
+  import Chip from "@amigo-labs/krake-ui/components/Chip.svelte";
+  import Banner from "@amigo-labs/krake-ui/components/Banner.svelte";
+  import EmptyState from "@amigo-labs/krake-ui/components/EmptyState.svelte";
+  import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
 
   let plugins = $state<Plugin[]>([]);
   let updateInfo = $state<UpdateCheck | null>(null);

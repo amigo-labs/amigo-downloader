@@ -3,8 +3,8 @@
 //! Ignored by default — run explicitly and read the printed numbers:
 //!
 //! ```sh
-//! AMIGO_REGISTRY_PUBKEY_HEX=$(printf "de%.0s" {1..32}) \
-//!   cargo test -p amigo-plugin-runtime --release --test perf_baseline -- --ignored --nocapture
+//! KRAKE_REGISTRY_PUBKEY_HEX=$(printf "de%.0s" {1..32}) \
+//!   cargo test -p krake-plugin-runtime --release --test perf_baseline -- --ignored --nocapture
 //! ```
 //!
 //! Measures, against the shipped `plugins/` tree:
@@ -12,16 +12,16 @@
 //!   cache hit);
 //! - `resolve()` of `generic-http` against a local mock page, i.e. the JS +
 //!   host-API cost of a resolve with the network latency factored out. Since
-//!   #79 this includes the IPC round trips to the `amigo-plugin-host` child;
+//!   #79 this includes the IPC round trips to the `krake-plugin-host` child;
 //!   the numbers before and after are recorded in
 //!   `docs/specs/plugin-sandbox-hardening.md` (SH-7a).
 
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
-use amigo_plugin_runtime::bytecode_cache::BytecodeCache;
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::sandbox::SandboxLimits;
+use krake_plugin_runtime::bytecode_cache::BytecodeCache;
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::sandbox::SandboxLimits;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 

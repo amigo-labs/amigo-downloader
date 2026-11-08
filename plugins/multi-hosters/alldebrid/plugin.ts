@@ -1,4 +1,4 @@
-/// <reference path="../../types/amigo.d.ts" />
+/// <reference path="../../types/krake.d.ts" />
 
 // AllDebrid Multi-Hoster Plugin
 // Converts premium hoster links to direct download links via AllDebrid API.
@@ -20,7 +20,7 @@ function buildUrlPattern(): string {
 }
 
 function getApiKey(): string {
-    const key = amigo.storageGet("api_key");
+    const key = krake.storageGet("api_key");
     if (!key) {
         throw new Error(
             "AllDebrid API key not configured. Go to Settings → Plugins → AllDebrid and enter your API key."
@@ -51,8 +51,8 @@ module.exports = {
     resolve(url: string): DownloadPackage {
         const apiKey = getApiKey();
 
-        const resp = amigo.httpGet(
-            API_BASE + "/link/unlock?agent=amigo-downloader&apikey=" + encodeURIComponent(apiKey) + "&link=" + encodeURIComponent(url)
+        const resp = krake.httpGet(
+            API_BASE + "/link/unlock?agent=krake&apikey=" + encodeURIComponent(apiKey) + "&link=" + encodeURIComponent(url)
         );
 
         if (resp.status !== 200) {
@@ -91,27 +91,27 @@ module.exports = {
     login(username: string, password: string): boolean {
         // Validate the key BEFORE persisting it: storing first meant a mistyped
         // key was left in storage on failure and then used by resolve()/checkOnline().
-        const resp = amigo.httpGet(
-            API_BASE + "/user?agent=amigo-downloader&apikey=" + encodeURIComponent(password)
+        const resp = krake.httpGet(
+            API_BASE + "/user?agent=krake&apikey=" + encodeURIComponent(password)
         );
         if (resp.status === 200) {
             const data = parseApiJson(resp.body, "/user");
             if (data.status === "success") {
-                amigo.storageSet("api_key", password);
-                amigo.logInfo("Authenticated as: " + data.data.user.username + " (Premium: " + data.data.user.isPremium + ")");
+                krake.storageSet("api_key", password);
+                krake.logInfo("Authenticated as: " + data.data.user.username + " (Premium: " + data.data.user.isPremium + ")");
                 return true;
             }
         }
-        amigo.logError("AllDebrid authentication failed: " + resp.body);
+        krake.logError("AllDebrid authentication failed: " + resp.body);
         return false;
     },
 
     checkOnline(url: string): "online" | "offline" | "unknown" {
-        const apiKey = amigo.storageGet("api_key");
+        const apiKey = krake.storageGet("api_key");
         if (!apiKey) return "unknown";
 
-        const resp = amigo.httpGet(
-            API_BASE + "/link/infos?agent=amigo-downloader&apikey=" + encodeURIComponent(apiKey) + "&link[]=" + encodeURIComponent(url)
+        const resp = krake.httpGet(
+            API_BASE + "/link/infos?agent=krake&apikey=" + encodeURIComponent(apiKey) + "&link[]=" + encodeURIComponent(url)
         );
 
         if (resp.status === 200) {
@@ -124,4 +124,4 @@ module.exports = {
         }
         return "unknown";
     },
-} satisfies AmigoPlugin;
+} satisfies KrakePlugin;

@@ -74,7 +74,7 @@ export async function parse(
     url: options.keyExchangeEndpoint,
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
-      "User-Agent": options.userAgent ?? "amigo-plugin-sdk",
+      "User-Agent": options.userAgent ?? "krake-plugin-sdk",
     },
     body: `jk=${encodeURIComponent(serviceKey)}`,
     followRedirects: true,

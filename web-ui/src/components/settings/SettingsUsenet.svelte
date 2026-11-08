@@ -1,8 +1,8 @@
 <script lang="ts">
   import type { AppConfig } from "../../lib/api";
   import { locale, tr } from "../../lib/i18n";
-  import Card from "@amigo/ui/components/Card.svelte";
-  import Toggle from "@amigo/ui/components/Toggle.svelte";
+  import Card from "@amigo-labs/krake-ui/components/Card.svelte";
+  import Toggle from "@amigo-labs/krake-ui/components/Toggle.svelte";
 
   let { config, onsave }: { config: AppConfig; onsave: () => void } = $props();
 

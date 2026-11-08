@@ -23,17 +23,17 @@ v0.1.0-Release-PR, deren Merge den Tag setzt und den (bewusst leeren)
 - [ ] Pubkey in `tauri/tauri.conf.json` gegen den neuen Key abgleichen.
       Danach kann der Code-Schritt `"active": true` (Updater) gesetzt werden.
 - [ ] Registry-Ed25519-**Private**-Key erzeugen und offline sichern;
-      sicherstellen, dass `AMIGO_REGISTRY_PUBKEY_HEX` (Build-Arg in
+      sicherstellen, dass `KRAKE_REGISTRY_PUBKEY_HEX` (Build-Arg in
       `.github/workflows/release-build.yml` bzw. Docker-Build) zum
       Public-Key passt.
 - [ ] Signier-Prozess für den Plugin-Registry-Index etablieren und
       dokumentieren (wer signiert beim Veröffentlichen neuer Plugins?).
 - [ ] Self-Update-Ed25519-**Private**-Key erzeugen und offline sichern;
-      sicherstellen, dass `AMIGO_UPDATE_PUBKEY_HEX` (Build-Arg in
+      sicherstellen, dass `KRAKE_UPDATE_PUBKEY_HEX` (Build-Arg in
       `.github/workflows/release-build.yml` bzw. Docker-Build) zum
       Public-Key passt. `crates/core/build.rs` verweigert Release-Builds
       ohne diesen Key.
-- [ ] Release-Pipeline: jedes `amigo-server`-Binary mit dem Private-Key
+- [ ] Release-Pipeline: jedes `krake-server`-Binary mit dem Private-Key
       signieren und die Detached-Signatur als `<asset>.sig`-Release-Asset
       neben dem Binary und `<asset>.sha256` hochladen (der Self-Updater
       erwartet sie und lehnt sonst das Update ab).
@@ -47,7 +47,7 @@ v0.1.0-Release-PR, deren Merge den Tag setzt und den (bewusst leeren)
 
 ## Veröffentlichung & Distribution
 
-- [ ] Entscheiden, ob `@amigo/plugin-sdk` öffentlich auf npm publiziert wird.
+- [ ] Entscheiden, ob `@amigo-labs/krake-plugin-sdk` öffentlich auf npm publiziert wird.
       Falls ja: npm-Org/Account + `NPM_TOKEN`-Secret anlegen und
       `"private": true` in `plugin-sdk/package.json` entfernen.
 - [ ] Direkt nach dem v0.1.0-Tag `release-as: 0.1.0` aus

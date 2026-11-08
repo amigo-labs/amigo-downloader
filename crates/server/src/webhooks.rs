@@ -6,8 +6,8 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use amigo_core::config::WebhookEndpoint;
-use amigo_core::coordinator::DownloadEvent;
+use krake_core::config::WebhookEndpoint;
+use krake_core::coordinator::DownloadEvent;
 use serde::Serialize;
 use tokio::sync::{RwLock, broadcast};
 use tracing::{debug, error, info, warn};
@@ -30,7 +30,7 @@ impl WebhookDispatcher {
     pub fn new(endpoints: Vec<WebhookEndpoint>) -> Self {
         Self {
             client: reqwest::Client::builder()
-                .user_agent("amigo-downloader/0.1.0")
+                .user_agent("krake/0.1.0")
                 .timeout(Duration::from_secs(30))
                 .build()
                 .expect("Failed to build webhook HTTP client"),
@@ -149,7 +149,7 @@ impl WebhookDispatcher {
             event: "test".to_string(),
             timestamp: chrono::Utc::now().to_rfc3339(),
             data: serde_json::json!({
-                "message": "This is a test webhook from amigo-downloader"
+                "message": "This is a test webhook from Krake"
             }),
         };
 
@@ -220,17 +220,17 @@ async fn dispatch_once(
 
     let delivery_id = uuid::Uuid::new_v4().to_string();
 
-    let mut req = client
-        .post(&endpoint.url)
-        .header("Content-Type", "application/json")
-        .header("X-Amigo-Event", event_type)
-        .header("X-Amigo-Delivery", &delivery_id);
-
     // HMAC-SHA256 signing. Signing is mandatory: `endpoint.secret` is always
     // populated (generated at creation time), so every payload carries a
     // signature the receiver can verify.
     let signature = sign_payload(&endpoint.secret, payload_json)?;
-    req = req.header("X-Amigo-Signature", signature);
+
+    let mut req = client
+        .post(&endpoint.url)
+        .header("Content-Type", "application/json");
+    for (name, value) in delivery_headers(event_type, &delivery_id, &signature) {
+        req = req.header(name, value);
+    }
 
     let resp = req
         .body(payload_json.to_string())
@@ -241,7 +241,25 @@ async fn dispatch_once(
     Ok(resp.status().as_u16())
 }
 
-/// Compute the `X-Amigo-Signature` header value for `payload`, signed with
+/// The `X-Krake-Event`, `X-Krake-Delivery` and `X-Krake-Signature` headers
+/// of one delivery, each repeated under its deprecated pre-rename name
+/// (`X-Amigo-*`) so receivers written against the old names keep verifying.
+fn delivery_headers<'a>(
+    event_type: &'a str,
+    delivery_id: &'a str,
+    signature: &'a str,
+) -> [(&'static str, &'a str); 6] {
+    [
+        ("X-Krake-Event", event_type),
+        ("X-Krake-Delivery", delivery_id),
+        ("X-Krake-Signature", signature),
+        ("X-Amigo-Event", event_type),
+        ("X-Amigo-Delivery", delivery_id),
+        ("X-Amigo-Signature", signature),
+    ]
+}
+
+/// Compute the `X-Krake-Signature` header value for `payload`, signed with
 /// `secret`. Returns `sha256=<hex>` where the hex is HMAC-SHA256(secret,
 /// payload). `new_from_slice` accepts any key length, so the error path is
 /// effectively unreachable — but we surface it rather than send an unsigned
@@ -281,6 +299,17 @@ mod tests {
     use super::*;
 
     #[test]
+    fn delivery_headers_carry_new_and_legacy_names() {
+        let headers = delivery_headers("download.completed", "d-1", "sha256=ab");
+        let get = |name: &str| headers.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
+        for prefix in ["X-Krake", "X-Amigo"] {
+            assert_eq!(get(&format!("{prefix}-Event")), Some("download.completed"));
+            assert_eq!(get(&format!("{prefix}-Delivery")), Some("d-1"));
+            assert_eq!(get(&format!("{prefix}-Signature")), Some("sha256=ab"));
+        }
+    }
+
+    #[test]
     fn sign_payload_matches_known_hmac_vector() {
         // RFC-4231-style check: HMAC-SHA256 of a fixed key + message. Computed
         // independently (e.g. `printf 'payload' | openssl dgst -sha256 -hmac
@@ -296,7 +325,7 @@ mod tests {
     fn signature_is_verifiable_with_the_stored_secret() {
         // A receiver re-derives the HMAC over the raw body with the shared
         // secret and compares. Same secret + body must reproduce the header.
-        let secret = amigo_core::config::generate_webhook_secret();
+        let secret = krake_core::config::generate_webhook_secret();
         let body = r#"{"event":"download.completed","data":{}}"#;
 
         let header = sign_payload(&secret, body).expect("sign");
@@ -309,7 +338,7 @@ mod tests {
         assert_eq!(hex_sig, expected);
 
         // A wrong secret must NOT verify.
-        let other = amigo_core::config::generate_webhook_secret();
+        let other = krake_core::config::generate_webhook_secret();
         let bad = sign_payload(&other, body).expect("sign");
         assert_ne!(
             bad, header,
@@ -319,7 +348,7 @@ mod tests {
 
     #[test]
     fn generated_secret_is_64_hex_chars() {
-        let s = amigo_core::config::generate_webhook_secret();
+        let s = krake_core::config::generate_webhook_secret();
         assert_eq!(s.len(), 64);
         assert!(s.bytes().all(|b| b.is_ascii_hexdigit()));
     }

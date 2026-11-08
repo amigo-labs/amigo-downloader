@@ -66,7 +66,7 @@ pub enum PluginType {
 /// Capabilities a plugin declares in its manifest (`permissions` export).
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PluginPermissions {
-    /// Host patterns the plugin may reach over `amigo.http*`: exact hosts
+    /// Host patterns the plugin may reach over `krake.http*`: exact hosts
     /// (`api.real-debrid.com`) or a single leading wildcard label
     /// (`*.rdeb.io`, which matches subdomains but not `rdeb.io` itself). No
     /// schemes, paths, ports or bare `*`. `None` means the plugin declares no

@@ -898,7 +898,7 @@ mod tests {
             .await;
 
         let dl = HttpDownloader::new(
-            "amigo-test",
+            "krake-test",
             BandwidthLimiter::new(crate::bandwidth::BandwidthConfig::default()),
         );
         let dir = tempfile::tempdir().unwrap();

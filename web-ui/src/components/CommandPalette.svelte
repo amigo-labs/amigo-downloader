@@ -7,7 +7,7 @@
   import { locale, tr } from "../lib/i18n";
   import { focusTrap } from "../lib/focusTrap";
   import { scaleFade, dur } from "../lib/motion";
-  import Icon from "@amigo/ui/components/Icon.svelte";
+  import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
 
   let { onclose, onshortcuts }: { onclose: () => void; onshortcuts: () => void } = $props();
 

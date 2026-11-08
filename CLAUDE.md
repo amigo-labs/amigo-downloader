@@ -1,8 +1,8 @@
-# CLAUDE.md — amigo-downloader
+# CLAUDE.md — Krake
 
 ## Projekt-Vision
 
-**amigo-downloader** ist ein performanter, modularer Download-Manager in Rust mit TypeScript-Plugin-System (QuickJS + SWC), responsiver Web-UI und nativen Apps via Tauri. Ziel: das beste Download-Tool das es gibt — schneller als JDownloader, leichter als pyLoad, mit Built-in-Support für HTTP, Usenet, HLS und DASH.
+**Krake** ist ein performanter, modularer Download-Manager in Rust mit TypeScript-Plugin-System (QuickJS + SWC), responsiver Web-UI und nativen Apps via Tauri. Ziel: das beste Download-Tool das es gibt — schneller als JDownloader, leichter als pyLoad, mit Built-in-Support für HTTP, Usenet, HLS und DASH.
 
 Organisation: `amigo-labs` auf GitHub.
 
@@ -89,7 +89,7 @@ Organisation: `amigo-labs` auf GitHub.
 ## Repository-Struktur (Monorepo)
 
 ```
-amigo-downloader/
+amigo-krake/
 ├── CLAUDE.md
 ├── README.md
 ├── LICENSE
@@ -138,12 +138,12 @@ amigo-downloader/
 │   │   └── src/
 │   │       ├── lib.rs
 │   │       ├── engine.rs        # QuickJS VM execution
-│   │       ├── host_api.rs      # amigo.* host functions (daemon side)
+│   │       ├── host_api.rs      # krake.* host functions (daemon side)
 │   │       ├── host_fns.rs      # Host-function table + QuickJS adapter
 │   │       ├── ipc.rs           # Daemon ↔ plugin host wire protocol
 │   │       ├── plugin_host.rs   # Child process that runs plugin JS
 │   │       ├── process_host.rs  # Spawns/supervises the plugin host
-│   │       ├── bin/amigo-plugin-host.rs
+│   │       ├── bin/krake-plugin-host.rs
 │   │       ├── loader.rs
 │   │       ├── registry.rs      # Plugin marketplace
 │   │       ├── sandbox.rs
@@ -209,7 +209,7 @@ amigo-downloader/
 │   ├── tauri.conf.json
 │   └── src/
 │       └── main.rs
-├── plugin-sdk/                   # @amigo/plugin-sdk — TS SDK for plugin authors
+├── plugin-sdk/                   # @amigo-labs/krake-plugin-sdk — TS SDK for plugin authors
 │   ├── package.json
 │   ├── tsconfig.json
 │   ├── vitest.config.ts
@@ -224,7 +224,7 @@ amigo-downloader/
 │   ├── template/
 │   │   └── plugin.ts
 │   ├── types/
-│   │   └── amigo.d.ts           # TypeScript type definitions
+│   │   └── krake.d.ts           # TypeScript type definitions
 │   ├── hosters/
 │   │   ├── generic-http/
 │   │   └── xfilesharing/
@@ -353,14 +353,14 @@ amigo-downloader/
 
 Plugins sind TypeScript-Dateien (`.ts`), die zur Ladezeit via SWC nach JavaScript transpiliert und in einer sandboxed QuickJS VM ausgeführt werden.
 
-Die autoritative Plugin-API-Referenz ist `docs/plugin-api.md`; die vollständigen TypeScript-Typen liegen in `plugins/types/amigo.d.ts`. Dieser Abschnitt ist nur eine Zusammenfassung.
+Die autoritative Plugin-API-Referenz ist `docs/plugin-api.md`; die vollständigen TypeScript-Typen liegen in `plugins/types/krake.d.ts`. Dieser Abschnitt ist nur eine Zusammenfassung.
 
 ### Plugin-Interface
 
 Ein Plugin exportiert ein Objekt über `module.exports` (CommonJS-Stil, QuickJS ist synchron):
 
 ```typescript
-/// <reference path="../types/amigo.d.ts" />
+/// <reference path="../types/krake.d.ts" />
 
 module.exports = {
     // Required
@@ -371,12 +371,12 @@ module.exports = {
     urlPattern: "https?://my-hoster\\.com/.+",
 
     resolve(url: string): DownloadPackage {
-        const page = amigo.httpGet(url);
-        const link = amigo.htmlQueryAttr(page.body, "a.download-btn", "href");
+        const page = krake.httpGet(url);
+        const link = krake.htmlQueryAttr(page.body, "a.download-btn", "href");
         return {
-            name: amigo.htmlExtractTitle(page.body) || "Download",
+            name: krake.htmlExtractTitle(page.body) || "Download",
             downloads: [{
-                url: amigo.urlResolve(url, link!),
+                url: krake.urlResolve(url, link!),
                 filename: null, filesize: null,
                 chunks_supported: true, max_chunks: null,
                 headers: null, cookies: null, wait_seconds: null,
@@ -388,83 +388,83 @@ module.exports = {
     // Optional
     description: "...", author: "...",
     pluginType: "hoster",                 // "multi-hoster" | "hoster" | "generic"
-    permissions: { domains: ["my-hoster.com"] }, // hosts amigo.http* may reach
+    permissions: { domains: ["my-hoster.com"] }, // hosts krake.http* may reach
     checkOnline(url): "online" | "offline" | "unknown" { /* ... */ },
     login(username, password): boolean { /* ... */ },
     supportsPremium(): boolean { /* ... */ },
     decryptContainer(data): string[] { /* ... */ },
     resolveFolder(url): string[] { /* ... */ },
     postProcess(context): PostProcessResult { /* ... */ },
-} satisfies AmigoPlugin;
+} satisfies KrakePlugin;
 ```
 
 Wichtig: `resolve()` und alle Plugin-Callbacks sind **synchron**. Host-Calls blockieren im Plugin-Host-Prozess, bis der Daemon antwortet. Kein `await`, kein `async`.
 
-### Host-API (`amigo.*`)
+### Host-API (`krake.*`)
 
-Alle Funktionen sind unter dem globalen `amigo`-Objekt verfügbar. camelCase-Namen, synchron, gehen durch die Sandbox.
+Alle Funktionen sind unter dem globalen `krake`-Objekt verfügbar. camelCase-Namen, synchron, gehen durch die Sandbox. Der alte Name `amigo` (und der Typ `AmigoPlugin`) ist ein deprecated Alias auf dasselbe Objekt, damit Plugins von vor der Umbenennung weiterlaufen.
 
 ```typescript
 // HTTP (keine direkten Netz-Calls)
-amigo.httpGet(url, opts?): HttpResponse
-amigo.httpPost(url, body, contentType, opts?): HttpResponse
-amigo.httpHead(url, opts?): HeadResponse
-amigo.httpGetJson(url, opts?): HttpJsonResponse
-amigo.httpPostForm(url, fields, opts?): HttpResponse
-amigo.httpGetBinary(url, opts?): string          // base64
-amigo.httpFollowRedirects(url, opts?): string
+krake.httpGet(url, opts?): HttpResponse
+krake.httpPost(url, body, contentType, opts?): HttpResponse
+krake.httpHead(url, opts?): HeadResponse
+krake.httpGetJson(url, opts?): HttpJsonResponse
+krake.httpPostForm(url, fields, opts?): HttpResponse
+krake.httpGetBinary(url, opts?): string          // base64
+krake.httpFollowRedirects(url, opts?): string
 
 // Cookies
-amigo.setCookie(domain, name, value): void
-amigo.getCookie(domain, name): string | null
-amigo.clearCookies(domain): void
+krake.setCookie(domain, name, value): void
+krake.getCookie(domain, name): string | null
+krake.clearCookies(domain): void
 
 // URL helpers
-amigo.urlResolve(base, relative): string
-amigo.urlParse(url): ParsedUrl
-amigo.urlFilename(url): string | null
+krake.urlResolve(base, relative): string
+krake.urlParse(url): ParsedUrl
+krake.urlFilename(url): string | null
 
 // HTML helpers (scraper crate)
-amigo.htmlQueryAll(html, selector): string[]
-amigo.htmlQueryText(html, selector): string | null
-amigo.htmlQueryAttr(html, selector, attr): string | null
-amigo.htmlQueryAllAttrs(html, selector, attr): string[]
-amigo.htmlSearchMeta(html, names): string | null
-amigo.htmlExtractTitle(html): string | null
-amigo.htmlHiddenInputs(html): Record<string, string>
-amigo.searchJson(startPattern, html): any | null
+krake.htmlQueryAll(html, selector): string[]
+krake.htmlQueryText(html, selector): string | null
+krake.htmlQueryAttr(html, selector, attr): string | null
+krake.htmlQueryAllAttrs(html, selector, attr): string[]
+krake.htmlSearchMeta(html, names): string | null
+krake.htmlExtractTitle(html): string | null
+krake.htmlHiddenInputs(html): Record<string, string>
+krake.searchJson(startPattern, html): any | null
 
 // Regex
-amigo.regexMatch(pattern, text): string | null
-amigo.regexMatchAll(pattern, text): string[]
-amigo.regexReplace(pattern, text, replacement): string | null
-amigo.regexTest(pattern, text): boolean
-amigo.regexSplit(pattern, text): string[]
+krake.regexMatch(pattern, text): string | null
+krake.regexMatchAll(pattern, text): string[]
+krake.regexReplace(pattern, text, replacement): string | null
+krake.regexTest(pattern, text): boolean
+krake.regexSplit(pattern, text): string[]
 
 // Encoding & crypto
-amigo.base64Encode(input): string
-amigo.base64Decode(input): string
-amigo.md5(input): string                         // hex
-amigo.sha1(input): string                        // hex
-amigo.sha256(input): string                      // hex
-amigo.hmacSha256(key, data): string              // hex
-amigo.aesEncryptCbc(data, key, iv): string       // base64 in/out, hex key/iv
-amigo.aesDecryptCbc(data, key, iv): string
+krake.base64Encode(input): string
+krake.base64Decode(input): string
+krake.md5(input): string                         // hex
+krake.sha1(input): string                        // hex
+krake.sha256(input): string                      // hex
+krake.hmacSha256(key, data): string              // hex
+krake.aesEncryptCbc(data, key, iv): string       // base64 in/out, hex key/iv
+krake.aesDecryptCbc(data, key, iv): string
 
 // Utility
-amigo.parseDuration(input): number | null        // "1:23:45" / "PT2H30M" → seconds
-amigo.sanitizeFilename(name): string
-amigo.traverse(obj, path): any | null            // safe deep access
+krake.parseDuration(input): number | null        // "1:23:45" / "PT2H30M" → seconds
+krake.sanitizeFilename(name): string
+krake.traverse(obj, path): any | null            // safe deep access
 
 // Captcha (blocks until solved in Web UI, throws on timeout/skip)
-amigo.solveCaptcha(imageUrl, type?): string      // "image" | "recaptcha" | "hcaptcha"
+krake.solveCaptcha(imageUrl, type?): string      // "image" | "recaptcha" | "hcaptcha"
 
 // Notifications, logging, per-plugin storage
-amigo.notify(title, message): void
-amigo.logInfo / logWarn / logError / logDebug(msg): void
-amigo.storageGet(key): string | null
-amigo.storageSet(key, value): void
-amigo.storageDelete(key): void
+krake.notify(title, message): void
+krake.logInfo / logWarn / logError / logDebug(msg): void
+krake.storageGet(key): string | null
+krake.storageSet(key, value): void
+krake.storageDelete(key): void
 ```
 
 Ebenfalls verfügbar: `console.log` / `console.warn` / `console.error`.
@@ -473,7 +473,7 @@ Dateiname/Dateigröße/Wait werden **nicht** über Setter-Funktionen gemeldet �
 
 ### TypeScript-SDK (`plugin-sdk/`)
 
-Für komplexere Plugins existiert das separate Package `@amigo/plugin-sdk` mit höheren Abstraktionen (Browser, Page, Form, CookieJar, Captcha-Helpers, HLS/DASH-Manifest-Parser, Container-Helpers). Der Plan ist in `docs/plan-plugin-sdk.md` dokumentiert, Tutorials in `plugin-sdk/docs/`.
+Für komplexere Plugins existiert das separate Package `@amigo-labs/krake-plugin-sdk` mit höheren Abstraktionen (Browser, Page, Form, CookieJar, Captcha-Helpers, HLS/DASH-Manifest-Parser, Container-Helpers). Der Plan ist in `docs/plan-plugin-sdk.md` dokumentiert, Tutorials in `plugin-sdk/docs/`.
 
 ### Plugin Registry & Updates
 - Marketplace: Plugins aus der Registry installieren/suchen
@@ -484,14 +484,14 @@ Für komplexere Plugins existiert das separate Package `@amigo/plugin-sdk` mit h
 - Kein direkter Netzwerk/Filesystem/Prozess-Zugang
 - Resource Limits: 30s Timeout (5s für Modul-Load), 64MB RAM pro Plugin (eigene QuickJS-Runtime pro Plugin), 20 HTTP-Requests, 1MB Storage
 - Netzwerk: optionale Domain-Allowlist `permissions.domains`, pro Request und Redirect-Hop erzwungen; Install/erweiternde Updates brauchen Bestätigung
-- Plugin-JS läuft im separaten Prozess `amigo-plugin-host` (liegt neben `amigo-server`/`amigo-dl`, Override: `AMIGO_PLUGIN_HOST_BIN`); ein QuickJS-Crash beendet nur diesen, die Queue läuft weiter. Noch keine OS-Sandbox um den Child (Landlock/seccomp etc.) — offen in #79, siehe `docs/specs/plugin-sandbox-hardening.md` (SH-7b)
-- Reload: Laden eines Plugins mit bekannter `id` ersetzt die alte Version (genutzt von Plugin-Updates); kein Filesystem-Watcher — nach manuellen Änderungen Server neu starten oder `amigo-dl plugins test` zum Iterieren nutzen
+- Plugin-JS läuft im separaten Prozess `krake-plugin-host` (liegt neben `krake-server`/`krake`, Override: `KRAKE_PLUGIN_HOST_BIN`); ein QuickJS-Crash beendet nur diesen, die Queue läuft weiter. Noch keine OS-Sandbox um den Child (Landlock/seccomp etc.) — offen in #79, siehe `docs/specs/plugin-sandbox-hardening.md` (SH-7b)
+- Reload: Laden eines Plugins mit bekannter `id` ersetzt die alte Version (genutzt von Plugin-Updates); kein Filesystem-Watcher — nach manuellen Änderungen Server neu starten oder `krake plugins test` zum Iterieren nutzen
 
 ---
 
 ## REST API
 
-Alle Routen unter `/api/v1/`. DLC-Import per HTTP geht über `POST /downloads/container` (multipart, Feld `file`); DLC-Export läuft aktuell nur über die CLI (`amigo-dl export-dlc`).
+Alle Routen unter `/api/v1/`. DLC-Import per HTTP geht über `POST /downloads/container` (multipart, Feld `file`); DLC-Export läuft aktuell nur über die CLI (`krake export-dlc`).
 
 ```
 # Server status
@@ -575,41 +575,41 @@ Tatsächlich unterstützte Sub-Commands (aus `crates/cli/src/main.rs`):
 
 ```bash
 # Direct download — bare URLs (like yt-dlp) or explicit `get`
-amigo-dl <URL> [URL...]
-amigo-dl get <URL> -o ./downloads --chunks 8
+krake <URL> [URL...]
+krake get <URL> -o ./downloads --chunks 8
 
 # Queue-based (requires server/DB)
-amigo-dl add <URL>                          # queue a URL
-amigo-dl add --nzb <file.nzb>               # import NZB
-amigo-dl add --dlc <file.dlc>               # import DLC container
-amigo-dl export-dlc [--ids <id1,id2,...>]   # export DLC container
-amigo-dl list / pause <id> / resume <id> / cancel <id>
-amigo-dl queue / status / speed
+krake add <URL>                          # queue a URL
+krake add --nzb <file.nzb>               # import NZB
+krake add --dlc <file.dlc>               # import DLC container
+krake export-dlc [--ids <id1,id2,...>]   # export DLC container
+krake list / pause <id> / resume <id> / cancel <id>
+krake queue / status / speed
 
 # Config
-amigo-dl config get <key>
-amigo-dl config set <key> <value>
+krake config get <key>
+krake config set <key> <value>
 
 # Plugins
-amigo-dl plugins list
-amigo-dl plugins enable <id>
-amigo-dl plugins login <id>
-amigo-dl plugins install <id>
-amigo-dl plugins search <query>
-amigo-dl plugins update [id]
-amigo-dl plugins test <plugin.ts> [url]     # run spec or resolve a URL
+krake plugins list
+krake plugins enable <id>
+krake plugins login <id>
+krake plugins install <id>
+krake plugins search <query>
+krake plugins update [id]
+krake plugins test <plugin.ts> [url]     # run spec or resolve a URL
 
 # Self-update
-amigo-dl update check
-amigo-dl update apply [--yes]
+krake update check
+krake update apply [--yes]
 
-# Remote pairing (CLI → remote amigo-server / Docker)
-amigo-dl login <url> [--name <alias>]
-amigo-dl remote list|remove <name>|use <name>
+# Remote pairing (CLI → remote krake-server / Docker)
+krake login <url> [--name <alias>]
+krake remote list|remove <name>|use <name>
 ```
 
-The daemon lives in the separate `amigo-server` binary (and the Docker
-image that wraps it). `amigo-dl` is strictly a client + direct downloader.
+The daemon lives in the separate `krake-server` binary (and the Docker
+image that wraps it). `krake` is strictly a client + direct downloader.
 
 Torrent/Magnet sind aktuell nicht implementiert. `crates/core/src/protocol/` enthält nur `http`, `hls`, `dash`, `usenet`.
 

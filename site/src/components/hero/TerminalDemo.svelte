@@ -1,5 +1,5 @@
 <script lang="ts">
-  import ChunkViz from "@amigo/ui/components/ChunkViz.svelte";
+  import ChunkViz from "@amigo-labs/krake-ui/components/ChunkViz.svelte";
   import { onMount } from "svelte";
 
   const commandParts = [

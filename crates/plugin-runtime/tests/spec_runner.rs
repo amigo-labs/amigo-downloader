@@ -8,8 +8,8 @@
 
 use std::path::PathBuf;
 
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::sandbox::SandboxLimits;
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::sandbox::SandboxLimits;
 
 fn shipped_plugins_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -66,7 +66,7 @@ async fn test_youtube_plugin_spec_passes() {
         .await
         .expect("run_spec for youtube");
 
-    let strict = std::env::var("AMIGO_NETWORK_TESTS").is_ok_and(|v| v == "1");
+    let strict = std::env::var("KRAKE_NETWORK_TESTS").is_ok_and(|v| v == "1");
 
     // Offline-stable tests must always pass — even without internet, even
     // if YouTube changes a JSON field downstream.
@@ -82,7 +82,7 @@ async fn test_youtube_plugin_spec_passes() {
         );
     }
 
-    // Network-dependent tests are only enforced when AMIGO_NETWORK_TESTS=1.
+    // Network-dependent tests are only enforced when KRAKE_NETWORK_TESTS=1.
     // Otherwise YouTube reachability / API drift may flake the suite; we
     // still emit the failing test names on stderr so regressions show up in
     // CI logs instead of passing silently.
@@ -96,12 +96,12 @@ async fn test_youtube_plugin_spec_passes() {
     if strict {
         assert!(
             network_failures.is_empty(),
-            "AMIGO_NETWORK_TESTS=1 set but network-dependent failures: {network_failures:#?}",
+            "KRAKE_NETWORK_TESTS=1 set but network-dependent failures: {network_failures:#?}",
         );
     } else if !network_failures.is_empty() {
         eprintln!(
             "[spec_runner] {} network-dependent YouTube test(s) failed (non-strict mode, not failing CI). \
-             Set AMIGO_NETWORK_TESTS=1 to enforce. Failures: {network_failures:#?}",
+             Set KRAKE_NETWORK_TESTS=1 to enforce. Failures: {network_failures:#?}",
             network_failures.len(),
         );
     }

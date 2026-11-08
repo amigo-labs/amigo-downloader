@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Contrast checker for the @amigo/ui design tokens.
+ * Contrast checker for the @amigo-labs/krake-ui design tokens.
  *
  * Parses `src/tokens.css` as text, resolves the cascade for every
  * (palette x theme) combination, evaluates `var()` / `color-mix()` /

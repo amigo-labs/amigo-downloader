@@ -1,10 +1,10 @@
-# Content for amigo-labs.dev/downloader/ — format: https://github.com/amigo-labs/website/blob/main/docs/project-data.md
+# Content for amigo-labs.dev/krake/ — format: https://github.com/amigo-labs/website/blob/main/docs/project-data.md
 # Versions, download links and release notes come from GitHub Releases; don't write them here.
 schema: 1
-slug: downloader
-name: amigo-downloader
+slug: krake
+name: Krake
 status: beta
-accent: "#3b82f6"
+accent: "#9be22d"
 icon: icon.png
 tagline:
   en: The download manager power users actually want
@@ -40,9 +40,9 @@ platforms: [docker, windows, macos, linux]
 license: MIT
 links:
   - label: { en: Plugin API, de: Plugin-API }
-    url: https://github.com/amigo-labs/amigo-downloader/blob/main/docs/plugin-api.md
+    url: https://github.com/amigo-labs/amigo-krake/blob/main/docs/plugin-api.md
   - label: { en: Architecture, de: Architektur }
-    url: https://github.com/amigo-labs/amigo-downloader/blob/main/docs/architecture.md
+    url: https://github.com/amigo-labs/amigo-krake/blob/main/docs/architecture.md
 
 highlights:
   - value: "8×"
@@ -85,8 +85,8 @@ features:
       de: Funktioniert mit vorhandenen Browser-Erweiterungen – gleicher Port, gleiches Protokoll, keine Konfiguration.
   - title: { en: NZBGet-compatible API, de: NZBGet-kompatible API }
     text:
-      en: A NZBGet JSON-RPC compatibility layer lets tools that speak to NZBGet use amigo-downloader instead.
-      de: Eine NZBGet-kompatible JSON-RPC-Schnittstelle lässt Tools, die mit NZBGet sprechen, stattdessen amigo-downloader nutzen.
+      en: A NZBGet JSON-RPC compatibility layer lets tools that speak to NZBGet use Krake instead.
+      de: Eine NZBGet-kompatible JSON-RPC-Schnittstelle lässt Tools, die mit NZBGet sprechen, stattdessen Krake nutzen.
   - title: { en: Post-processing, de: Nachbearbeitung }
     text:
       en: Automatically extracts RAR, ZIP, 7z and tar.gz archives after a download finishes.
@@ -101,8 +101,8 @@ features:
       de: RSS-Feeds beobachten, ausgehende Webhooks auslösen und das Binary sich selbst über GitHub Releases aktualisieren lassen. Unterbrochene Downloads laufen nach einem Neustart weiter.
   - title: { en: "Web UI, CLI and desktop app", de: "Web-Oberfläche, CLI und Desktop-App" }
     text:
-      en: A responsive Svelte Web UI (installable as a PWA with share target), the amigo-dl command line for direct downloads and queue control, and a native Tauri app — in English and German.
-      de: Eine responsive Svelte-Oberfläche (als PWA mit Teilen-Ziel installierbar), die Kommandozeile amigo-dl für direkte Downloads und die Warteschlange sowie eine native Tauri-App – auf Englisch und Deutsch.
+      en: A responsive Svelte Web UI (installable as a PWA with share target), the krake command line for direct downloads and queue control, and a native Tauri app — in English and German.
+      de: Eine responsive Svelte-Oberfläche (als PWA mit Teilen-Ziel installierbar), die Kommandozeile krake für direkte Downloads und die Warteschlange sowie eine native Tauri-App – auf Englisch und Deutsch.
 
 downloads:
   files:
@@ -113,28 +113,28 @@ downloads:
     - { os: macos, label: { en: Desktop app, de: Desktop-App }, arch: x64, match: "_x64\\.dmg$" }
     - { os: linux, label: { en: Desktop app (AppImage), de: Desktop-App (AppImage) }, arch: x64, match: "_amd64\\.AppImage$" }
     - { os: linux, label: { en: Desktop app (.deb), de: Desktop-App (.deb) }, arch: x64, match: "_amd64\\.deb$" }
-    # Server (amigo-server + plugin host)
-    - { os: windows, label: { en: Server, de: Server }, arch: x64, asset: amigo-server-windows-x86_64.zip }
-    - { os: macos, label: { en: Server, de: Server }, arch: arm64, asset: amigo-server-macos-aarch64.tar.gz }
-    - { os: macos, label: { en: Server, de: Server }, arch: x64, asset: amigo-server-macos-x86_64.tar.gz }
-    - { os: linux, label: { en: Server, de: Server }, arch: x64, asset: amigo-server-linux-x86_64.tar.gz }
-    - { os: linux, label: { en: Server, de: Server }, arch: arm64, asset: amigo-server-linux-aarch64.tar.gz }
-    # Command line (amigo-dl + plugin host)
-    - { os: windows, label: { en: CLI (amigo-dl), de: CLI (amigo-dl) }, arch: x64, asset: amigo-dl-windows-x86_64.zip }
-    - { os: macos, label: { en: CLI (amigo-dl), de: CLI (amigo-dl) }, arch: arm64, asset: amigo-dl-macos-aarch64.tar.gz }
-    - { os: macos, label: { en: CLI (amigo-dl), de: CLI (amigo-dl) }, arch: x64, asset: amigo-dl-macos-x86_64.tar.gz }
-    - { os: linux, label: { en: CLI (amigo-dl), de: CLI (amigo-dl) }, arch: x64, asset: amigo-dl-linux-x86_64.tar.gz }
-    - { os: linux, label: { en: CLI (amigo-dl), de: CLI (amigo-dl) }, arch: arm64, asset: amigo-dl-linux-aarch64.tar.gz }
+    # Server (krake-server + plugin host)
+    - { os: windows, label: { en: Server, de: Server }, arch: x64, asset: krake-server-windows-x86_64.zip }
+    - { os: macos, label: { en: Server, de: Server }, arch: arm64, asset: krake-server-macos-aarch64.tar.gz }
+    - { os: macos, label: { en: Server, de: Server }, arch: x64, asset: krake-server-macos-x86_64.tar.gz }
+    - { os: linux, label: { en: Server, de: Server }, arch: x64, asset: krake-server-linux-x86_64.tar.gz }
+    - { os: linux, label: { en: Server, de: Server }, arch: arm64, asset: krake-server-linux-aarch64.tar.gz }
+    # Command line (krake + plugin host)
+    - { os: windows, label: { en: CLI (krake), de: CLI (krake) }, arch: x64, asset: krake-windows-x86_64.zip }
+    - { os: macos, label: { en: CLI (krake), de: CLI (krake) }, arch: arm64, asset: krake-macos-aarch64.tar.gz }
+    - { os: macos, label: { en: CLI (krake), de: CLI (krake) }, arch: x64, asset: krake-macos-x86_64.tar.gz }
+    - { os: linux, label: { en: CLI (krake), de: CLI (krake) }, arch: x64, asset: krake-linux-x86_64.tar.gz }
+    - { os: linux, label: { en: CLI (krake), de: CLI (krake) }, arch: arm64, asset: krake-linux-aarch64.tar.gz }
   install:
     - label: Docker
-      command: docker run -d --name amigo-downloader -p 1516:1516 -p 9666:9666 -v ./config:/config -v ./downloads:/downloads -e AMIGO_BIND=0.0.0.0:1516 ghcr.io/amigo-labs/amigo-downloader:latest
+      command: docker run -d --name krake -p 1516:1516 -p 9666:9666 -v ./config:/config -v ./downloads:/downloads -e AMIGO_BIND=0.0.0.0:1516 ghcr.io/amigo-labs/krake:latest
       requiresRelease: true
       note:
         en: Then open http://localhost:1516; the setup wizard creates the admin account. Port 9666 is Click'n'Load.
         de: Danach http://localhost:1516 öffnen; der Einrichtungsassistent legt das Admin-Konto an. Port 9666 ist Click'n'Load.
     - label: { en: Install script (CLI), de: Installationsskript (CLI) }
-      command: curl -fsSL https://raw.githubusercontent.com/amigo-labs/amigo-downloader/main/scripts/install.sh | bash
+      command: curl -fsSL https://raw.githubusercontent.com/amigo-labs/amigo-krake/main/scripts/install.sh | bash
       requiresRelease: true
       note:
-        en: Linux and macOS, x86_64 and aarch64. Installs amigo-dl from the latest release after checking its SHA-256 checksum.
-        de: Linux und macOS, x86_64 und aarch64. Installiert amigo-dl aus dem neuesten Release, nachdem die SHA-256-Prüfsumme geprüft wurde.
+        en: Linux and macOS, x86_64 and aarch64. Installs krake from the latest release after checking its SHA-256 checksum.
+        de: Linux und macOS, x86_64 und aarch64. Installiert krake aus dem neuesten Release, nachdem die SHA-256-Prüfsumme geprüft wurde.

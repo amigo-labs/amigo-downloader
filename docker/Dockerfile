@@ -10,12 +10,12 @@ COPY packages/ui/package.json packages/ui/
 
 # Install only the workspace dependencies needed to build the web-ui
 RUN --mount=type=cache,id=pnpm,target=/root/.local/share/pnpm/store \
-    pnpm install --frozen-lockfile --filter amigo-web-ui...
+    pnpm install --frozen-lockfile --filter @amigo-labs/krake-web-ui...
 
 # Now copy sources and build
 COPY packages/ui packages/ui
 COPY web-ui web-ui
-RUN pnpm --filter amigo-web-ui build
+RUN pnpm --filter @amigo-labs/krake-web-ui build
 
 # Stage 2: Build Rust
 # Pinned to the exact toolchain version so a silent base-image bump can't
@@ -34,13 +34,13 @@ COPY --from=ui-builder /app/web-ui/dist web-ui/dist
 # time (crates/plugin-runtime/build.rs and crates/core/build.rs each refuse to
 # compile a release build without their key, so an all-zero placeholder can
 # never ship). Production images must be built with
-# `--build-arg AMIGO_REGISTRY_PUBKEY_HEX=<real key>` and
-# `--build-arg AMIGO_UPDATE_PUBKEY_HEX=<real key>`.
-ARG AMIGO_REGISTRY_PUBKEY_HEX
-ENV AMIGO_REGISTRY_PUBKEY_HEX=${AMIGO_REGISTRY_PUBKEY_HEX}
-ARG AMIGO_UPDATE_PUBKEY_HEX
-ENV AMIGO_UPDATE_PUBKEY_HEX=${AMIGO_UPDATE_PUBKEY_HEX}
-RUN cargo build --release --bin amigo-server --bin amigo-dl --bin amigo-plugin-host
+# `--build-arg KRAKE_REGISTRY_PUBKEY_HEX=<real key>` and
+# `--build-arg KRAKE_UPDATE_PUBKEY_HEX=<real key>`.
+ARG KRAKE_REGISTRY_PUBKEY_HEX
+ENV KRAKE_REGISTRY_PUBKEY_HEX=${KRAKE_REGISTRY_PUBKEY_HEX}
+ARG KRAKE_UPDATE_PUBKEY_HEX
+ENV KRAKE_UPDATE_PUBKEY_HEX=${KRAKE_UPDATE_PUBKEY_HEX}
+RUN cargo build --release --bin krake-server --bin krake --bin krake-plugin-host
 
 # Stage 3: Runtime
 # Stays on the floating bookworm-slim tag so security updates land
@@ -56,36 +56,36 @@ FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates wget gosu && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user with explicit UID/GID 1000 for predictable volume permissions
-RUN groupadd -r -g 1000 amigo && useradd -r -u 1000 -g amigo -d /config -s /sbin/nologin amigo
+RUN groupadd -r -g 1000 krake && useradd -r -u 1000 -g krake -d /config -s /sbin/nologin krake
 
-COPY --from=rust-builder /app/target/release/amigo-server /usr/local/bin/
-COPY --from=rust-builder /app/target/release/amigo-dl /usr/local/bin/
-# Runs plugin JavaScript outside the daemon; found next to amigo-server.
-COPY --from=rust-builder /app/target/release/amigo-plugin-host /usr/local/bin/
-COPY plugins/ /etc/amigo/plugins/
-COPY locales/ /etc/amigo/locales/
+COPY --from=rust-builder /app/target/release/krake-server /usr/local/bin/
+COPY --from=rust-builder /app/target/release/krake /usr/local/bin/
+# Runs plugin JavaScript outside the daemon; found next to krake-server.
+COPY --from=rust-builder /app/target/release/krake-plugin-host /usr/local/bin/
+COPY plugins/ /etc/krake/plugins/
+COPY locales/ /etc/krake/locales/
 COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh
 
 # Create directories and set ownership
 RUN mkdir -p /config /downloads && \
-    chown -R amigo:amigo /config /downloads /etc/amigo/plugins /etc/amigo/locales
+    chown -R krake:krake /config /downloads /etc/krake/plugins /etc/krake/locales
 
 EXPOSE 1516
 VOLUME ["/config", "/downloads"]
 
-ENV AMIGO_CONFIG_DIR=/config
-ENV AMIGO_DOWNLOAD_DIR=/downloads
-ENV AMIGO_PLUGIN_DIR=/etc/amigo/plugins
-ENV AMIGO_LOCALES_DIR=/etc/amigo/locales
+ENV KRAKE_CONFIG_DIR=/config
+ENV KRAKE_DOWNLOAD_DIR=/downloads
+ENV KRAKE_PLUGIN_DIR=/etc/krake/plugins
+ENV KRAKE_LOCALES_DIR=/etc/krake/locales
 
 # Health check against the status endpoint
 HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
     CMD wget --no-verbose --tries=1 --spider http://localhost:1516/api/v1/status || exit 1
 
-# The container starts as root so the entrypoint can align the amigo user with
+# The container starts as root so the entrypoint can align the krake user with
 # PUID/PGID and take ownership of host-mounted volumes, then drops privileges
-# to the amigo user (UID 1000 by default) via gosu before exec'ing the server.
+# to the krake user (UID 1000 by default) via gosu before exec'ing the server.
 # Override PUID/PGID to match your host volume owner if it isn't 1000.
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["amigo-server"]
+CMD ["krake-server"]

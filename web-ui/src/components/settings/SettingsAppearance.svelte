@@ -1,7 +1,7 @@
 <script lang="ts">
   import { theme, palette, neonIntensity, getNeonLabel, type ColorPalette, type ThemeMode } from "../../lib/stores";
   import { locale, tr } from "../../lib/i18n";
-  import Icon from "@amigo/ui/components/Icon.svelte";
+  import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
 
   const paletteOptions: { id: ColorPalette; label: string; color: string }[] = [
     { id: "blue", label: "Blue", color: "#3b82f6" },

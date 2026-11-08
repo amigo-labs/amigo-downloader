@@ -7,9 +7,9 @@ use std::path::Path;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use amigo_plugin_runtime::bytecode_cache::BytecodeCache;
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::sandbox::SandboxLimits;
+use krake_plugin_runtime::bytecode_cache::BytecodeCache;
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::sandbox::SandboxLimits;
 use wiremock::matchers::{method, path};
 use wiremock::{Mock, MockServer, ResponseTemplate};
 
@@ -103,7 +103,7 @@ async fn looping_getter_on_manifest_export_is_interrupted() {
     let err = loader.load_plugin(&path).await.expect_err("must not load");
     assert!(start.elapsed() < Duration::from_secs(10));
     assert!(
-        matches!(err, amigo_plugin_runtime::Error::Timeout(_)),
+        matches!(err, krake_plugin_runtime::Error::Timeout(_)),
         "expected timeout, got {err}"
     );
 }
@@ -133,7 +133,7 @@ async fn catastrophic_native_regexp_is_interrupted() {
         .expect_err("backtracking regex must be aborted");
     let elapsed = start.elapsed();
     assert!(
-        matches!(err, amigo_plugin_runtime::Error::Timeout(_)),
+        matches!(err, krake_plugin_runtime::Error::Timeout(_)),
         "expected timeout, got {err}"
     );
     assert!(
@@ -177,7 +177,7 @@ async fn slow_plugin_does_not_block_other_plugins_or_metadata() {
     );
 
     let err = slow.await.unwrap().expect_err("slow plugin times out");
-    assert!(matches!(err, amigo_plugin_runtime::Error::Timeout(_)));
+    assert!(matches!(err, krake_plugin_runtime::Error::Timeout(_)));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -207,8 +207,8 @@ async fn concurrent_plugins_each_keep_their_own_deadline() {
     })
     .await
     .expect("a plugin lost its deadline and ran unbounded");
-    assert!(matches!(ra, Err(amigo_plugin_runtime::Error::Timeout(_))));
-    assert!(matches!(rb, Err(amigo_plugin_runtime::Error::Timeout(_))));
+    assert!(matches!(ra, Err(krake_plugin_runtime::Error::Timeout(_))));
+    assert!(matches!(rb, Err(krake_plugin_runtime::Error::Timeout(_))));
     assert!(start.elapsed() < Duration::from_secs(5));
 }
 
@@ -230,7 +230,7 @@ fn fetching_plugin(id: &str, domains: &str) -> String {
         &format!("permissions: {{ domains: {domains} }},"),
         &format!(
             r#"var target = url.replace("https://{id}.test/", "");
-               var r = amigo.httpGet(decodeURIComponent(target));
+               var r = krake.httpGet(decodeURIComponent(target));
                return {{ name: String(r.status), downloads: [] }};"#
         ),
     )
@@ -340,7 +340,7 @@ async fn allowlist_cannot_be_changed_from_js() {
             &format!(
                 r#"module.exports.permissions.domains.push("localhost");
                    __plugin_exports.permissions = {{ domains: ["localhost"] }};
-                   var r = amigo.httpGet("http://localhost:{port}/x");
+                   var r = krake.httpGet("http://localhost:{port}/x");
                    return {{ name: String(r.status), downloads: [] }};"#
             ),
         ),
@@ -366,13 +366,13 @@ async fn unsupported_api_version_is_refused_naming_both_versions() {
     let loader = PluginLoader::new(tmp.path().to_path_buf(), SandboxLimits::default()).unwrap();
     let err = loader.load_plugin(&path).await.unwrap_err();
     assert!(
-        matches!(err, amigo_plugin_runtime::Error::IncompatibleVersion { .. }),
+        matches!(err, krake_plugin_runtime::Error::IncompatibleVersion { .. }),
         "{err}"
     );
     let msg = err.to_string();
     assert!(msg.contains("99"), "{msg}");
     assert!(
-        msg.contains(&amigo_plugin_runtime::HOST_API_VERSION.to_string()),
+        msg.contains(&krake_plugin_runtime::HOST_API_VERSION.to_string()),
         "{msg}"
     );
 }

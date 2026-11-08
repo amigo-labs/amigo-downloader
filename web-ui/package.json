@@ -1,5 +1,5 @@
 {
-  "name": "amigo-web-ui",
+  "name": "@amigo-labs/krake-web-ui",
   "private": true,
   "version": "0.1.0",
   "engines": {
@@ -14,7 +14,7 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@amigo/ui": "workspace:*"
+    "@amigo-labs/krake-ui": "workspace:*"
   },
   "devDependencies": {
     "@sveltejs/vite-plugin-svelte": "^5.0.0",

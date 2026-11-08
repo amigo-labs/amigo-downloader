@@ -62,7 +62,7 @@ importers:
 
   site:
     dependencies:
-      '@amigo/ui':
+      '@amigo-labs/krake-ui':
         specifier: workspace:*
         version: link:../packages/ui
       '@astrojs/check':
@@ -95,7 +95,7 @@ importers:
 
   web-ui:
     dependencies:
-      '@amigo/ui':
+      '@amigo-labs/krake-ui':
         specifier: workspace:*
         version: link:../packages/ui
     devDependencies:

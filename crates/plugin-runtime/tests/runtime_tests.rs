@@ -5,9 +5,9 @@
 
 use std::path::PathBuf;
 
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::sandbox::SandboxLimits;
-use amigo_plugin_runtime::transpiler::{is_typescript, transpile};
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::sandbox::SandboxLimits;
+use krake_plugin_runtime::transpiler::{is_typescript, transpile};
 
 /// Absolute path to the repository's top-level `plugins/` directory.
 fn shipped_plugins_dir() -> PathBuf {

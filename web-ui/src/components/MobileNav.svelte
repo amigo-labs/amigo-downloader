@@ -1,7 +1,7 @@
 <script lang="ts">
   import type { Page } from "../lib/stores";
   import { locale, tr } from "../lib/i18n";
-  import Icon from "@amigo/ui/components/Icon.svelte";
+  import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
 
   let { current, onnavigate, onadd }:
     { current: Page; onnavigate: (page: Page) => void; onadd: () => void } = $props();

@@ -1,8 +1,8 @@
-# Plan: amigo-plugin-sdk
+# Plan: krake-plugin-sdk
 
 > **Status:** SDK-Skeleton in `plugin-sdk/` ist gelandet (Phase 0–1, siehe Commit `12fb9fc`). Tutorials und Cookbook in `plugin-sdk/docs/`. Die folgenden Phasen sind teilweise umgesetzt; dieses Dokument bleibt als Designgrundlage und Roadmap stehen.
 
-Ein Implementierungsplan für ein TypeScript-SDK, mit dem rund 90% aller JDownloader-artigen Plugins nachgebaut werden können, aufbauend auf der amigo-downloader Host-API (Tier 1 + 2).
+Ein Implementierungsplan für ein TypeScript-SDK, mit dem rund 90% aller JDownloader-artigen Plugins nachgebaut werden können, aufbauend auf der Krake Host-API (Tier 1 + 2).
 
 ## Scope & Non-Goals
 
@@ -37,8 +37,8 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
 
 **Aufgaben:**
 
-- Monorepo-Entscheidung: SDK als Workspace-Member in amigo-downloader (bevorzugt, weil Host-API und SDK zusammen evolvieren).
-- Package-Name: `@amigo/plugin-sdk`.
+- Monorepo-Entscheidung: SDK als Workspace-Member in Krake (bevorzugt, weil Host-API und SDK zusammen evolvieren).
+- Package-Name: `@amigo-labs/krake-plugin-sdk`.
 - Build-Pipeline mit SWC, Target ES2022, Output als ESM plus Type-Declarations.
 - Strikte TypeScript-Config: `strict: true`, `noUncheckedIndexedAccess: true`, `exactOptionalPropertyTypes: true`.
 - Linting/Formatting konsistent zum Rest des Projekts.
@@ -396,7 +396,7 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
 
 ## Phase 10: Container-Format-Support (DLC, CCF, RSDF)
 
-**Ziel:** Built-in Decrypter für die drei klassischen Link-Container-Formate. SDK stellt Parser bereit, und Amigo shipped mit built-in Decrypter-Plugins, die diese Parser nutzen.
+**Ziel:** Built-in Decrypter für die drei klassischen Link-Container-Formate. SDK stellt Parser bereit, und Krake shipped mit built-in Decrypter-Plugins, die diese Parser nutzen.
 
 **Wichtige Design-Entscheidung:** DLC erfordert historisch einen externen Key-Exchange-Service (original von jdownloader.org betrieben, proprietär). Der Plan unterstützt DLC nur in Verbindung mit einem konfigurierbaren Service-Endpoint. RSDF und CCF haben öffentlich bekannte feste Schlüssel und funktionieren offline.
 
@@ -426,14 +426,14 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
 **Auto-Detection:**
 
 - `container.detect(content: Uint8Array): "dlc" | "ccf" | "rsdf" | null` — Heuristik basierend auf Dateiendung, Magic-Bytes und Content-Struktur.
-- Built-in Decrypter-Plugin `amigo-container` matched `.dlc`, `.ccf`, `.rsdf`-URLs und Dateipfade, dispatched intern an die richtige Parser-Funktion.
+- Built-in Decrypter-Plugin `krake-container` matched `.dlc`, `.ccf`, `.rsdf`-URLs und Dateipfade, dispatched intern an die richtige Parser-Funktion.
 
 **File-Input-Handling:**
 
 - Container-Dateien kommen üblicherweise als lokale Datei, nicht als URL. Host-API muss `util.readFile(path)` exposen (eingeschränkt auf vom User ausgewählte Files).
 - Alternativ können Container als Base64-inline-Content übergeben werden.
 
-**Deliverable:** Built-in Decrypter-Plugin `amigo-container`, das alle drei Formate unterstützt, plus dokumentierte SDK-Helper für Custom-Container-Plugins.
+**Deliverable:** Built-in Decrypter-Plugin `krake-container`, das alle drei Formate unterstützt, plus dokumentierte SDK-Helper für Custom-Container-Plugins.
 
 **Tests:**
 
@@ -498,15 +498,15 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
 
 ## Phase 13: Entwickler-Experience und CLI
 
-**Ziel:** Plugin-Entwicklung soll sich gut anfühlen. Local-Testing ohne die ganze amigo-downloader-App starten zu müssen.
+**Ziel:** Plugin-Entwicklung soll sich gut anfühlen. Local-Testing ohne die ganze Krake-App starten zu müssen.
 
 **Aufgaben:**
 
-- CLI-Befehl `amigo plugin new <id>` — scaffolded Plugin-Projekt mit Template, Manifest, passendem `tsconfig.json`, Test-Setup.
-- `amigo plugin test <url>` — spawnt einen minimalen Runner mit Host-API-Mock (oder Real-Host mit Sandbox), lädt das Plugin, ruft extract/decrypt mit der URL auf, printed strukturiertes Result plus Log-Output.
-- `amigo plugin build` — SWC-Transpilation, Manifest-Validation, Bundle in `.amigoplugin`-Tarball.
-- `amigo plugin install <path>` — lädt lokal in laufende amigo-downloader-Instanz.
-- `amigo plugin validate <path>` — statische Checks: Manifest-Schema, SDK-Version-Compatibility, Permission-Consistency.
+- CLI-Befehl `krake-plugin new <id>` — scaffolded Plugin-Projekt mit Template, Manifest, passendem `tsconfig.json`, Test-Setup.
+- `krake-plugin test <url>` — spawnt einen minimalen Runner mit Host-API-Mock (oder Real-Host mit Sandbox), lädt das Plugin, ruft extract/decrypt mit der URL auf, printed strukturiertes Result plus Log-Output.
+- `krake-plugin build` — SWC-Transpilation, Manifest-Validation, Bundle in `.krakeplugin`-Tarball.
+- `krake-plugin install <path>` — lädt lokal in laufende Krake-Instanz.
+- `krake-plugin validate <path>` — statische Checks: Manifest-Schema, SDK-Version-Compatibility, Permission-Consistency.
 - Watch-Mode für `test`: Hot-Reload bei Code-Changes.
 
 **Deliverable:** Plugin-Autor kann in unter 2 Minuten von `plugin new` zu funktionierendem Plugin gegen eine echte URL kommen.
@@ -567,7 +567,7 @@ Dieser Plan setzt voraus, dass Tier 1 + 2 der Host-API (http, html, json, crypto
   - Rate-Limited API mit Backoff
   - Response-Validierung und typsichere Parsing
   - Debug-Logging-Patterns
-- Mapping-Tabelle: JDownloader-API zu amigo-plugin-sdk-API, als Referenz für Porting.
+- Mapping-Tabelle: JDownloader-API zu krake-plugin-sdk-API, als Referenz für Porting.
 - Migrationsleitfaden für Leute, die JDownloader-Plugins portieren wollen.
 
 **Deliverable:** Ein Plugin-Autor mit JDownloader-Erfahrung kann ein bestehendes Plugin in unter einer Stunde portieren.

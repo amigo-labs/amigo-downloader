@@ -1,11 +1,11 @@
-/// <reference path="../../types/amigo.d.ts" />
+/// <reference path="../../types/krake.d.ts" />
 
 function extractVideoId(url: string): string | null {
-    let m = amigo.regexMatch("[?&]v=([a-zA-Z0-9_-]{11})", url);
+    let m = krake.regexMatch("[?&]v=([a-zA-Z0-9_-]{11})", url);
     if (m) return m;
-    m = amigo.regexMatch("youtu\\.be/([a-zA-Z0-9_-]{11})", url);
+    m = krake.regexMatch("youtu\\.be/([a-zA-Z0-9_-]{11})", url);
     if (m) return m;
-    m = amigo.regexMatch("/(?:embed|shorts|v)/([a-zA-Z0-9_-]{11})", url);
+    m = krake.regexMatch("/(?:embed|shorts|v)/([a-zA-Z0-9_-]{11})", url);
     return m;
 }
 
@@ -34,7 +34,7 @@ module.exports = {
         const videoId = extractVideoId(url);
         if (!videoId) throw new Error("Could not extract video ID from URL");
 
-        amigo.logInfo("Resolving YouTube video: " + videoId);
+        krake.logInfo("Resolving YouTube video: " + videoId);
 
         const body = JSON.stringify({
             videoId: videoId,
@@ -53,7 +53,7 @@ module.exports = {
             },
         });
 
-        const resp = amigo.httpPost(
+        const resp = krake.httpPost(
             "https://www.youtube.com/youtubei/v1/player?prettyPrint=false",
             body,
             "application/json"
@@ -64,7 +64,7 @@ module.exports = {
         }
 
         const data = parseApiJson(resp.body, "youtubei/v1/player");
-        const title = amigo.traverse(data, "videoDetails.title") as string | null;
+        const title = krake.traverse(data, "videoDetails.title") as string | null;
         if (!title) throw new Error("Could not get video title");
 
         let bestUrl: string | null = null;
@@ -73,7 +73,7 @@ module.exports = {
         let bestSize: number | null = null;
         let bestMime = "video/mp4";
 
-        const formats = amigo.traverse(data, "streamingData.formats") as any[] | null;
+        const formats = krake.traverse(data, "streamingData.formats") as any[] | null;
         if (formats) {
             for (const fmt of formats) {
                 if (fmt.url && fmt.height && fmt.height > bestHeight) {
@@ -87,7 +87,7 @@ module.exports = {
         }
 
         if (!bestUrl) {
-            const adaptive = amigo.traverse(data, "streamingData.adaptiveFormats") as any[] | null;
+            const adaptive = krake.traverse(data, "streamingData.adaptiveFormats") as any[] | null;
             if (adaptive) {
                 for (const afmt of adaptive) {
                     if (afmt.url && afmt.mimeType && afmt.mimeType.indexOf("video/") === 0) {
@@ -104,14 +104,14 @@ module.exports = {
         }
 
         if (!bestUrl) {
-            const reason = amigo.traverse(data, "playabilityStatus.reason") as string | null;
+            const reason = krake.traverse(data, "playabilityStatus.reason") as string | null;
             throw new Error(reason || "No downloadable streams found");
         }
 
         const ext = bestMime.indexOf("webm") >= 0 ? "webm" : "mp4";
-        const filename = amigo.sanitizeFilename(title) + "." + ext;
+        const filename = krake.sanitizeFilename(title) + "." + ext;
 
-        amigo.logInfo("Selected: " + bestQuality + " (" + bestMime + ")");
+        krake.logInfo("Selected: " + bestQuality + " (" + bestMime + ")");
 
         return {
             name: title,
@@ -138,7 +138,7 @@ module.exports = {
         // the wrong URL). YouTube tolerates the un-encoded form, but it is
         // still a malformed URL.
         const watchUrl = encodeURIComponent("https://www.youtube.com/watch?v=" + videoId);
-        const resp = amigo.httpGet(
+        const resp = krake.httpGet(
             "https://www.youtube.com/oembed?url=" + watchUrl + "&format=json"
         );
 
@@ -146,4 +146,4 @@ module.exports = {
         if (resp.status === 404 || resp.status === 401) return "offline";
         return "unknown";
     },
-} satisfies AmigoPlugin;
+} satisfies KrakePlugin;

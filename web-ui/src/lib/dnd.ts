@@ -15,7 +15,7 @@
 
 import { writable, get } from "svelte/store";
 
-export const DND_MIME = "application/x-amigo-download-id";
+export const DND_MIME = "application/x-krake-download-id";
 
 /** Set for the lifetime of an internal drag; null otherwise. */
 export const internalDragId = writable<string | null>(null);

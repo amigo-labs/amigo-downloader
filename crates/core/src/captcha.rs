@@ -66,7 +66,7 @@ pub struct CaptchaInfo {
 /// Manages manual captcha solving via the Web UI.
 ///
 /// Flow:
-/// 1. Plugin calls `amigo.solveCaptcha(imageUrl)` → Host API calls `request_solve()`
+/// 1. Plugin calls `krake.solveCaptcha(imageUrl)` → Host API calls `request_solve()`
 /// 2. CaptchaManager broadcasts a `CaptchaChallenge` event via the event channel
 /// 3. WebSocket sends the challenge to the Web UI
 /// 4. User sees captcha image, types solution, POSTs to `/api/v1/captcha/{id}/solve`

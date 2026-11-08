@@ -73,177 +73,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 
 [[package]]
-name = "amigo-cli"
-version = "0.1.0"
-dependencies = [
- "amigo-core",
- "amigo-plugin-runtime",
- "anyhow",
- "axum",
- "clap",
- "console",
- "indicatif",
- "regex",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tokio",
- "toml 0.8.2",
- "tracing",
- "tracing-subscriber",
- "uuid",
-]
-
-[[package]]
-name = "amigo-core"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "base64 0.22.1",
- "chrono",
- "crc32fast",
- "dash-mpd",
- "ed25519-dalek",
- "flate2",
- "futures",
- "hex",
- "m3u8-rs",
- "native-tls",
- "quick-xml 0.37.5",
- "rand 0.10.2",
- "regex",
- "reqwest 0.12.28",
- "rusqlite",
- "self-replace",
- "semver",
- "serde",
- "serde_json",
- "sevenz-rust2",
- "sha2 0.10.9",
- "tar",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-native-tls",
- "toml 0.8.2",
- "tracing",
- "unrar",
- "uuid",
- "wiremock",
- "zip",
-]
-
-[[package]]
-name = "amigo-desktop"
-version = "0.1.0"
-dependencies = [
- "amigo-core",
- "amigo-plugin-runtime",
- "amigo-server",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tauri-plugin-deep-link",
- "tauri-plugin-notification",
- "tauri-plugin-shell",
- "tauri-plugin-updater",
- "tokio",
- "tracing",
- "tracing-subscriber",
-]
-
-[[package]]
-name = "amigo-extractors"
-version = "0.1.0"
-dependencies = [
- "regex",
- "reqwest 0.12.28",
- "rquickjs",
- "scraper",
- "serde",
- "serde_json",
- "thiserror 2.0.18",
- "tracing",
- "url",
-]
-
-[[package]]
-name = "amigo-plugin-runtime"
-version = "0.1.0"
-dependencies = [
- "aes 0.8.4",
- "cbc",
- "ed25519-dalek",
- "hex",
- "hmac 0.12.1",
- "libc",
- "md-5",
- "rand 0.10.2",
- "regex",
- "reqwest 0.12.28",
- "rquickjs",
- "scraper",
- "semver",
- "serde",
- "serde_json",
- "sha1 0.10.6",
- "sha2 0.10.9",
- "swc_common",
- "swc_ecma_ast",
- "swc_ecma_codegen",
- "swc_ecma_parser",
- "swc_ecma_transforms_typescript",
- "swc_ecma_visit",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tracing",
- "url",
- "urlencoding",
- "wiremock",
-]
-
-[[package]]
-name = "amigo-server"
-version = "0.1.0"
-dependencies = [
- "amigo-core",
- "amigo-plugin-runtime",
- "anyhow",
- "argon2",
- "async-trait",
- "axum",
- "axum-extra",
- "base64 0.22.1",
- "chrono",
- "cookie",
- "futures-util",
- "hex",
- "hmac 0.12.1",
- "http-body-util",
- "mime_guess",
- "rand 0.10.2",
- "regex",
- "reqwest 0.12.28",
- "rust-embed",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "subtle",
- "tempfile",
- "thiserror 2.0.18",
- "tokio",
- "tokio-tungstenite",
- "tower",
- "tower-http",
- "tracing",
- "tracing-subscriber",
- "url",
- "uuid",
-]
-
-[[package]]
 name = "android_system_properties"
 version = "0.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3407,6 +3236,177 @@ checksum = "0fbe853b403ae61a04233030ae8a79d94975281ed9770a1f9e246732b534b28d"
 dependencies = [
  "bitflags 2.11.0",
  "serde",
+]
+
+[[package]]
+name = "krake-cli"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum",
+ "clap",
+ "console",
+ "indicatif",
+ "krake-core",
+ "krake-plugin-runtime",
+ "regex",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tokio",
+ "toml 0.8.2",
+ "tracing",
+ "tracing-subscriber",
+ "uuid",
+]
+
+[[package]]
+name = "krake-core"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "base64 0.22.1",
+ "chrono",
+ "crc32fast",
+ "dash-mpd",
+ "ed25519-dalek",
+ "flate2",
+ "futures",
+ "hex",
+ "m3u8-rs",
+ "native-tls",
+ "quick-xml 0.37.5",
+ "rand 0.10.2",
+ "regex",
+ "reqwest 0.12.28",
+ "rusqlite",
+ "self-replace",
+ "semver",
+ "serde",
+ "serde_json",
+ "sevenz-rust2",
+ "sha2 0.10.9",
+ "tar",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-native-tls",
+ "toml 0.8.2",
+ "tracing",
+ "unrar",
+ "uuid",
+ "wiremock",
+ "zip",
+]
+
+[[package]]
+name = "krake-desktop"
+version = "0.1.0"
+dependencies = [
+ "krake-core",
+ "krake-plugin-runtime",
+ "krake-server",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tauri-plugin-deep-link",
+ "tauri-plugin-notification",
+ "tauri-plugin-shell",
+ "tauri-plugin-updater",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
+name = "krake-extractors"
+version = "0.1.0"
+dependencies = [
+ "regex",
+ "reqwest 0.12.28",
+ "rquickjs",
+ "scraper",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+ "tracing",
+ "url",
+]
+
+[[package]]
+name = "krake-plugin-runtime"
+version = "0.1.0"
+dependencies = [
+ "aes 0.8.4",
+ "cbc",
+ "ed25519-dalek",
+ "hex",
+ "hmac 0.12.1",
+ "libc",
+ "md-5",
+ "rand 0.10.2",
+ "regex",
+ "reqwest 0.12.28",
+ "rquickjs",
+ "scraper",
+ "semver",
+ "serde",
+ "serde_json",
+ "sha1 0.10.6",
+ "sha2 0.10.9",
+ "swc_common",
+ "swc_ecma_ast",
+ "swc_ecma_codegen",
+ "swc_ecma_parser",
+ "swc_ecma_transforms_typescript",
+ "swc_ecma_visit",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "url",
+ "urlencoding",
+ "wiremock",
+]
+
+[[package]]
+name = "krake-server"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "argon2",
+ "async-trait",
+ "axum",
+ "axum-extra",
+ "base64 0.22.1",
+ "chrono",
+ "cookie",
+ "futures-util",
+ "hex",
+ "hmac 0.12.1",
+ "http-body-util",
+ "krake-core",
+ "krake-plugin-runtime",
+ "mime_guess",
+ "rand 0.10.2",
+ "regex",
+ "reqwest 0.12.28",
+ "rust-embed",
+ "serde",
+ "serde_json",
+ "sha2 0.10.9",
+ "subtle",
+ "tempfile",
+ "thiserror 2.0.18",
+ "tokio",
+ "tokio-tungstenite",
+ "tower",
+ "tower-http",
+ "tracing",
+ "tracing-subscriber",
+ "url",
+ "uuid",
 ]
 
 [[package]]

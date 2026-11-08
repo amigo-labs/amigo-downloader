@@ -3,15 +3,15 @@
   import CaptchaDialog from "./components/CaptchaDialog.svelte";
   import DropZone from "./components/DropZone.svelte";
   import FeedbackDialog from "./components/FeedbackDialog.svelte";
-  import Icon from "@amigo/ui/components/Icon.svelte";
+  import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
   import ShortcutsDialog from "./components/ShortcutsDialog.svelte";
-  import ProgressRing from "@amigo/ui/components/ProgressRing.svelte";
+  import ProgressRing from "@amigo-labs/krake-ui/components/ProgressRing.svelte";
   import SidePanel from "./components/SidePanel.svelte";
-  import Sparkline from "@amigo/ui/components/Sparkline.svelte";
+  import Sparkline from "@amigo-labs/krake-ui/components/Sparkline.svelte";
   import Toasts from "./components/Toasts.svelte";
   import CommandPalette from "./components/CommandPalette.svelte";
   import MobileNav from "./components/MobileNav.svelte";
-  import SegmentedControl from "@amigo/ui/components/SegmentedControl.svelte";
+  import SegmentedControl from "@amigo-labs/krake-ui/components/SegmentedControl.svelte";
   import {
     addDownload,
     connectWebSocket,
@@ -299,10 +299,10 @@
     if (document.hasFocus()) return;
     if (typeof Notification === "undefined") return;
     if (Notification.permission === "granted") {
-      new Notification(title, { body, icon: "/amigo-logo.png" });
+      new Notification(title, { body, icon: "/icon-256.png" });
     } else if (Notification.permission !== "denied") {
       Notification.requestPermission().then((p) => {
-        if (p === "granted") new Notification(title, { body, icon: "/amigo-logo.png" });
+        if (p === "granted") new Notification(title, { body, icon: "/icon-256.png" });
       });
     }
   }
@@ -403,15 +403,15 @@
       style="border-color: var(--border-color)"
     >
       <img
-        src="/amigo-logo.png"
-        alt="amigo-downloader"
+        src="/favicon.svg"
+        alt="Krake"
         width="28"
         height="28"
         class="shrink-0"
       />
       {#if !$sidebarCollapsed}
         <div class="min-w-0">
-          <h1 class="font-bold text-base leading-tight" style="color: var(--accent-ink)">AMIGO</h1>
+          <h1 class="font-bold text-base leading-tight" style="color: var(--accent-ink)">KRAKE</h1>
           <p class="text-xs" style="color: var(--text-secondary)">Download Manager</p>
         </div>
       {/if}
@@ -597,7 +597,7 @@
     >
       <div class="flex items-center gap-3 min-w-0">
         <!-- Mobile brand (no sidebar on small screens) -->
-        <img src="/amigo-logo.png" alt="" width="28" height="28" class="lg:hidden shrink-0 rounded-full" />
+        <img src="/favicon.svg" alt="" width="28" height="28" class="lg:hidden shrink-0" />
         <h2
           class="text-lg md:text-xl font-semibold neon-flicker-text truncate"
           style="color: var(--text-primary)"

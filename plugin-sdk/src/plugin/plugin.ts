@@ -8,7 +8,7 @@ import { compilePattern, matchesAny, type UrlPattern } from "./matching.js";
 export type PluginKind = "hoster" | "decrypter";
 
 /**
- * Major version of the amigo host API this SDK targets. Mirrors
+ * Major version of the krake host API this SDK targets. Mirrors
  * `HOST_API_VERSION` in `crates/plugin-runtime/src/lib.rs`; a plugin built
  * against a major the host does not support is refused at load.
  */

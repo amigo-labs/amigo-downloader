@@ -1,6 +1,6 @@
-//! Persist remote amigo servers + their API tokens in
-//! `$AMIGO_CONFIG_DIR/remotes.toml` (falling back to
-//! `~/.config/amigo/remotes.toml`).
+//! Persist remote Krake servers + their API tokens in
+//! `$KRAKE_CONFIG_DIR/remotes.toml` (falling back to
+//! `~/.config/krake/remotes.toml`).
 //!
 //! Tokens are stored in plaintext for now — the file should be `0600`. That
 //! matches how `gh`, `helm`, and friends handle credentials at this tier.
@@ -29,11 +29,17 @@ pub struct Remotes {
 }
 
 pub fn config_path() -> PathBuf {
-    if let Ok(dir) = std::env::var("AMIGO_CONFIG_DIR") {
+    if let Ok(dir) = krake_core::env::var("KRAKE_CONFIG_DIR") {
         return PathBuf::from(dir).join("remotes.toml");
     }
     if let Some(home) = dirs_home() {
-        return home.join(".config").join("amigo").join("remotes.toml");
+        let config = home.join(".config");
+        let dir = config.join("krake");
+        // Pre-rename builds kept the file in `~/.config/amigo`.
+        if let Err(e) = krake_core::migrate::migrate_path(&config.join("amigo"), &dir) {
+            tracing::warn!("Could not move ~/.config/amigo to {}: {e}", dir.display());
+        }
+        return dir.join("remotes.toml");
     }
     PathBuf::from("remotes.toml")
 }

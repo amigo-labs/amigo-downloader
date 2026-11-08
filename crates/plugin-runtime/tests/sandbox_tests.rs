@@ -6,8 +6,8 @@
 
 use std::path::Path;
 
-use amigo_plugin_runtime::loader::PluginLoader;
-use amigo_plugin_runtime::sandbox::SandboxLimits;
+use krake_plugin_runtime::loader::PluginLoader;
+use krake_plugin_runtime::sandbox::SandboxLimits;
 
 async fn loader_with(
     limits: SandboxLimits,
@@ -139,9 +139,9 @@ async fn test_process_and_node_globals_are_not_available() {
 }
 
 #[tokio::test]
-async fn test_amigo_host_api_is_exposed() {
+async fn test_krake_host_api_is_exposed() {
     // Counterpart to the negative tests: the legitimate sandbox global
-    // `amigo` must be available so plugins can do anything useful.
+    // `krake` must be available so plugins can do anything useful.
     let plugin = r#"
         module.exports = {
             id: "sb-test",
@@ -150,9 +150,9 @@ async fn test_amigo_host_api_is_exposed() {
             urlPattern: ".*",
             resolve(_url) {
                 return {
-                    name: "amigo=" + (typeof amigo)
-                        + " httpGet=" + (typeof (amigo && amigo.httpGet))
-                        + " regexMatch=" + (typeof (amigo && amigo.regexMatch)),
+                    name: "krake=" + (typeof krake)
+                        + " httpGet=" + (typeof (krake && krake.httpGet))
+                        + " regexMatch=" + (typeof (krake && krake.regexMatch)),
                     downloads: [{
                         url: "http://example.com/dummy",
                         filename: null, filesize: null,
@@ -170,9 +170,50 @@ async fn test_amigo_host_api_is_exposed() {
         .resolve("sb-test", "http://example.com/x")
         .await
         .expect("resolve");
-    assert!(pkg.name.contains("amigo=object"), "got {}", pkg.name);
+    assert!(pkg.name.contains("krake=object"), "got {}", pkg.name);
     assert!(pkg.name.contains("httpGet=function"), "got {}", pkg.name);
     assert!(pkg.name.contains("regexMatch=function"), "got {}", pkg.name);
+}
+
+#[tokio::test]
+async fn test_legacy_amigo_global_still_resolves() {
+    // Plugins written before the rename call the host API as `amigo.*`.
+    // The runtime keeps that name as an alias of the same `krake` object,
+    // including the functions the JS shim adds (`traverse`).
+    let plugin = r#"
+        module.exports = {
+            id: "sb-test",
+            name: "Sandbox Test",
+            version: "1.0.0",
+            urlPattern: ".*",
+            resolve(url) {
+                var id = amigo.regexMatch("/file/(\\w+)", url);
+                var nested = amigo.traverse({ a: { b: "deep" } }, "a.b");
+                return {
+                    name: "id=" + id
+                        + " nested=" + nested
+                        + " same=" + (amigo === krake),
+                    downloads: [{
+                        url: amigo.urlResolve(url, "/dl/" + id),
+                        filename: amigo.urlFilename(url),
+                        filesize: null,
+                        chunks_supported: false, max_chunks: null,
+                        headers: null, cookies: null, wait_seconds: null,
+                        mirrors: [],
+                    }],
+                };
+            },
+        };
+    "#;
+    let (_tmp, loader) = loader_with(SandboxLimits::default(), plugin).await;
+
+    let pkg = loader
+        .resolve("sb-test", "http://example.com/file/abc123")
+        .await
+        .expect("a plugin using the amigo global resolves");
+    assert_eq!(pkg.name, "id=abc123 nested=deep same=true");
+    assert_eq!(pkg.downloads[0].url, "http://example.com/dl/abc123");
+    assert_eq!(pkg.downloads[0].filename.as_deref(), Some("abc123"));
 }
 
 #[tokio::test]

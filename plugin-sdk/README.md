@@ -1,9 +1,9 @@
-# @amigo/plugin-sdk
+# @amigo-labs/krake-plugin-sdk
 
-TypeScript SDK for building [amigo-downloader](https://github.com/amigo-labs/amigo-downloader) plugins.
+TypeScript SDK for building [Krake](https://github.com/amigo-labs/amigo-krake) plugins.
 
 > **Status:** The SDK targets its own plugin model and mock host; the
-> amigo-downloader runtime does not load SDK-style plugins yet. For plugins
+> Krake runtime does not load SDK-style plugins yet. For plugins
 > that should run inside the app today, use the CommonJS interface from
 > `docs/plugin-api.md` (`plugins/template/plugin.ts`). The runtime bridge is
 > tracked in `docs/plan-plugin-sdk.md`.
@@ -11,18 +11,18 @@ TypeScript SDK for building [amigo-downloader](https://github.com/amigo-labs/ami
 ## Install
 
 ```
-npm install @amigo/plugin-sdk
+npm install @amigo-labs/krake-plugin-sdk
 ```
 
 ## Quick start
 
-Plugins that run in amigo-downloader today use the **synchronous CommonJS**
+Plugins that run in Krake today use the **synchronous CommonJS**
 contract — assign to `module.exports`, implement `resolve(url)`, and call the
-injected global `amigo.*` host API directly. There is no `import`, no
+injected global `krake.*` host API directly. There is no `import`, no
 `async`/`await`, and URLs are matched with a single `urlPattern` string.
 
 ```ts
-/// <reference path="../types/amigo.d.ts" />
+/// <reference path="../types/krake.d.ts" />
 
 module.exports = {
   id: "example-hoster",
@@ -31,18 +31,18 @@ module.exports = {
   urlPattern: "https?://files\\.example\\.test/.+",
 
   resolve(url: string): DownloadPackage {
-    const page = amigo.httpGet(url);
+    const page = krake.httpGet(url);
     if (page.status !== 200) {
       throw new Error("HTTP " + page.status);
     }
-    const href = amigo.htmlQueryAttr(page.body, "a.download-btn", "href");
+    const href = krake.htmlQueryAttr(page.body, "a.download-btn", "href");
     if (!href) {
       throw new Error("download URL not found");
     }
     return {
-      name: amigo.htmlExtractTitle(page.body) || "Download",
+      name: krake.htmlExtractTitle(page.body) || "Download",
       downloads: [{
-        url: amigo.urlResolve(url, href),
+        url: krake.urlResolve(url, href),
         filename: null,
         filesize: null,
         chunks_supported: true,
@@ -54,7 +54,7 @@ module.exports = {
       }],
     };
   },
-} satisfies AmigoPlugin;
+} satisfies KrakePlugin;
 ```
 
 See `plugins/template/plugin.ts` for a fully commented starting point and
@@ -64,18 +64,18 @@ See `plugins/template/plugin.ts` for a fully commented starting point and
 > executes synchronously; `resolve()` and every other plugin callback must be
 > synchronous. The host API blocks internally (the runtime wraps each call in
 > `spawn_blocking`), so you write straight-line code — `const page =
-> amigo.httpGet(url)` — with no `await`.
+> krake.httpGet(url)` — with no `await`.
 
 ## Experimental SDK model (not yet loaded by the runtime)
 
-The `@amigo/plugin-sdk` package also ships a higher-level, promise-based
+The `@amigo-labs/krake-plugin-sdk` package also ships a higher-level, promise-based
 authoring model (`definePlugin`, `Browser`/`Page`, captcha helpers). It runs
 only against the SDK's own mock host for now — the runtime bridge is tracked in
 `docs/plan-plugin-sdk.md`. Do **not** ship a plugin written this way expecting
 it to load in the app yet.
 
 ```ts
-import { plugin, types, captcha } from "@amigo/plugin-sdk";
+import { plugin, types, captcha } from "@amigo-labs/krake-plugin-sdk";
 
 export default plugin.definePlugin({
   id: "example-hoster",
@@ -105,11 +105,11 @@ export default plugin.definePlugin({
 ## Scaffold a new plugin
 
 ```
-npx amigo-plugin new my-hoster --kind hoster
+npx krake-plugin new my-hoster --kind hoster
 cd my-hoster
 npm install
 npm run build
-npx amigo-plugin test https://my-hoster.example/sample --plugin ./dist/index.js
+npx krake-plugin test https://my-hoster.example/sample --plugin ./dist/index.js
 ```
 
 ## Modules
@@ -129,7 +129,7 @@ npx amigo-plugin test https://my-hoster.example/sample --plugin ./dist/index.js
 | `container` | `rsdf.parse`, `ccf.parse`, `dlc.parse`, `detect` |
 | `javascript` | `run`, `unpackDeanEdwards`, `unpackEval` |
 | `utility` | `parseSize`, `parseDuration`, `parseDate`, `formatFilename` |
-| `cli` | `amigo-plugin` commands |
+| `cli` | `krake-plugin` commands |
 
 ## Docs
 
