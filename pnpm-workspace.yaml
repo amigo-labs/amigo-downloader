@@ -1,5 +1,4 @@
 packages:
   - web-ui
-  - site
   - packages/*
   - plugin-sdk
