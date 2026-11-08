@@ -41,7 +41,7 @@ fn url_pattern_regex(pattern: &str) -> Option<Regex> {
 /// when the env var is unset, so production binaries always pin a real key.
 ///
 /// Key rotation is intentionally fail-closed: rotate by shipping a new
-/// amigo-server release; clients that haven't updated reject the new
+/// krake-server release; clients that haven't updated reject the new
 /// signatures and silently lose marketplace access until they update. A
 /// second, overlapping trusted key would make rotation non-breaking — that is
 /// a deliberate follow-up, not an oversight.
@@ -975,7 +975,7 @@ mod tests {
 
     #[test]
     fn server_construction_path_never_trusts_the_zero_key() {
-        // `for_index` is what amigo-server uses. In a build without a real
+        // `for_index` is what krake-server uses. In a build without a real
         // key it must disable verification instead of pinning [0; 32].
         let cfg = RegistryConfig::for_index("https://example.com/index.json", false);
         assert_ne!(cfg.index_verifier(), Some(&ZERO_PUBKEY));

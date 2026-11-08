@@ -1,5 +1,5 @@
 //! Tests for the out-of-process plugin host (issue #79, SH-7a): plugin JS
-//! runs in `amigo-plugin-host`, a dying child fails only the calls it was
+//! runs in `krake-plugin-host`, a dying child fails only the calls it was
 //! running, and the daemon keeps every piece of state that must survive it.
 //! Tests that kill or stop the child use Unix signals and are Unix-only.
 
@@ -291,7 +291,7 @@ async fn missing_host_binary_is_a_clear_error() {
     write_plugin(tmp.path(), "orphan", &returning("null"));
     let loader = PluginLoader::new(tmp.path().to_path_buf(), limits(5))
         .unwrap()
-        .with_plugin_host_binary("/nonexistent/amigo-plugin-host".into());
+        .with_plugin_host_binary("/nonexistent/krake-plugin-host".into());
 
     let err = loader
         .load_plugin(&tmp.path().join("orphan/plugin.js"))

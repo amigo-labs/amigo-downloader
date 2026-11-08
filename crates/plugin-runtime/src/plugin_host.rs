@@ -1,6 +1,6 @@
 //! The plugin host: the child process that runs plugin JavaScript.
 //!
-//! The `amigo-plugin-host` binary calls [`run`]. It owns every QuickJS
+//! The `krake-plugin-host` binary calls [`run`]. It owns every QuickJS
 //! runtime; the daemon owns none. It reads [`ToChild`] frames from stdin and
 //! writes [`ToParent`] frames to stdout (see [`crate::ipc`]).
 //!
@@ -57,7 +57,7 @@ pub fn run() -> i32 {
             // The daemon closed our stdin: it is shutting down or gone.
             Ok(None) => return 0,
             Err(e) => {
-                eprintln!("amigo-plugin-host: bad frame from daemon: {e}");
+                eprintln!("krake-plugin-host: bad frame from daemon: {e}");
                 return 2;
             }
         };

@@ -12,7 +12,7 @@
 //!   cache hit);
 //! - `resolve()` of `generic-http` against a local mock page, i.e. the JS +
 //!   host-API cost of a resolve with the network latency factored out. Since
-//!   #79 this includes the IPC round trips to the `amigo-plugin-host` child;
+//!   #79 this includes the IPC round trips to the `krake-plugin-host` child;
 //!   the numbers before and after are recorded in
 //!   `docs/specs/plugin-sandbox-hardening.md` (SH-7a).
 

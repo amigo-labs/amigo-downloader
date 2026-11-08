@@ -3,7 +3,7 @@
 #
 # Usage: sign-update-archives.sh <dir>
 #
-# Writes <archive>.sig next to every amigo-dl-* / amigo-server-* archive in
+# Writes <archive>.sig next to every krake-<os>-* / krake-server-* archive in
 # <dir>: the lowercase hex of the Ed25519 signature over the archive bytes,
 # which `amigo_core::updater::verify_ed25519` checks.
 #
@@ -46,10 +46,12 @@ if [[ "$derived" != "${pinned,,}" ]]; then
 fi
 
 shopt -s nullglob
-archives=("$dir"/amigo-dl-*.tar.gz "$dir"/amigo-dl-*.zip
-          "$dir"/amigo-server-*.tar.gz "$dir"/amigo-server-*.zip)
+# The CLI pattern names the OS so that `krake-*` does not also match the
+# server archives.
+archives=("$dir"/krake-{linux,macos,windows}-*.{tar.gz,zip}
+          "$dir"/krake-server-*.tar.gz "$dir"/krake-server-*.zip)
 if [[ ${#archives[@]} -eq 0 ]]; then
-  echo "no amigo-dl-* / amigo-server-* archives in $dir" >&2
+  echo "no krake-* / krake-server-* archives in $dir" >&2
   exit 1
 fi
 

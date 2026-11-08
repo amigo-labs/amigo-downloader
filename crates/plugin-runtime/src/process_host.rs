@@ -1,6 +1,6 @@
 //! Daemon side of the out-of-process plugin host (#79).
 //!
-//! [`ProcessHost`] spawns `amigo-plugin-host` lazily, speaks [`crate::ipc`]
+//! [`ProcessHost`] spawns `krake-plugin-host` lazily, speaks [`crate::ipc`]
 //! with it, executes its host callbacks against the plugins' scoped
 //! [`HostApi`]s, and replaces it when it dies:
 //!
@@ -31,7 +31,7 @@ use crate::host_fns::{self, HostArgs, HostResult};
 use crate::ipc::{self, Handle, Payload, Request, ToChild, ToParent};
 
 /// File name of the plugin host binary.
-pub(crate) const HOST_BINARY: &str = "amigo-plugin-host";
+pub(crate) const HOST_BINARY: &str = "krake-plugin-host";
 
 /// Overrides where the plugin host binary is looked up.
 pub(crate) const HOST_BINARY_ENV: &str = "AMIGO_PLUGIN_HOST_BIN";
@@ -134,7 +134,7 @@ impl ProcessHost {
     }
 }
 
-/// Find `amigo-plugin-host`: `$AMIGO_PLUGIN_HOST_BIN`, else next to the
+/// Find `krake-plugin-host`: `$AMIGO_PLUGIN_HOST_BIN`, else next to the
 /// current executable, else one level up when the executable lives in
 /// Cargo's `deps/` (integration-test binaries).
 fn locate_binary() -> Result<PathBuf, crate::Error> {

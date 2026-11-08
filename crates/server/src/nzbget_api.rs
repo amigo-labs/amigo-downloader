@@ -197,7 +197,7 @@ type RpcResult = Result<Value, (i32, String)>;
 // --- Method implementations ---
 
 fn handle_version() -> RpcResult {
-    Ok(json!("amigo-dl-0.1.0"))
+    Ok(json!("krake-0.1.0"))
 }
 
 async fn handle_status(coordinator: &Arc<Coordinator>) -> RpcResult {

@@ -576,7 +576,7 @@ async fn suggest_plugin(
             found: true,
             plugin_id: Some(plugin.id.clone()),
             plugin_name: Some(plugin.name.clone()),
-            install_command: Some(format!("amigo-dl plugins install {}", plugin.id)),
+            install_command: Some(format!("krake plugins install {}", plugin.id)),
         });
     }
 

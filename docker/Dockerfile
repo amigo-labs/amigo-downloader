@@ -40,7 +40,7 @@ ARG AMIGO_REGISTRY_PUBKEY_HEX
 ENV AMIGO_REGISTRY_PUBKEY_HEX=${AMIGO_REGISTRY_PUBKEY_HEX}
 ARG AMIGO_UPDATE_PUBKEY_HEX
 ENV AMIGO_UPDATE_PUBKEY_HEX=${AMIGO_UPDATE_PUBKEY_HEX}
-RUN cargo build --release --bin amigo-server --bin amigo-dl --bin amigo-plugin-host
+RUN cargo build --release --bin krake-server --bin krake --bin krake-plugin-host
 
 # Stage 3: Runtime
 # Stays on the floating bookworm-slim tag so security updates land
@@ -58,10 +58,10 @@ RUN apt-get update && apt-get install -y ca-certificates wget gosu && rm -rf /va
 # Create non-root user with explicit UID/GID 1000 for predictable volume permissions
 RUN groupadd -r -g 1000 amigo && useradd -r -u 1000 -g amigo -d /config -s /sbin/nologin amigo
 
-COPY --from=rust-builder /app/target/release/amigo-server /usr/local/bin/
-COPY --from=rust-builder /app/target/release/amigo-dl /usr/local/bin/
-# Runs plugin JavaScript outside the daemon; found next to amigo-server.
-COPY --from=rust-builder /app/target/release/amigo-plugin-host /usr/local/bin/
+COPY --from=rust-builder /app/target/release/krake-server /usr/local/bin/
+COPY --from=rust-builder /app/target/release/krake /usr/local/bin/
+# Runs plugin JavaScript outside the daemon; found next to krake-server.
+COPY --from=rust-builder /app/target/release/krake-plugin-host /usr/local/bin/
 COPY plugins/ /etc/amigo/plugins/
 COPY locales/ /etc/amigo/locales/
 COPY docker/docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
@@ -88,4 +88,4 @@ HEALTHCHECK --interval=30s --timeout=5s --retries=3 --start-period=10s \
 # to the amigo user (UID 1000 by default) via gosu before exec'ing the server.
 # Override PUID/PGID to match your host volume owner if it isn't 1000.
 ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
-CMD ["amigo-server"]
+CMD ["krake-server"]

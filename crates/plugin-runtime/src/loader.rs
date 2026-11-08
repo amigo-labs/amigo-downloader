@@ -1,7 +1,7 @@
 //! Plugin discovery, loading, validation, and URL matching.
 //!
 //! Loads JavaScript (.js) and TypeScript (.ts) plugins. The plugins' JS runs
-//! in the `amigo-plugin-host` child process (see [`crate::plugin_host`]); this
+//! in the `krake-plugin-host` child process (see [`crate::plugin_host`]); this
 //! side keeps the metadata, URL matching, enable flags, the per-plugin exec
 //! locks and the scoped [`HostApi`]s, and holds no QuickJS runtime.
 
@@ -209,7 +209,7 @@ impl PluginLoader {
         self
     }
 
-    /// Run plugins with the `amigo-plugin-host` binary at `path` instead of
+    /// Run plugins with the `krake-plugin-host` binary at `path` instead of
     /// looking it up (`$AMIGO_PLUGIN_HOST_BIN`, then next to the current
     /// executable).
     pub fn with_plugin_host_binary(mut self, path: PathBuf) -> Self {

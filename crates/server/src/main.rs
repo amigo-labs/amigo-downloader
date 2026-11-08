@@ -310,7 +310,7 @@ async fn main() -> anyhow::Result<()> {
     });
 
     let bind = config.server.bind.clone();
-    tracing::info!("Starting amigo-server on {bind}");
+    tracing::info!("Starting krake-server on {bind}");
 
     let listener = tokio::net::TcpListener::bind(&bind).await?;
     axum::serve(

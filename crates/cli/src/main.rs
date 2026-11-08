@@ -33,7 +33,7 @@ enum OutputMode {
 }
 
 #[derive(Parser)]
-#[command(name = "amigo-dl", about = "amigo-dl — fast, modular download manager")]
+#[command(name = "krake", about = "Krake — fast, modular download manager")]
 struct Cli {
     /// URLs to download directly (no subcommand needed)
     urls: Vec<String>,
@@ -226,7 +226,7 @@ fn print_banner(mode: OutputMode) {
         eprintln!(
             "{} {} {}",
             style("⚡").cyan(),
-            style("amigo-dl").bold().cyan(),
+            style("Krake").bold().cyan(),
             style(format!("v{}", amigo_core::updater::CURRENT_VERSION)).dim()
         );
         return;
@@ -238,7 +238,7 @@ fn print_banner(mode: OutputMode) {
     eprintln!(
         "  {} {} {}",
         style("⚡").bold().yellow(),
-        style("amigo-dl").bold().cyan(),
+        style("Krake").bold().cyan(),
         style(format!("v{}", amigo_core::updater::CURRENT_VERSION)).dim()
     );
     eprintln!("  {}", style("Fast, modular download manager").dim());
@@ -600,7 +600,7 @@ async fn run_direct_downloads(
     tui: &Tui,
 ) -> anyhow::Result<()> {
     if urls.is_empty() {
-        anyhow::bail!("No URLs provided. Usage: amigo-dl <URL> [URL...]");
+        anyhow::bail!("No URLs provided. Usage: krake <URL> [URL...]");
     }
 
     let config = Config::load_auto();
@@ -669,7 +669,7 @@ fn init_tracing(verbose: bool) {
         .init();
 }
 
-/// `amigo-dl plugins install <id>`: install a registry plugin on the paired
+/// `krake plugins install <id>`: install a registry plugin on the paired
 /// server, after showing which hosts it may contact and getting the user's
 /// confirmation (or `--yes`). The server refuses the install (HTTP 428)
 /// unless the approval is sent.
@@ -677,7 +677,7 @@ async fn plugins_install(id: &str, yes: bool, alias: Option<&str>) -> anyhow::Re
     let all = remotes::load();
     let Some((remote_name, remote)) = remotes::resolve(&all, alias) else {
         anyhow::bail!(
-            "No paired server. Pair with `amigo-dl login <url>` first, or pass --remote <alias>."
+            "No paired server. Pair with `krake login <url>` first, or pass --remote <alias>."
         );
     };
     let base = remote.url.trim_end_matches('/');
@@ -802,7 +802,7 @@ async fn main() -> anyhow::Result<()> {
     // Bare URLs without subcommand → direct download
     if cli.command.is_none() {
         if cli.urls.is_empty() {
-            Cli::parse_from(["amigo-dl", "--help"]);
+            Cli::parse_from(["krake", "--help"]);
         }
         print_banner(mode);
         return run_direct_downloads(&cli.urls, &cli.output, cli.chunks, &tui).await;
@@ -1083,7 +1083,7 @@ async fn main() -> anyhow::Result<()> {
                     );
                 }
                 OutputMode::Plain => {
-                    println!("amigo-dl v{}", amigo_core::updater::CURRENT_VERSION);
+                    println!("krake v{}", amigo_core::updater::CURRENT_VERSION);
                     println!(
                         "Active: {active}  Queued: {queued}  Completed: {completed}  Failed: {failed}"
                     );
@@ -1244,8 +1244,8 @@ async fn main() -> anyhow::Result<()> {
             }
             PluginAction::List | PluginAction::Enable { .. } | PluginAction::Login { .. } => {
                 println!(
-                    "Plugin management requires a running server. Start `amigo-server` locally, \
-                     or pair against a remote with `amigo-dl login <url>`."
+                    "Plugin management requires a running server. Start `krake-server` locally, \
+                     or pair against a remote with `krake login <url>`."
                 );
             }
             PluginAction::Install { id, yes, remote } => {
@@ -1328,7 +1328,7 @@ async fn main() -> anyhow::Result<()> {
                             amigo_core::updater::Product::Cli,
                         )
                         .await?;
-                        println!("Update applied! Restart amigo-dl to use v{latest}.");
+                        println!("Update applied! Restart krake to use v{latest}.");
                     }
                     amigo_core::updater::CoreUpdateStatus::UpToDate => {
                         println!(
@@ -1347,7 +1347,7 @@ async fn main() -> anyhow::Result<()> {
             RemoteAction::List => {
                 let r = remotes::load();
                 if r.remotes.is_empty() {
-                    tui.info("No remotes configured. Run `amigo-dl login <url>`.");
+                    tui.info("No remotes configured. Run `krake login <url>`.");
                 } else {
                     for (alias, remote) in &r.remotes {
                         let marker = if r.default.as_deref() == Some(alias) {
@@ -1375,7 +1375,7 @@ async fn main() -> anyhow::Result<()> {
                 let mut r = remotes::load();
                 if !r.remotes.contains_key(&name) {
                     tui.error(&format!(
-                        "No remote named {name} — run `amigo-dl login` first."
+                        "No remote named {name} — run `krake login` first."
                     ));
                 } else {
                     r.default = Some(name.clone());

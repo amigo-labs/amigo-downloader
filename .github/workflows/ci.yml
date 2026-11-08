@@ -92,10 +92,10 @@ jobs:
           openssl genpkey -algorithm ed25519 -out "$work/key.pem"
           seed="$(openssl pkey -in "$work/key.pem" -outform DER | tail -c 32 | hex)"
           pub="$(openssl pkey -in "$work/key.pem" -pubout -outform DER | tail -c 32 | hex)"
-          head -c 4096 /dev/urandom > "$work/amigo-server-linux-x86_64.tar.gz"
+          head -c 4096 /dev/urandom > "$work/krake-server-linux-x86_64.tar.gz"
           AMIGO_UPDATE_SIGNING_KEY="$seed" AMIGO_UPDATE_PUBKEY_HEX="$pub" \
             scripts/sign-update-archives.sh "$work"
-          test "$(wc -c < "$work/amigo-server-linux-x86_64.tar.gz.sig")" -eq 128
+          test "$(wc -c < "$work/krake-server-linux-x86_64.tar.gz.sig")" -eq 128
           # The job's placeholder AMIGO_UPDATE_PUBKEY_HEX does not match.
           if AMIGO_UPDATE_SIGNING_KEY="$seed" scripts/sign-update-archives.sh "$work"; then
             echo "a seed that does not match the pinned key was accepted" >&2

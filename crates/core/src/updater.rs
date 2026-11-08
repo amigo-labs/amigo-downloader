@@ -155,27 +155,27 @@ pub enum Distribution {
 }
 
 /// Name of the plugin host binary that ships next to the CLI and the server.
-pub const PLUGIN_HOST_NAME: &str = "amigo-plugin-host";
+pub const PLUGIN_HOST_NAME: &str = "krake-plugin-host";
 
 /// The release product a binary updates itself from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Product {
-    /// `amigo-server`
+    /// `krake-server`
     Server,
-    /// `amigo-dl`
+    /// `krake`
     Cli,
 }
 
 impl Product {
     pub fn binary_name(self) -> &'static str {
         match self {
-            Product::Server => "amigo-server",
-            Product::Cli => "amigo-dl",
+            Product::Server => "krake-server",
+            Product::Cli => "krake",
         }
     }
 
     /// Release archive of this product for the running platform, e.g.
-    /// `amigo-dl-linux-x86_64.tar.gz`.
+    /// `krake-linux-x86_64.tar.gz`.
     pub fn archive_name(self) -> String {
         archive_name(self, std::env::consts::OS, std::env::consts::ARCH)
     }
@@ -845,15 +845,15 @@ mod tests {
     fn archive_names_match_the_release_workflow() {
         assert_eq!(
             archive_name(Product::Server, "linux", "x86_64"),
-            "amigo-server-linux-x86_64.tar.gz"
+            "krake-server-linux-x86_64.tar.gz"
         );
         assert_eq!(
             archive_name(Product::Cli, "macos", "aarch64"),
-            "amigo-dl-macos-aarch64.tar.gz"
+            "krake-macos-aarch64.tar.gz"
         );
         assert_eq!(
             archive_name(Product::Cli, "windows", "x86_64"),
-            "amigo-dl-windows-x86_64.zip"
+            "krake-windows-x86_64.zip"
         );
     }
 
@@ -862,7 +862,7 @@ mod tests {
         // A release with no .sha256 asset must NOT be applied unverified. The
         // check happens before any network I/O, so we can assert it offline.
         let asset = ReleaseAsset {
-            name: "amigo-server".into(),
+            name: "krake-server".into(),
             browser_download_url: "https://github.com/x/never-fetched".into(),
             size: 0,
         };
@@ -891,7 +891,7 @@ mod tests {
     fn verify_ed25519_accepts_valid_signature() {
         use ed25519_dalek::Signer;
         let (sk, pk) = test_keypair();
-        let payload = b"amigo-server binary bytes";
+        let payload = b"krake-server binary bytes";
         let sig_hex = hex::encode(sk.sign(payload).to_bytes());
         verify_ed25519(payload, &sig_hex, &pk).expect("valid signature must verify");
     }
@@ -992,7 +992,7 @@ mod tests {
         // host pinning happy; the missing-sig check trips first.
         let (_sk, pk) = test_keypair();
         let asset = ReleaseAsset {
-            name: "amigo-server".into(),
+            name: "krake-server".into(),
             browser_download_url: "https://github.com/x/bin".into(),
             size: 0,
         };
@@ -1013,7 +1013,7 @@ mod tests {
     #[tokio::test]
     async fn download_rejects_untrusted_download_host() {
         let asset = ReleaseAsset {
-            name: "amigo-server".into(),
+            name: "krake-server".into(),
             browser_download_url: "https://evil.example.com/bin".into(),
             size: 0,
         };
@@ -1071,7 +1071,7 @@ mod tests {
         writer.finish().unwrap().into_inner()
     }
 
-    /// Extract `bytes` as an `amigo-dl` update. The staging directory is
+    /// Extract `bytes` as an `krake` update. The staging directory is
     /// `<tmp>/staging`, so a `../evil` entry would land at `<tmp>/evil`.
     fn extract(bytes: &[u8]) -> (tempfile::TempDir, Result<Staged, crate::Error>) {
         let tmp = tempfile::tempdir().unwrap();
@@ -1094,7 +1094,7 @@ mod tests {
 
     #[test]
     fn extracts_binaries_from_tar_gz() {
-        let bin = exe("amigo-dl");
+        let bin = exe("krake");
         let host = exe(PLUGIN_HOST_NAME);
         let (_tmp, staged) = extract(&tar_gz(&[
             (bin.as_str(), b"new-cli"),
@@ -1116,7 +1116,7 @@ mod tests {
 
     #[test]
     fn extracts_binaries_from_zip() {
-        let bin = exe("amigo-dl");
+        let bin = exe("krake");
         let host = exe(PLUGIN_HOST_NAME);
         let (_tmp, staged) = extract(&zip_archive(&[
             (bin.as_str(), b"new-cli"),
@@ -1132,14 +1132,14 @@ mod tests {
 
     #[test]
     fn unknown_entries_are_ignored_and_never_written() {
-        let bin = exe("amigo-dl");
+        let bin = exe("krake");
         let nested = format!("sub/{bin}");
         let dotted = format!("./{bin}");
         let entries: [(&str, &[u8]); 5] = [
             ("../evil", b"x"),
             (nested.as_str(), b"nested"),
             ("README.md", b"readme"),
-            (&exe("amigo-server"), b"server"),
+            (&exe("krake-server"), b"server"),
             (dotted.as_str(), b"new-cli"),
         ];
 
@@ -1160,7 +1160,7 @@ mod tests {
 
     #[test]
     fn symlink_with_a_whitelisted_name_is_rejected() {
-        let bin = exe("amigo-dl");
+        let bin = exe("krake");
         let mut builder = tar::Builder::new(flate2::write::GzEncoder::new(
             Vec::new(),
             flate2::Compression::fast(),
@@ -1179,7 +1179,7 @@ mod tests {
 
     #[test]
     fn duplicate_entries_are_rejected() {
-        let bin = exe("amigo-dl");
+        let bin = exe("krake");
         let (_tmp, staged) = extract(&tar_gz(&[(bin.as_str(), b"one"), (bin.as_str(), b"two")]));
         let err = staged.unwrap_err();
         assert!(err.to_string().contains("more than once"), "{err}");
@@ -1189,7 +1189,7 @@ mod tests {
     fn missing_product_binary_is_an_error() {
         // The server archive does not update the CLI.
         let (_tmp, staged) = extract(&tar_gz(&[
-            (exe("amigo-server").as_str(), b"server"),
+            (exe("krake-server").as_str(), b"server"),
             (exe(PLUGIN_HOST_NAME).as_str(), b"host"),
         ]));
         let err = staged.unwrap_err();
@@ -1208,7 +1208,7 @@ mod tests {
     fn stage(root: &Path, host: Option<&[u8]>) -> Staged {
         let staging = root.join("staging");
         fs::create_dir_all(&staging).unwrap();
-        let binary = staging.join(exe("amigo-dl"));
+        let binary = staging.join(exe("krake"));
         fs::write(&binary, b"new-cli").unwrap();
         let plugin_host = host.map(|bytes| {
             let path = staging.join(exe(PLUGIN_HOST_NAME));
@@ -1234,12 +1234,12 @@ mod tests {
 
         install(&staged, &dir, |binary| {
             assert_eq!(fs::read(&host_target).unwrap(), b"new-host", "host first");
-            fs::copy(binary, dir.join(exe("amigo-dl"))).map(|_| ())
+            fs::copy(binary, dir.join(exe("krake"))).map(|_| ())
         })
         .unwrap();
 
         assert_eq!(fs::read(&host_target).unwrap(), b"new-host");
-        assert_eq!(fs::read(dir.join(exe("amigo-dl"))).unwrap(), b"new-cli");
+        assert_eq!(fs::read(dir.join(exe("krake"))).unwrap(), b"new-cli");
         assert!(!backup.exists());
     }
 

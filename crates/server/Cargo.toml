@@ -16,7 +16,7 @@ name = "amigo_server"
 path = "src/lib.rs"
 
 [[bin]]
-name = "amigo-server"
+name = "krake-server"
 path = "src/main.rs"
 
 [dependencies]

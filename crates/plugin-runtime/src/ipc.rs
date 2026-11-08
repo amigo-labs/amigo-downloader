@@ -1,4 +1,4 @@
-//! Wire protocol between the daemon and the `amigo-plugin-host` child.
+//! Wire protocol between the daemon and the `krake-plugin-host` child.
 //!
 //! Framing: a `u32` big-endian length followed by that many bytes of JSON.
 //! The child writes [`ToParent::Hello`] first; every other frame is a

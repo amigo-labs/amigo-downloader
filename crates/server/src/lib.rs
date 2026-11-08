@@ -1,5 +1,5 @@
-//! amigo-server library — the API router, middleware and background tasks.
-//! Shared by the `amigo-server` binary (`main.rs`) and the integration tests.
+//! Library of the `amigo-server` crate — the API router, middleware and background tasks.
+//! Shared by the `krake-server` binary (`main.rs`) and the integration tests.
 
 pub mod api;
 pub mod auth;
