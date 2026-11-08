@@ -360,7 +360,9 @@ async fn session_cookie_is_secure_only_behind_https_proxy() {
         .await
         .unwrap();
     assert_eq!(res.status(), 200);
-    assert!(set_cookie(&res).iter().all(|c| c.contains("Secure")));
+    let cookies = set_cookie(&res);
+    assert!(cookies.iter().any(|c| c.starts_with("krake_session=")));
+    assert!(cookies.iter().all(|c| c.contains("Secure")));
 
     let res = c
         .post(url(addr, "/api/v1/login"))
@@ -369,7 +371,9 @@ async fn session_cookie_is_secure_only_behind_https_proxy() {
         .await
         .unwrap();
     assert_eq!(res.status(), 200);
-    assert!(set_cookie(&res).iter().all(|c| !c.contains("Secure")));
+    let cookies = set_cookie(&res);
+    assert!(cookies.iter().any(|c| c.starts_with("krake_session=")));
+    assert!(cookies.iter().all(|c| !c.contains("Secure")));
 
     let res = c
         .post(url(addr, "/api/v1/login"))
@@ -379,7 +383,8 @@ async fn session_cookie_is_secure_only_behind_https_proxy() {
         .await
         .unwrap();
     let cookies = set_cookie(&res);
-    assert!(!cookies.is_empty() && cookies.iter().all(|c| c.contains("Secure")));
+    assert!(cookies.iter().any(|c| c.starts_with("krake_session=")));
+    assert!(cookies.iter().all(|c| c.contains("Secure")));
     // The cookie store keeps a Secure cookie away from http://, so the test
     // sends it by hand, as the browser would behind the HTTPS proxy.
     let session = cookies[0].split(';').next().unwrap().to_string();
