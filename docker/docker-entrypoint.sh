@@ -1,5 +1,5 @@
 #!/bin/bash
-# amigo-downloader container entrypoint.
+# Krake container entrypoint.
 #
 # Ensures the config and download volumes are writable by the runtime user
 # before starting the server, instead of failing later with confusing errors
@@ -17,7 +17,7 @@ DOWNLOAD_DIR="${AMIGO_DOWNLOAD_DIR:-/downloads}"
 
 docs_hint() {
     echo "amigo: see the volume-permissions section of the docs" \
-        "(https://github.com/amigo-labs/amigo-downloader) — set PUID/PGID to" \
+        "(https://github.com/amigo-labs/amigo-krake) — set PUID/PGID to" \
         "match your host volume owner, or run the container as root." >&2
 }
 

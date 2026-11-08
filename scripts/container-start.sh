@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# amigo-downloader — Local Container Build & Start (Docker / Podman)
+# Krake — Local Container Build & Start (Docker / Podman)
 # Usage: ./scripts/container-start.sh [--build | --rebuild | --stop | --logs]
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 COMPOSE_FILE="$REPO_ROOT/docker/docker-compose.yml"
 COMPOSE_DEV_FILE="$REPO_ROOT/docker/docker-compose.dev.yml"
-IMAGE_NAME="amigo-downloader:local"
+IMAGE_NAME="krake:local"
 DOCKERFILE="$REPO_ROOT/docker/Dockerfile"
 
 # Detect container runtime: prefer docker, fall back to podman
@@ -59,12 +59,12 @@ start_dev() {
 
 build_image() {
     local cache_flag="${1:-}"
-    echo "Building amigo-downloader image locally..."
+    echo "Building Krake image locally..."
     $RUNTIME build $cache_flag -t "$IMAGE_NAME" -f "$DOCKERFILE" "$REPO_ROOT"
 }
 
 start_container() {
-    echo "Starting amigo-downloader (Ctrl+C to stop and remove)..."
+    echo "Starting Krake (Ctrl+C to stop and remove)..."
     echo "  Web-UI:       http://localhost:1516"
     echo "  Click'n'Load: http://localhost:9666"
     echo ""
@@ -87,7 +87,7 @@ case "${1:-}" in
         start_dev
         ;;
     --stop)
-        echo "Stopping amigo-downloader..."
+        echo "Stopping Krake..."
         $COMPOSE -f "$COMPOSE_FILE" down
         ;;
     --logs)

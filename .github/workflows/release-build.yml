@@ -186,10 +186,10 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ghcr.io/amigo-labs/amigo-downloader:latest
-            ghcr.io/amigo-labs/amigo-downloader:${{ inputs.version }}
-            ghcr.io/amigo-labs/amigo-downloader:${{ steps.version.outputs.minor }}
-            ghcr.io/amigo-labs/amigo-downloader:${{ steps.version.outputs.major }}
+            ghcr.io/amigo-labs/krake:latest
+            ghcr.io/amigo-labs/krake:${{ inputs.version }}
+            ghcr.io/amigo-labs/krake:${{ steps.version.outputs.minor }}
+            ghcr.io/amigo-labs/krake:${{ steps.version.outputs.major }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |

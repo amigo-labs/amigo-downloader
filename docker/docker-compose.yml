@@ -1,10 +1,10 @@
 services:
-  amigo-downloader:
-    image: amigo-downloader:local
+  krake:
+    image: krake:local
     build:
       context: ..
       dockerfile: docker/Dockerfile
-    container_name: amigo-downloader
+    container_name: krake
     ports:
       - "1516:1516"
       - "9666:9666"    # Click'n'Load

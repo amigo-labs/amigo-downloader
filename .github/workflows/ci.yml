@@ -214,7 +214,7 @@ jobs:
         with:
           context: .
           file: docker/Dockerfile
-          tags: amigo-downloader:ci
+          tags: krake:ci
           load: true
           cache-from: type=gha
           cache-to: type=gha,mode=max
