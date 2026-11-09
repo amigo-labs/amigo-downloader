@@ -1,26 +1,212 @@
 {
-  "$comment": "Quality gates for the qa, spec-build and spec-check skills (node .agents/skills/qa/scripts/gates.mjs fast|full) and the Claude Code hooks in .claude/hooks/. `full` mirrors the jobs of .github/workflows/ci.yml that run offline: rustfmt, version consistency, clippy + test, web UI, plugin SDK. The release-build guard, cargo / pnpm audit and the Docker build run in CI only. Clippy needs `protoc` (protobuf-compiler) like the CI job. `fast` runs in the Stop hook, filtered by `paths` (prefixes of changed repository paths). `needs` lists the ids a gate waits for; gates without needs between them run in parallel. Optional per gate: `fix` (auto-fix command), `note` (guidance when it is red). `#[expect(.., reason = ..)]` is not in `suppressions`: it is how this project silences a lint (workspace lint `allow_attributes`).",
+  "$comment": "Quality gates for the qa, spec-build and spec-check skills (node .agents/skills/qa/scripts/gates.mjs fast|full) and the Claude Code hooks in .claude/hooks/. `full` mirrors the jobs of .github/workflows/ci.yml that run offline: rustfmt, version consistency, clippy + test, web UI, plugin SDK. The release-build guard, cargo / pnpm audit and the Docker build run in CI only. Clippy needs `protoc` (protobuf-compiler) like the CI job. `stop` runs in the Claude Code Stop hook after every turn that changed code and must take seconds (`{cargo-packages}` = `-p` for each changed crate, minus `excludePackages`); `fast` runs before every commit (Claude Code commit gate) and in spec-build after each block; both are filtered by `paths` (prefixes of changed repository paths). `needs` lists the ids a gate waits for; gates without needs between them run in parallel. Optional per gate: `fix` (auto-fix command), `note` (guidance when it is red). `#[expect(.., reason = ..)]` is not in `suppressions`: it is how this project silences a lint (workspace lint `allow_attributes`).",
+  "stop": [
+    {
+      "id": "stop-fmt",
+      "name": "rustfmt",
+      "cwd": ".",
+      "command": "cargo fmt --all -- --check",
+      "fix": "cargo fmt --all",
+      "paths": [
+        "crates/",
+        "tauri/",
+        "Cargo.toml"
+      ],
+      "needs": []
+    },
+    {
+      "id": "stop-clippy",
+      "name": "clippy (changed crates)",
+      "cwd": ".",
+      "command": "mkdir -p web-ui/dist && cargo clippy {cargo-packages} --all-targets --locked -- -D warnings",
+      "paths": [
+        "crates/",
+        "tauri/"
+      ],
+      "excludePackages": [],
+      "needs": []
+    }
+  ],
   "fast": [
-    { "id": "rust-fmt", "name": "rustfmt", "cwd": ".", "command": "cargo fmt --all -- --check", "fix": "cargo fmt --all", "paths": ["crates/", "tauri/", "Cargo.toml"], "needs": [] },
-    { "id": "rust-clippy", "name": "clippy", "cwd": ".", "command": "mkdir -p web-ui/dist && cargo clippy --workspace --all-targets --locked -- -D warnings", "paths": ["crates/", "tauri/", "Cargo.toml", "Cargo.lock"], "needs": [] },
-    { "id": "web-ui-check", "name": "web UI check", "cwd": ".", "command": "pnpm --filter @amigo-labs/krake-web-ui check", "paths": ["web-ui/", "packages/"], "needs": [] },
-    { "id": "sdk-typecheck", "name": "plugin SDK typecheck", "cwd": ".", "command": "pnpm --filter @amigo-labs/krake-plugin-sdk typecheck", "paths": ["plugin-sdk/"], "needs": [] }
+    {
+      "id": "rust-fmt",
+      "name": "rustfmt",
+      "cwd": ".",
+      "command": "cargo fmt --all -- --check",
+      "fix": "cargo fmt --all",
+      "paths": [
+        "crates/",
+        "tauri/",
+        "Cargo.toml"
+      ],
+      "needs": []
+    },
+    {
+      "id": "rust-clippy",
+      "name": "clippy",
+      "cwd": ".",
+      "command": "mkdir -p web-ui/dist && cargo clippy --workspace --all-targets --locked -- -D warnings",
+      "paths": [
+        "crates/",
+        "tauri/",
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "needs": []
+    },
+    {
+      "id": "web-ui-check",
+      "name": "web UI check",
+      "cwd": ".",
+      "command": "pnpm --filter @amigo-labs/krake-web-ui check",
+      "paths": [
+        "web-ui/",
+        "packages/"
+      ],
+      "needs": []
+    },
+    {
+      "id": "sdk-typecheck",
+      "name": "plugin SDK typecheck",
+      "cwd": ".",
+      "command": "pnpm --filter @amigo-labs/krake-plugin-sdk typecheck",
+      "paths": [
+        "plugin-sdk/"
+      ],
+      "needs": []
+    }
   ],
   "full": [
-    { "id": "rust-fmt", "name": "rustfmt", "cwd": ".", "command": "cargo fmt --all -- --check", "fix": "cargo fmt --all", "needs": [] },
-    { "id": "versions", "name": "version consistency", "cwd": ".", "command": "node scripts/version-consistency.mjs", "needs": [] },
-    { "id": "rust-clippy", "name": "clippy", "cwd": ".", "command": "mkdir -p web-ui/dist && cargo clippy --workspace --all-targets --locked -- -D warnings", "needs": [] },
-    { "id": "rust-test", "name": "cargo test", "cwd": ".", "command": "cargo test --workspace --exclude krake-desktop --locked", "needs": ["rust-clippy"] },
-    { "id": "pnpm-install", "name": "pnpm install", "cwd": ".", "command": "pnpm install --frozen-lockfile", "needs": [] },
-    { "id": "web-ui-build", "name": "web UI build", "cwd": ".", "command": "pnpm --filter @amigo-labs/krake-web-ui build", "needs": ["pnpm-install"] },
-    { "id": "web-ui-check", "name": "web UI check", "cwd": ".", "command": "pnpm --filter @amigo-labs/krake-web-ui check", "needs": ["pnpm-install"] },
-    { "id": "web-ui-test", "name": "web UI unit tests", "cwd": ".", "command": "pnpm --filter @amigo-labs/krake-web-ui test", "needs": ["pnpm-install"] },
-    { "id": "design-tokens", "name": "design tokens", "cwd": ".", "command": "pnpm --filter @amigo-labs/krake-ui check", "needs": ["pnpm-install"] },
-    { "id": "ui-lint", "name": "UI lint", "cwd": ".", "command": "node scripts/ui-lint.mjs", "needs": ["pnpm-install"] },
-    { "id": "sdk-typecheck", "name": "plugin SDK typecheck", "cwd": ".", "command": "pnpm --filter @amigo-labs/krake-plugin-sdk typecheck", "needs": ["pnpm-install"] },
-    { "id": "sdk-test", "name": "plugin SDK test", "cwd": ".", "command": "pnpm --filter @amigo-labs/krake-plugin-sdk test", "needs": ["pnpm-install"] },
-    { "id": "agent-skills", "name": "agent skills in sync", "cwd": ".", "command": "node .agents/sync.mjs --check", "note": "Shared skills are edited in amigo-labs/skills and synced with `node .agents/sync.mjs`; this repository's own skills are edited in .agents/skills, then `node .agents/sync.mjs --mirror`.", "needs": [] }
+    {
+      "id": "rust-fmt",
+      "name": "rustfmt",
+      "cwd": ".",
+      "command": "cargo fmt --all -- --check",
+      "fix": "cargo fmt --all",
+      "needs": []
+    },
+    {
+      "id": "versions",
+      "name": "version consistency",
+      "cwd": ".",
+      "command": "node scripts/version-consistency.mjs",
+      "needs": []
+    },
+    {
+      "id": "rust-clippy",
+      "name": "clippy",
+      "cwd": ".",
+      "command": "mkdir -p web-ui/dist && cargo clippy --workspace --all-targets --locked -- -D warnings",
+      "needs": []
+    },
+    {
+      "id": "rust-test",
+      "name": "cargo test",
+      "cwd": ".",
+      "command": "cargo test --workspace --exclude krake-desktop --locked",
+      "needs": [
+        "rust-clippy"
+      ]
+    },
+    {
+      "id": "pnpm-install",
+      "name": "pnpm install",
+      "cwd": ".",
+      "command": "pnpm install --frozen-lockfile",
+      "needs": []
+    },
+    {
+      "id": "web-ui-build",
+      "name": "web UI build",
+      "cwd": ".",
+      "command": "pnpm --filter @amigo-labs/krake-web-ui build",
+      "needs": [
+        "pnpm-install"
+      ]
+    },
+    {
+      "id": "web-ui-check",
+      "name": "web UI check",
+      "cwd": ".",
+      "command": "pnpm --filter @amigo-labs/krake-web-ui check",
+      "needs": [
+        "pnpm-install"
+      ]
+    },
+    {
+      "id": "web-ui-test",
+      "name": "web UI unit tests",
+      "cwd": ".",
+      "command": "pnpm --filter @amigo-labs/krake-web-ui test",
+      "needs": [
+        "pnpm-install"
+      ]
+    },
+    {
+      "id": "design-tokens",
+      "name": "design tokens",
+      "cwd": ".",
+      "command": "pnpm --filter @amigo-labs/krake-ui check",
+      "needs": [
+        "pnpm-install"
+      ]
+    },
+    {
+      "id": "ui-lint",
+      "name": "UI lint",
+      "cwd": ".",
+      "command": "node scripts/ui-lint.mjs",
+      "needs": [
+        "pnpm-install"
+      ]
+    },
+    {
+      "id": "sdk-typecheck",
+      "name": "plugin SDK typecheck",
+      "cwd": ".",
+      "command": "pnpm --filter @amigo-labs/krake-plugin-sdk typecheck",
+      "needs": [
+        "pnpm-install"
+      ]
+    },
+    {
+      "id": "sdk-test",
+      "name": "plugin SDK test",
+      "cwd": ".",
+      "command": "pnpm --filter @amigo-labs/krake-plugin-sdk test",
+      "needs": [
+        "pnpm-install"
+      ]
+    },
+    {
+      "id": "agent-skills",
+      "name": "agent skills in sync",
+      "cwd": ".",
+      "command": "node .agents/sync.mjs --check",
+      "note": "Shared skills are edited in amigo-labs/skills and synced with `node .agents/sync.mjs`; this repository's own skills are edited in .agents/skills, then `node .agents/sync.mjs --mirror`.",
+      "needs": []
+    }
   ],
-  "suppressionExtensions": [".rs", ".ts", ".mts", ".js", ".mjs", ".svelte"],
-  "suppressions": ["#[allow(", "#![allow(", "#[ignore", "@ts-ignore", "@ts-nocheck", "@ts-expect-error", "eslint-disable", "test.skip(", "it.skip(", "describe.skip(", "test.only(", "it.only("]
+  "suppressionExtensions": [
+    ".rs",
+    ".ts",
+    ".mts",
+    ".js",
+    ".mjs",
+    ".svelte"
+  ],
+  "suppressions": [
+    "#[allow(",
+    "#![allow(",
+    "#[ignore",
+    "@ts-ignore",
+    "@ts-nocheck",
+    "@ts-expect-error",
+    "eslint-disable",
+    "test.skip(",
+    "it.skip(",
+    "describe.skip(",
+    "test.only(",
+    "it.only("
+  ]
 }
