@@ -1,3 +1,3 @@
 # Architecture
 
-See CLAUDE.md for the full architecture overview.
+See AGENTS.md for the full architecture overview.
