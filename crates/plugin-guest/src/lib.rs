@@ -239,7 +239,12 @@ fn describe(ctx: &Ctx<'_>, e: rquickjs::Error) -> String {
         s.to_string()
             .unwrap_or_else(|_| "unprintable JS exception".into())
     } else {
-        format!("{thrown:?}")
+        // Any other thrown value (object, number, null): its JS string form,
+        // as `String(value)` gives it.
+        thrown
+            .get::<rquickjs::convert::Coerced<String>>()
+            .map(|s| s.0)
+            .unwrap_or_else(|_| "unprintable JS exception".into())
     }
 }
 

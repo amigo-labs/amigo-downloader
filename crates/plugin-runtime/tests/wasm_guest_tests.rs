@@ -474,6 +474,40 @@ fn a_missing_return_value_reads_like_the_native_engine() {
     assert!(!wasm.is_unusable());
 }
 
+/// Edge case: a plugin throws something that is not an `Error`.
+#[test]
+fn thrown_non_errors_carry_their_string_form_under_both_engines() {
+    let source = wrap(
+        r#"module.exports = { id: "t", resolve(url) {
+            if (url.indexOf("string") >= 0) throw "plain string";
+            if (url.indexOf("object") >= 0) throw { code: 7 };
+            if (url.indexOf("number") >= 0) throw 42;
+            if (url.indexOf("array") >= 0) throw [1, 2];
+            throw null;
+        } };"#,
+    );
+    let wasm = wasm_with(&engine(), Arc::new(Recorder::default()));
+    wasm.load(&source).unwrap();
+    let native = native_with(Arc::new(Recorder::default()));
+    native.load(&source).unwrap();
+
+    for (kind, form) in [
+        ("string", "plain string"),
+        ("object", "[object Object]"),
+        ("number", "42"),
+        ("array", "1,2"),
+        ("null", "null"),
+    ] {
+        let url = format!("https://x/{kind}");
+        let message = text(wasm.resolve(&url));
+        assert_eq!(message, text(native.resolve(&url)), "{kind}");
+        assert!(
+            message.ends_with(&format!("resolve() eval failed: {form}")),
+            "{kind}: {message}"
+        );
+    }
+}
+
 // ── AC-07 ────────────────────────────────────────────────────────────────
 
 fn assert_times_out(

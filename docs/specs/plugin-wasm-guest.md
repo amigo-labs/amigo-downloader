@@ -310,3 +310,9 @@ Settled by a prototype (2026-11-10, 4 vCPU container, release build):
   `a_missing_return_value_reads_like_the_native_engine`. A timeout between
   two steps of a Promise-returning `resolve` now also leaves the instance
   unusable. Test added for a deadline that passes during a host call (AC-07).
+- 2026-11-10 (acceptance round 3): a thrown non-`Error` object showed as
+  Rust's debug form with a memory address (`Object(0x…)`), under both
+  engines and already on `main`. Both now render `String(value)`; test
+  `thrown_non_errors_carry_their_string_form_under_both_engines`. Round 3 was
+  the last allowed verification round, so the spec stays `todo` until
+  `spec-check` is run again.
