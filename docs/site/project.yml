@@ -105,6 +105,7 @@ features:
       de: Eine responsive Svelte-Oberfläche (als PWA mit Teilen-Ziel installierbar), die Kommandozeile krake für direkte Downloads und die Warteschlange sowie eine native Tauri-App – auf Englisch und Deutsch.
 
 downloads:
+  checksums: SHA256SUMS
   files:
     # Desktop app (Tauri bundles; names carry the version)
     - { os: windows, label: { en: Desktop app (installer), de: Desktop-App (Installer) }, arch: x64, match: "_x64-setup\\.exe$" }

@@ -401,6 +401,16 @@ jobs:
           # Pretty-print for verification
           cat artifacts/latest.json
 
+      # One list of every downloadable file's hash, next to the per-file
+      # .sha256 files (which scripts/install.sh uses). amigo-labs.dev links it
+      # (docs/site/project.yml, downloads.checksums).
+      - name: SHA256SUMS
+        working-directory: artifacts
+        run: |
+          find . -maxdepth 1 -type f ! -name '*.sha256' ! -name '*.sig' ! -name 'latest.json' -printf '%f\0' \
+            | sort -z | xargs -0 sha256sum > SHA256SUMS
+          cat SHA256SUMS
+
       - name: Upload to GitHub Release
         uses: ncipollo/release-action@v1
         with:
