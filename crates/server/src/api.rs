@@ -327,7 +327,7 @@ async fn list_downloads(State(state): State<AppState>) -> Json<Vec<DownloadRespo
         .list_downloads()
         .await
         .unwrap_or_default();
-    Json(rows.into_iter().map(row_to_response).collect())
+    Json(live_responses(&state, rows).await)
 }
 
 async fn get_download(
@@ -335,7 +335,12 @@ async fn get_download(
     Path(id): Path<String>,
 ) -> Result<Json<DownloadResponse>, StatusCode> {
     match state.coordinator.storage().get_download(&id).await {
-        Ok(Some(row)) => Ok(Json(row_to_response(row))),
+        Ok(Some(row)) => Ok(Json(
+            live_responses(&state, vec![row])
+                .await
+                .pop()
+                .ok_or(StatusCode::NOT_FOUND)?,
+        )),
         _ => Err(StatusCode::NOT_FOUND),
     }
 }
@@ -802,8 +807,7 @@ async fn list_usenet_downloads(
             )
         })?;
 
-    let downloads = rows.into_iter().map(row_to_response).collect();
-    Ok(Json(downloads))
+    Ok(Json(live_responses(&state, rows).await))
 }
 
 async fn list_usenet_servers(
@@ -1388,6 +1392,15 @@ async fn test_webhook(
             Json(ErrorResponse { error: e }),
         )),
     }
+}
+
+/// Rows as API responses, with the live progress of running transfers.
+async fn live_responses(
+    state: &AppState,
+    mut rows: Vec<krake_core::storage::DownloadRow>,
+) -> Vec<DownloadResponse> {
+    state.coordinator.overlay_live_progress(&mut rows).await;
+    rows.into_iter().map(row_to_response).collect()
 }
 
 fn row_to_response(row: krake_core::storage::DownloadRow) -> DownloadResponse {
