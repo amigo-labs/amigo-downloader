@@ -184,8 +184,9 @@ fn shipped_plugins() -> Vec<PathBuf> {
             }
         }
     }
+    found.push(root.join("template/plugin.ts"));
     found.sort();
-    assert!(found.len() >= 6, "shipped plugins not found: {found:?}");
+    assert!(found.len() >= 7, "shipped plugins not found: {found:?}");
     found
 }
 
@@ -193,6 +194,7 @@ const HELPER_PLUGIN: &str = r#"
 module.exports = {
     id: "helper", name: "Helper", version: "1.2.3", apiVersion: 1,
     urlPattern: "https?://example\\.com/.+",
+    pluginType: "hoster",
     permissions: { domains: ["example.com"] },
     resolve(url) {
         var page = krake.httpGet(url, { headers: { "X-Test": "1" } });
@@ -371,15 +373,24 @@ fn bytecode_round_trip_behaves_like_the_source() {
     let fresh = wasm_with(&engine, Arc::new(Recorder::default()));
     fresh.eval_bytecode(&bytecode, "plugin.js").unwrap();
     // `manifest` loads from source first; read the fields directly here.
-    for (i, field) in ["id", "name", "version", "apiVersion", "urlPattern"]
-        .iter()
-        .enumerate()
-    {
-        assert_eq!(
-            format!("{field} = {}", text(fresh.export_string(field))),
-            expected_manifest[i + 1]
-        );
+    let mut from_bytecode = vec![expected_manifest[0].clone()];
+    for field in [
+        "id",
+        "name",
+        "version",
+        "apiVersion",
+        "urlPattern",
+        "pluginType",
+    ] {
+        from_bytecode.push(format!("{field} = {}", text(fresh.export_string(field))));
     }
+    from_bytecode.push(format!(
+        "permissions = {}",
+        text(fresh.export_json("permissions"))
+    ));
+    from_bytecode.push(format!("resolve = {}", text(fresh.require_fn("resolve"))));
+    assert_eq!(from_bytecode, expected_manifest);
+    assert!(expected_manifest.iter().any(|l| l.contains("hoster")));
     assert_eq!(json(fresh.resolve(url)), expected);
 }
 
@@ -596,6 +607,62 @@ fn instances_share_no_state_and_keep_their_own_deadline() {
         assert!(matches!(looping.join().unwrap(), Err(Error::Timeout(_))));
         assert_eq!(working.join().unwrap().unwrap(), "done");
     });
+}
+
+/// The other direction: calls finishing on one instance must not clear the
+/// deadline of another that is still running.
+#[test]
+fn a_finishing_instance_does_not_disarm_another_deadline() {
+    let engine = engine();
+    let looping = wasm_with(&engine, Arc::new(Recorder::default()));
+    let quick = wasm_with(&engine, Arc::new(Recorder::default()));
+    let timeout = Duration::from_millis(700);
+    std::thread::scope(|scope| {
+        let start = Instant::now();
+        let stuck = scope.spawn(|| looping.eval_js_with_timeout("while (true) {}", timeout));
+        let mut finished = 0;
+        while start.elapsed() < Duration::from_millis(500) {
+            assert_eq!(quick.eval_js("String(2 * 21)").unwrap(), "42");
+            finished += 1;
+        }
+        assert!(finished >= 5, "only {finished} calls finished meanwhile");
+        assert!(matches!(stuck.join().unwrap(), Err(Error::Timeout(_))));
+        assert!(start.elapsed() < timeout + Duration::from_secs(1));
+    });
+}
+
+// ── Edge case: resolve() returns a Promise ───────────────────────────────
+
+#[test]
+fn a_promise_from_resolve_is_settled_under_both_engines() {
+    let source = wrap(
+        r#"module.exports = { id: "p", resolve(url) {
+            if (url.indexOf("reject") >= 0) {
+                return Promise.reject(new Error("no such file"));
+            }
+            return Promise.resolve(url).then(function (u) {
+                return { name: "from promise", downloads: [{ url: u }] };
+            });
+        } };"#,
+    );
+    let wasm = wasm_with(&engine(), Arc::new(Recorder::default()));
+    wasm.load(&source).unwrap();
+    let native = native_with(Arc::new(Recorder::default()));
+    native.load(&source).unwrap();
+
+    for js in [&wasm as &dyn Js, &native] {
+        let ok = json(js.resolve("https://example.com/a"));
+        assert_eq!(ok["name"], "from promise");
+        assert_eq!(ok["downloads"][0]["url"], "https://example.com/a");
+        let err = js.resolve("https://example.com/reject").unwrap_err();
+        assert!(matches!(err, Error::Execution(_)), "{err}");
+        assert!(err.to_string().contains("no such file"), "{err}");
+        // A second call must not see the first one's state.
+        assert_eq!(
+            json(js.resolve("https://example.com/b"))["downloads"][0]["url"],
+            "https://example.com/b"
+        );
+    }
 }
 
 // ── AC-12 ────────────────────────────────────────────────────────────────

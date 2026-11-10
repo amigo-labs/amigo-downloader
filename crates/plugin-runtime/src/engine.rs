@@ -535,7 +535,7 @@ pub struct SingleTestResult {
     pub error: Option<String>,
 }
 
-/// Script that calls `resolve(url)` and leaves its outcome in VM-local
+/// Script that calls `resolve(url)` and leaves its outcome in VM-global
 /// state: it evaluates to the JSON result, `ERROR:<message>`, or `PENDING`
 /// when `resolve` returned a Promise that has not settled yet.
 pub(crate) fn resolve_script(url: &str) -> Result<String, crate::Error> {
@@ -549,9 +549,11 @@ pub(crate) fn resolve_script(url: &str) -> Result<String, crate::Error> {
     Ok(format!(
         r#"
         (function() {{
-            var __resolve_result = null;
-            var __resolve_error = null;
-            var __resolve_done = false;
+            // On globalThis, not local to this function: RESOLVE_POLL reads
+            // them from a later, separate evaluation.
+            globalThis.__resolve_result = null;
+            globalThis.__resolve_error = null;
+            globalThis.__resolve_done = false;
 
             var p = __plugin_exports.resolve({url_lit});
             if (p && typeof p.then === 'function') {{
