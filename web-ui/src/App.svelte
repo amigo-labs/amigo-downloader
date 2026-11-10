@@ -53,6 +53,7 @@
   } from "./lib/stores";
   import { locale, tr } from "./lib/i18n";
   import { addToast } from "./lib/toast";
+  import { interpretWsEvent } from "./lib/wsEvents";
   import { registerBindings, startKeymap, type Binding } from "./lib/keymap";
   import { pruneSelection } from "./lib/selection";
   import PairingModal from "./components/PairingModal.svelte";
@@ -154,57 +155,44 @@
     const interval = setInterval(loadData, 10000);
 
     const ws = connectWebSocket((msg) => {
-      if (!msg.type) return;
-      // Some events (plugin_notification, queue_empty) have no id field
-      const idlessTypes = ["plugin_notification", "queue_empty"];
-      if (!msg.id && !idlessTypes.includes(msg.type)) return;
-
-      if (msg.type === "progress") {
-        const p = msg.data?.progress as
-          | {
-              bytes_downloaded?: number;
-              total_bytes?: number;
-              speed_bytes_per_sec?: number;
-            }
-          | undefined;
-        if (p) {
-          updateDownloadProgress(
-            msg.id,
-            p.bytes_downloaded ?? 0,
-            p.speed_bytes_per_sec ?? 0,
-            p.total_bytes ?? undefined,
-          );
+      const action = interpretWsEvent(msg, $downloads);
+      if (!action) return;
+      switch (action.kind) {
+        case "progress":
+          // Progress ticks only patch the store; no list refetch.
+          updateDownloadProgress(action.id, action.bytes, action.speed, action.total);
+          return;
+        case "status":
+          updateDownloadStatus(action.id, action.status);
+          break;
+        case "completed": {
+          updateDownloadStatus(action.id, "completed");
+          const title = tr($locale, "toast.download_complete");
+          addToast("success", title, action.name);
+          ariaAnnouncement.set(`${title}: ${action.name}`);
+          notifyIfHidden(title, action.name);
+          break;
         }
-        return;
-      }
-
-      if (msg.type === "completed") {
-        updateDownloadStatus(msg.id, "completed");
-        const fname = (msg.data?.filename as string) || msg.id;
-        const title = tr($locale, "toast.download_complete");
-        addToast("success", title, fname);
-        ariaAnnouncement.set(`${title}: ${fname}`);
-        notifyIfHidden(title, fname);
-      } else if (msg.type === "failed") {
-        updateDownloadStatus(msg.id, "failed");
-        const errMsg = (msg.data?.error as string) || msg.id;
-        const title = tr($locale, "toast.download_failed");
-        addToast("error", title, errMsg);
-        ariaAnnouncement.set(`${title}: ${errMsg}`);
-        notifyIfHidden(title, errMsg);
-      } else if (msg.type === "captcha_challenge") {
-        pendingCaptcha.set(msg.data as unknown as CaptchaChallenge);
-      } else if (
-        msg.type === "captcha_solved" ||
-        msg.type === "captcha_timeout"
-      ) {
-        pendingCaptcha.set(null);
-      } else if (msg.type === "plugin_notification") {
-        addToast(
-          "info",
-          (msg.data?.title as string) || "Plugin",
-          msg.data?.message as string,
-        );
+        case "failed": {
+          updateDownloadStatus(action.id, "failed");
+          const title = tr($locale, "toast.download_failed");
+          const detail = action.error ? `${action.name} — ${action.error}` : action.name;
+          addToast("error", title, detail);
+          ariaAnnouncement.set(`${title}: ${detail}`);
+          notifyIfHidden(title, detail);
+          break;
+        }
+        case "captcha":
+          pendingCaptcha.set(action.challenge);
+          break;
+        case "captcha_done":
+          pendingCaptcha.set(null);
+          break;
+        case "notification":
+          addToast("info", action.title, action.message);
+          break;
+        case "refresh":
+          break;
       }
       loadData();
     });

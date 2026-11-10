@@ -241,11 +241,8 @@ export const testWebhook = (id: string) => api<{ status: number }>("POST", `/web
 // WEBSOCKET
 // ========================================
 
-export type WsMessage = {
-  type: string;
-  id: string;
-  data: Record<string, unknown>;
-};
+/** A raw WebSocket message; `lib/wsEvents.ts` owns its shape. */
+export type WsMessage = unknown;
 
 export function connectWebSocket(
   onMessage: (msg: WsMessage) => void
