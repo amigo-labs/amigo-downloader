@@ -545,10 +545,16 @@ impl WasmContext {
         let what = b"resolve() eval failed";
         let mut result = self.op_string(Op::EvalString, &[script.as_bytes(), what], timeout)?;
         while result == "PENDING" {
-            let left = deadline
+            let Some(left) = deadline
                 .checked_duration_since(Instant::now())
                 .filter(|left| !left.is_zero())
-                .ok_or(crate::Error::Timeout(timeout.as_secs().max(1)))?;
+            else {
+                // Out of time between two steps: the Promise is abandoned
+                // half-settled, so the instance is as unusable as after an
+                // interrupt.
+                self.lock().unusable = true;
+                return Err(crate::Error::Timeout(timeout.as_secs().max(1)));
+            };
             let has_jobs = self.op_string(Op::PendingJob, &[], left)? == "true";
             result = self.op_string(
                 Op::EvalString,

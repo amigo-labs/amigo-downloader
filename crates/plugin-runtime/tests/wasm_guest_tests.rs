@@ -450,6 +450,30 @@ fn host_function_errors_are_catchable_js_errors() {
     assert!(!wasm.is_unusable(), "a JS error leaves the instance usable");
 }
 
+#[test]
+fn a_missing_return_value_reads_like_the_native_engine() {
+    let source = wrap(r#"module.exports = { id: "u", resolve(url) { }, postProcess(ctx) { } };"#);
+    let wasm = wasm_with(&engine(), Arc::new(Recorder::default()));
+    wasm.load(&source).unwrap();
+    let native = native_with(Arc::new(Recorder::default()));
+    native.load(&source).unwrap();
+
+    assert_eq!(
+        text(wasm.resolve("https://x/")),
+        text(native.resolve("https://x/"))
+    );
+    assert_eq!(
+        text(wasm.post_process("{}")),
+        text(native.post_process("{}"))
+    );
+    assert_eq!(
+        text(wasm.eval_js("undefined")),
+        text(native.eval_js("undefined"))
+    );
+    assert!(text(wasm.resolve("https://x/")).contains("'undefined'"));
+    assert!(!wasm.is_unusable());
+}
+
 // ── AC-07 ────────────────────────────────────────────────────────────────
 
 fn assert_times_out(
@@ -497,6 +521,41 @@ fn runaway_code_ends_with_a_timeout() {
         c.eval_js("String(/^(a+)+$/.test('a'.repeat(40) + 'b'))")
             .map(drop)
     });
+}
+
+/// Answers `__rawHttpGet` only after `delay`.
+struct Slow(Duration);
+
+impl HostDispatch for Slow {
+    fn call(&self, name: &str, _args: HostArgs) -> HostResult {
+        if name == "__rawHttpGet" {
+            std::thread::sleep(self.0);
+            return Ok(Some(
+                r#"{"status":200,"headers":{},"body":"late","url":""}"#.into(),
+            ));
+        }
+        Ok(None)
+    }
+}
+
+#[test]
+fn a_deadline_that_passes_during_a_host_call_ends_the_call_on_return() {
+    let timeout = Duration::from_millis(300);
+    let blocked_for = Duration::from_millis(900);
+    // The plugin even tries to swallow the failure.
+    let code = "try { krake.httpGet('https://slow.example/'); } catch (e) {} 'finished'";
+    let context = engine()
+        .create_context(&config(timeout), Arc::new(Slow(blocked_for)))
+        .unwrap();
+    let start = Instant::now();
+    let err = context.eval_js(code).unwrap_err();
+    let elapsed = start.elapsed();
+    assert!(matches!(err, Error::Timeout(_)), "{err}");
+    assert!(
+        elapsed >= blocked_for && elapsed < blocked_for + Duration::from_secs(1),
+        "took {elapsed:?}"
+    );
+    assert!(context.is_unusable());
 }
 
 // ── AC-08, AC-09, AC-10 ──────────────────────────────────────────────────

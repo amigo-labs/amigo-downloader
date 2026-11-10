@@ -250,10 +250,12 @@ fn eval(ctx: &Ctx<'_>, source: &str, what: &str) -> OpResult {
 }
 
 fn eval_string(ctx: &Ctx<'_>, code: &str, what: &str) -> OpResult {
-    let value: Option<String> = ctx
+    // `String`, not `Option<String>`: a value-less result (a forgotten
+    // `return`) is the conversion error the native engine reports.
+    let value: String = ctx
         .eval(code)
         .map_err(|e| format!("{what}: {}", describe(ctx, e)))?;
-    Ok(value.map(String::into_bytes))
+    Ok(Some(value.into_bytes()))
 }
 
 fn exports<'js>(ctx: &Ctx<'js>) -> Result<Object<'js>, String> {

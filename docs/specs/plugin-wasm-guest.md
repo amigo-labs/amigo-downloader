@@ -225,8 +225,8 @@ Settled by a prototype (2026-11-10, 4 vCPU container, release build):
 | AC-03 | `resolve_makes_the_same_host_calls_and_returns_the_same_package` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
 | AC-04 | `post_process_matches_the_native_engine`, `shipped_plugin_specs_give_the_native_results` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
 | AC-05 | `bytecode_round_trip_behaves_like_the_source`, `corrupt_bytecode_is_an_error_not_a_crash` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
-| AC-06 | `host_function_errors_are_catchable_js_errors` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
-| AC-07 | `runaway_code_ends_with_a_timeout` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
+| AC-06 | `host_function_errors_are_catchable_js_errors`, `a_missing_return_value_reads_like_the_native_engine` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
+| AC-07 | `runaway_code_ends_with_a_timeout`, `a_deadline_that_passes_during_a_host_call_ends_the_call_on_return` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
 | AC-08 | `exceeding_the_memory_limit_fails_the_call_only` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
 | AC-09 | `unbounded_recursion_fails_the_call_only` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
 | AC-10 | `a_trapping_guest_is_contained` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
@@ -304,3 +304,9 @@ Settled by a prototype (2026-11-10, 4 vCPU container, release build):
   manifest comparison (AC-02), all seven manifest fields after a bytecode
   round trip (AC-05), a finishing instance not disarming another's deadline
   (AC-11).
+- 2026-11-10 (acceptance round 2): a value-less result (`resolve` without a
+  `return`) gave "the plugin engine returned no value" instead of the native
+  conversion error; the guest now converts like the native engine, pinned by
+  `a_missing_return_value_reads_like_the_native_engine`. A timeout between
+  two steps of a Promise-returning `resolve` now also leaves the instance
+  unusable. Test added for a deadline that passes during a host call (AC-07).
