@@ -8,6 +8,8 @@ members = [
     "crates/cli",
     "tauri",
 ]
+# Built for Wasm only, by crates/plugin-runtime/build.rs.
+exclude = ["crates/plugin-guest"]
 default-members = [
     "crates/core",
     "crates/extractors",
