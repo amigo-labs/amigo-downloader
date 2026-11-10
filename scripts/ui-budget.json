@@ -1,5 +1,5 @@
 {
-  "total": 213,
+  "total": 208,
   "perFile": {
     "packages/ui/src/components/ProgressRing.svelte": 1,
     "web-ui/src/App.svelte": 33,
@@ -24,7 +24,7 @@
     "web-ui/src/components/settings/SettingsUsenet.svelte": 1,
     "web-ui/src/components/settings/SettingsUsenetServers.svelte": 8,
     "web-ui/src/components/settings/SettingsWebhooks.svelte": 17,
-    "web-ui/src/pages/Downloads.svelte": 9,
+    "web-ui/src/pages/Downloads.svelte": 4,
     "web-ui/src/pages/History.svelte": 8,
     "web-ui/src/pages/Login.svelte": 2,
     "web-ui/src/pages/Plugins.svelte": 15,

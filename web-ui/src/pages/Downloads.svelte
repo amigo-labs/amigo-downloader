@@ -214,54 +214,51 @@
   ]);
 </script>
 
-<div class="space-y-4">
-  <div class="toolbar-sticky space-y-3 -mx-1 px-1 pt-1 pb-2">
-    <div class="flex gap-2 items-center flex-wrap">
-      <div
-        class="flex-1 min-w-[12rem] flex items-center gap-2 rounded-lg px-3"
-        style="background: var(--bg-surface); border: 1px solid var(--border-color); min-height: 40px"
-      >
+<div class="dl-page">
+  <div class="toolbar-sticky">
+    <!-- One line at every width: in a narrow toolbar the search field gives
+         way to the sort and density controls and takes the whole line while
+         it is in use, so the list starts one row higher. -->
+    <div class="tool-row">
+      <div class="field search-field rounded-lg px-3">
         <Icon name="search" size={16} />
         <input
           type="search"
           placeholder={tr($locale, "downloads.search")}
           bind:value={$searchQuery}
-          class="flex-1 bg-transparent text-sm outline-none min-w-0"
-          style="color: var(--text-primary)"
+          class="search-input text-sm outline-none"
           aria-label={tr($locale, "downloads.search")}
         />
       </div>
 
-      <div
-        class="flex items-center gap-1 rounded-lg px-2 shrink-0"
-        style="background: var(--bg-surface); border: 1px solid var(--border-color); min-height: 40px"
-      >
-        <Icon name="sort" size={14} />
+      <div class="field sort-field rounded-lg px-2">
+        <span class="sort-icon"><Icon name="sort" size={14} /></span>
         <select
           bind:value={sortBy}
-          class="bg-transparent text-xs outline-none cursor-pointer"
-          style="color: var(--text-primary)"
+          class="sort-select text-xs outline-none cursor-pointer"
           aria-label={tr($locale, "downloads.sort_by")}
         >
           {#each sortOptions as opt}
-            <option value={opt} style="background: var(--bg-surface-2)">{tr($locale, `sort.${opt}`)}</option>
+            <option value={opt} class="sort-option">{tr($locale, `sort.${opt}`)}</option>
           {/each}
         </select>
       </div>
 
-      <SegmentedControl
-        size="sm"
-        options={[
-          { value: "card", label: tr($locale, "downloads.comfortable"), icon: "grid" },
-          { value: "row", label: tr($locale, "downloads.compact"), icon: "list" },
-        ]}
-        value={viewMode}
-        ariaLabel={tr($locale, "downloads.density")}
-        onchange={setViewMode}
-      />
+      <div class="density">
+        <SegmentedControl
+          size="sm"
+          options={[
+            { value: "card", label: tr($locale, "downloads.comfortable"), icon: "grid" },
+            { value: "row", label: tr($locale, "downloads.compact"), icon: "list" },
+          ]}
+          value={viewMode}
+          ariaLabel={tr($locale, "downloads.density")}
+          onchange={setViewMode}
+        />
+      </div>
     </div>
 
-    <div class="flex items-center gap-2 flex-wrap">
+    <div class="tool-row filter-row">
       <!-- Below the desktop breakpoint the header has no room for this, and
            there was previously no mobile equivalent at all: under 640px the
            HTTP/Usenet switch simply did not exist. -->
@@ -278,7 +275,7 @@
         </div>
       {/if}
 
-      <div role="group" aria-label={tr($locale, "downloads.filter_by_status")} class="chip-rail flex gap-2 flex-1 overflow-x-auto">
+      <div role="group" aria-label={tr($locale, "downloads.filter_by_status")} class="chip-rail">
         {#each filters as f}
           <Chip
             size="sm"
@@ -396,21 +393,122 @@
 </div>
 
 <style>
+  .dl-page > :global(* + *) {
+    margin-top: 0.75rem;
+  }
+
   /* Toolbar sticks to the top of the scroll container so search/filters stay
-     reachable in long lists. Slightly translucent so cards scroll under it. */
+     reachable in long lists. Slightly translucent so cards scroll under it.
+     It is a size container: with the side panel docked it is as narrow as on
+     a phone, whatever the viewport says. */
   .toolbar-sticky {
+    container: toolbar / inline-size;
     position: sticky;
     top: 0;
     z-index: var(--z-sticky);
+    margin: 0 -0.25rem;
+    padding: 0.25rem 0.25rem 0;
     background: color-mix(in srgb, var(--bg-deep) 88%, transparent);
     backdrop-filter: blur(8px);
   }
 
-  /* Hide the scrollbar on the filter rail — it scrolls by drag/swipe. */
-  .chip-rail {
-    scrollbar-width: none;
+  .toolbar-sticky > :global(* + *) {
+    margin-top: 0.5rem;
   }
-  .chip-rail::-webkit-scrollbar {
-    display: none;
+
+  .tool-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .field {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 40px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+  }
+
+  .search-field {
+    container: search / inline-size;
+    flex: 1 1 12rem;
+    min-width: 12rem;
+  }
+
+  /* A field too short for its placeholder shows the magnifier alone
+     rather than a cut-off word. */
+  @container search (max-width: 10rem) {
+    .search-input::placeholder {
+      color: transparent;
+    }
+  }
+
+  /* The controls fill their field, so the whole 40px box is the target. */
+  .search-input {
+    flex: 1;
+    min-width: 0;
+    align-self: stretch;
+    background: transparent;
+    color: var(--text-primary);
+    text-overflow: ellipsis;
+  }
+
+  .sort-field {
+    flex-shrink: 0;
+    gap: 0.25rem;
+  }
+
+  .sort-icon {
+    display: flex;
+  }
+
+  .sort-select {
+    align-self: stretch;
+    min-height: 38px;
+    background: transparent;
+    color: var(--text-primary);
+  }
+
+  .sort-option {
+    background: var(--bg-surface-2);
+  }
+
+  .density {
+    display: flex;
+    flex-shrink: 0;
+  }
+
+  .filter-row {
+    align-items: flex-start;
+  }
+
+  /* Every status stays on screen: the chips wrap instead of scrolling
+     sideways, where "Completed" and "Failed" sat off screen on a phone. */
+  .chip-rail {
+    display: flex;
+    flex: 1 1 0;
+    flex-wrap: wrap;
+    gap: 0.375rem 0.5rem;
+    min-width: 0;
+  }
+
+  @container toolbar (max-width: 30rem) {
+    .search-field {
+      flex: 1 1 0;
+      min-width: 2.75rem;
+    }
+
+    .search-field:focus-within,
+    .search-field:has(.search-input:not(:placeholder-shown)) {
+      flex-basis: 100%;
+    }
+
+    .sort-icon,
+    .density :global(.segment svg) {
+      display: none;
+    }
   }
 </style>
