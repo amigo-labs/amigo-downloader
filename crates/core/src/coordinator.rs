@@ -554,6 +554,8 @@ impl Coordinator {
                 let crx = cancel_rx.clone();
 
                 let storage = &storage;
+                let event_tx = &event_tx;
+                let max_retries = retry_policy.max_retries;
                 let download_id = &download_id;
                 let protocol = &protocol;
                 let url = &url;
@@ -565,9 +567,12 @@ impl Coordinator {
 
                 async move {
                     if attempt > 0 {
-                        let _ = storage
-                            .update_download_error(download_id, "retrying", attempt)
-                            .await;
+                        // The wait is over: this attempt is a transfer again.
+                        let _ = storage.clear_retrying_mark(download_id).await;
+                        let _ = event_tx.send(DownloadEvent::StatusChanged {
+                            id: download_id.to_string(),
+                            status: "downloading".to_string(),
+                        });
                     }
 
                     let job = crate::protocol::DownloadJob {
@@ -615,6 +620,17 @@ impl Coordinator {
                         }
                         Err(e) => {
                             warn!("Download attempt failed: {download_id} — {e}");
+                            // Marked before the backoff sleep, so the row
+                            // reads "retrying" while it actually waits.
+                            if attempt < max_retries {
+                                let _ = storage
+                                    .update_download_error(download_id, "retrying", attempt + 1)
+                                    .await;
+                                let _ = event_tx.send(DownloadEvent::StatusChanged {
+                                    id: download_id.to_string(),
+                                    status: "downloading".to_string(),
+                                });
+                            }
                             RetryOutcome::Retry(e)
                         }
                     }

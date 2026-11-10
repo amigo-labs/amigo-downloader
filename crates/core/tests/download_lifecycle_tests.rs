@@ -176,6 +176,46 @@ async fn test_completed_download_records_filename_and_size() {
     assert_eq!(row.bytes_downloaded, 11);
 }
 
+/// "retrying" marks the wait between attempts: it is set when an attempt
+/// fails and gone once the download has completed on a later attempt.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_retrying_mark_covers_the_backoff_only() {
+    let mock = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/flaky.bin"))
+        .respond_with(ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .mount(&mock)
+        .await;
+    mount_static_file(&mock, "/flaky.bin", b"recovered").await;
+
+    // A long first backoff, so the waiting state can be observed.
+    let (_tmp, coord) = lifecycle_coordinator_with(|c| {
+        c.retry.base_delay_secs = 1.0;
+        c.retry.max_delay_secs = 1.0;
+    });
+    let rx = coord.subscribe();
+    let id = coord
+        .add_download(&format!("{}/flaky.bin", mock.uri()), None)
+        .await
+        .expect("add_download");
+
+    let mut seen_retrying = false;
+    for _ in 0..40 {
+        let row = coord.storage().get_download(&id).await.unwrap().unwrap();
+        if row.status == "downloading" && row.error_message.as_deref() == Some("retrying") {
+            seen_retrying = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert!(seen_retrying, "the row reads retrying during the backoff");
+
+    assert_eq!(wait_for_terminal(rx, &id).await, Some(true));
+    let row = coord.storage().get_download(&id).await.unwrap().unwrap();
+    assert_eq!(row.error_message, None, "the mark is gone after the retry");
+}
+
 /// The history is the log of finished downloads: an entry appears when a
 /// download completes and outlives the row's removal from the list.
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

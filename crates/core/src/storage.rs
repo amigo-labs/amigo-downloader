@@ -538,6 +538,18 @@ impl Storage {
         Ok(())
     }
 
+    /// Clear the `"retrying"` mark of a running download once its next
+    /// attempt starts; any other recorded error is left alone.
+    pub async fn clear_retrying_mark(&self, id: &str) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "UPDATE downloads SET error_message = NULL \
+             WHERE id = ?1 AND error_message = 'retrying'",
+            rusqlite::params![id],
+        )?;
+        Ok(())
+    }
+
     pub async fn update_download_error(
         &self,
         id: &str,
@@ -626,6 +638,13 @@ impl Storage {
         )?;
         let rows = stmt.query_map([], row_to_download)?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Remove one entry from the history. Returns whether it existed.
+    pub async fn delete_history(&self, id: &str) -> Result<bool, crate::Error> {
+        let db = self.db.lock().await;
+        let deleted = db.execute("DELETE FROM history WHERE id = ?1", rusqlite::params![id])?;
+        Ok(deleted > 0)
     }
 
     pub async fn clear_history(&self) -> Result<u64, crate::Error> {
