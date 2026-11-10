@@ -170,11 +170,18 @@
           break;
         case "completed": {
           updateDownloadStatus(action.id, "completed");
-          const title = tr($locale, "toast.download_complete");
-          addToast("success", title, action.name);
-          ariaAnnouncement.set(`${title}: ${action.name}`);
-          notifyIfHidden(title, action.name);
-          break;
+          // The server stores the saved file's name when the transfer ends,
+          // so the list is refreshed first and the event read again: the
+          // notification then names the file, not the URL it came from.
+          void loadData().then(() => {
+            const fresh = interpretWsEvent(msg, $downloads);
+            const name = fresh?.kind === "completed" ? fresh.name : action.name;
+            const title = tr($locale, "toast.download_complete");
+            addToast("success", title, name);
+            ariaAnnouncement.set(`${title}: ${name}`);
+            notifyIfHidden(title, name);
+          });
+          return;
         }
         case "failed": {
           updateDownloadStatus(action.id, "failed");
