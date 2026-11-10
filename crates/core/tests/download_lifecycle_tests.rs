@@ -176,6 +176,32 @@ async fn test_completed_download_records_filename_and_size() {
     assert_eq!(row.bytes_downloaded, 11);
 }
 
+/// The history is the log of finished downloads: an entry appears when a
+/// download completes and outlives the row's removal from the list.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_completed_download_is_logged_in_history() {
+    let mock = MockServer::start().await;
+    mount_static_file(&mock, "/file.bin", b"hello world").await;
+
+    let (_tmp, coord) = lifecycle_coordinator();
+    let rx = coord.subscribe();
+    let id = coord
+        .add_download(&format!("{}/file.bin", mock.uri()), None)
+        .await
+        .expect("add_download");
+    assert_eq!(wait_for_terminal(rx, &id).await, Some(true));
+
+    let history = coord.storage().get_history().await.unwrap();
+    assert_eq!(history.len(), 1, "completion writes a history entry");
+    assert_eq!(history[0].id, id);
+    assert_eq!(history[0].filename.as_deref(), Some("file.bin"));
+    assert_eq!(history[0].filesize, Some(11));
+
+    coord.cancel(&id).await.expect("remove from the list");
+    assert!(coord.storage().get_download(&id).await.unwrap().is_none());
+    assert_eq!(coord.storage().get_history().await.unwrap().len(), 1);
+}
+
 /// A 404 will not get better by asking again: the download must fail on
 /// the first attempt instead of sitting in "downloading" through the whole
 /// backoff schedule.

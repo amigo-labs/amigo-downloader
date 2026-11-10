@@ -650,6 +650,7 @@ impl Coordinator {
                     let _ = storage
                         .update_download_status(&download_id, QueueStatus::Completed)
                         .await;
+                    let _ = storage.record_history(&download_id).await;
                     let _ = event_tx.send(DownloadEvent::Completed {
                         id: download_id.clone(),
                     });

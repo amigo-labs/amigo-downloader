@@ -588,6 +588,20 @@ impl Storage {
         Ok(())
     }
 
+    /// Log a finished download in the history, keeping its row in the list.
+    /// Recording the same download again replaces its entry.
+    pub async fn record_history(&self, id: &str) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "INSERT OR REPLACE INTO history
+                 (id, url, protocol, filename, filesize, download_dir, completed_at)
+             SELECT id, url, protocol, filename, filesize, download_dir, datetime('now')
+             FROM downloads WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+        Ok(())
+    }
+
     pub async fn move_to_history(&self, id: &str) -> Result<(), crate::Error> {
         let db = self.db.lock().await;
         let tx = db.unchecked_transaction()?;
