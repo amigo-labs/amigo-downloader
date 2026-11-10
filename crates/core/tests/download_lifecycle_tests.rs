@@ -154,6 +154,67 @@ async fn test_simple_download_writes_file_to_disk() {
     assert_eq!(bytes, b"hello world");
 }
 
+/// A plain HTTP download has no plugin to name it; the row must still end
+/// up with the file's real name and size, or the UI can only show the URL
+/// and an empty progress bar.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_completed_download_records_filename_and_size() {
+    let mock = MockServer::start().await;
+    mount_static_file(&mock, "/file.bin", b"hello world").await;
+
+    let (_tmp, coord) = lifecycle_coordinator();
+    let rx = coord.subscribe();
+    let id = coord
+        .add_download(&format!("{}/file.bin?token=abc", mock.uri()), None)
+        .await
+        .expect("add_download");
+    assert_eq!(wait_for_terminal(rx, &id).await, Some(true));
+
+    let row = coord.storage().get_download(&id).await.unwrap().unwrap();
+    assert_eq!(row.filename.as_deref(), Some("file.bin"));
+    assert_eq!(row.filesize, Some(11));
+    assert_eq!(row.bytes_downloaded, 11);
+}
+
+/// A 404 will not get better by asking again: the download must fail on
+/// the first attempt instead of sitting in "downloading" through the whole
+/// backoff schedule.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_client_error_fails_without_retrying() {
+    let mock = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/gone.bin"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/gone.bin"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&mock)
+        .await;
+
+    let (_tmp, coord) = lifecycle_coordinator();
+    let rx = coord.subscribe();
+    let id = coord
+        .add_download(&format!("{}/gone.bin", mock.uri()), None)
+        .await
+        .expect("add_download");
+    assert_eq!(wait_for_terminal(rx, &id).await, Some(false));
+
+    let heads = mock
+        .received_requests()
+        .await
+        .expect("request recording is on")
+        .iter()
+        .filter(|r| r.method.as_str() == "HEAD")
+        .count();
+    assert_eq!(heads, 1, "a 404 must not be retried");
+
+    let row = coord.storage().get_download(&id).await.unwrap().unwrap();
+    let error = row.error_message.expect("the failure reason is stored");
+    assert!(error.contains("404"), "error names the status: {error}");
+}
+
 // Known-broken: tracked by audit #13 follow-up in
 // `docs/specs/audit-2026-04-25.md` — the coordinator's per-attempt cancel
 // oneshot is fabricated fresh after attempt 0 and the dummy sender is

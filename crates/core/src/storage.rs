@@ -520,6 +520,24 @@ impl Storage {
         Ok(())
     }
 
+    /// Record what a transfer learned about its file: the name it was saved
+    /// under and its total size. `None` leaves the stored value alone, so a
+    /// plugin-resolved name or size is never replaced by "unknown".
+    pub async fn update_download_file_info(
+        &self,
+        id: &str,
+        filename: Option<&str>,
+        filesize: Option<u64>,
+    ) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "UPDATE downloads SET filename = COALESCE(?1, filename), \
+             filesize = COALESCE(?2, filesize) WHERE id = ?3",
+            rusqlite::params![filename, filesize, id],
+        )?;
+        Ok(())
+    }
+
     pub async fn update_download_error(
         &self,
         id: &str,
