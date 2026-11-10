@@ -1,8 +1,8 @@
 <script lang="ts">
   import { fade } from "svelte/transition";
   import {
-    currentPage, openAddPanel, theme, palette, neonIntensity,
-    type Page, type ColorPalette,
+    currentPage, openAddPanel, theme, neonIntensity,
+    type Page,
   } from "../lib/stores";
   import { locale, tr } from "../lib/i18n";
   import { focusTrap } from "../lib/focusTrap";
@@ -16,19 +16,9 @@
     group: string;
     label: string;
     icon?: string;
-    swatch?: string;
     keywords: string;
     run: () => void;
   }
-
-  const palettes: { id: ColorPalette; label: string; color: string }[] = [
-    { id: "blue", label: "Blue", color: "#3b82f6" },
-    { id: "teal", label: "Teal", color: "#14b8a6" },
-    { id: "indigo", label: "Indigo", color: "#6366f1" },
-    { id: "amber", label: "Amber", color: "#f59e0b" },
-    { id: "violet", label: "Violet", color: "#8b5cf6" },
-    { id: "rose", label: "Rose", color: "#f43f5e" },
-  ];
 
   const intensities: { value: number; key: string }[] = [
     { value: 0, key: "intensity.off" },
@@ -83,14 +73,6 @@
       keywords: "theme dark light mode appearance",
       run: () => go(() => theme.toggle()),
     },
-    ...palettes.map((p) => ({
-      id: `palette-${p.id}`,
-      group: tr($locale, "cmd.group_appearance"),
-      label: tr($locale, "cmd.set_palette", { name: p.label }),
-      swatch: p.color,
-      keywords: `palette color ${p.id} ${p.label} accent`,
-      run: () => go(() => palette.set(p.id)),
-    })),
     ...intensities.map((it) => {
       const name = tr($locale, it.key);
       return {
@@ -220,9 +202,7 @@
                 ? "background: color-mix(in srgb, var(--neon-primary) 14%, transparent); color: var(--accent-ink)"
                 : "color: var(--text-primary)"}
             >
-              {#if cmd.swatch}
-                <span class="w-4 h-4 rounded-full shrink-0" style="background: {cmd.swatch}"></span>
-              {:else if cmd.icon}
+              {#if cmd.icon}
                 <Icon name={cmd.icon} size={16} />
               {/if}
               <span class="flex-1 truncate">{cmd.label}</span>

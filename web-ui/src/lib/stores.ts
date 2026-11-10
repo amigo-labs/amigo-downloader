@@ -94,49 +94,6 @@ function createThemeStore() {
 export const theme = createThemeStore();
 
 // ========================================
-// COLOR PALETTE
-// ========================================
-
-export type ColorPalette = "blue" | "teal" | "indigo" | "amber" | "violet" | "rose";
-
-const PALETTE_COLORS: Record<ColorPalette, string> = {
-  blue: "#3b82f6",
-  teal: "#14b8a6",
-  indigo: "#6366f1",
-  amber: "#f59e0b",
-  violet: "#8b5cf6",
-  rose: "#f43f5e",
-};
-
-function createPaletteStore() {
-  const stored = typeof localStorage !== "undefined" ? localStorage.getItem("color-palette") : null;
-  const initial: ColorPalette = (stored as ColorPalette) || "blue";
-  const { subscribe, set } = writable<ColorPalette>(initial);
-
-  return {
-    subscribe,
-    colors: PALETTE_COLORS,
-    set(value: ColorPalette) {
-      if (typeof localStorage !== "undefined") localStorage.setItem("color-palette", value);
-      const root = document.documentElement;
-      root.className = root.className.replace(/palette-\w+/g, "").trim();
-      root.classList.add(`palette-${value}`);
-      // Re-apply theme class that may have been stripped
-      const currentTheme = typeof localStorage !== "undefined" ? localStorage.getItem("theme") : null;
-      if (currentTheme === "light") root.classList.add("light");
-      set(value);
-      // Glow tokens depend on --neon-primary which changes with palette
-      const storedIntensity = typeof localStorage !== "undefined"
-        ? localStorage.getItem("neon-intensity")
-        : null;
-      applyIntensity(storedIntensity !== null ? parseFloat(storedIntensity) : 0.5);
-    },
-  };
-}
-
-export const palette = createPaletteStore();
-
-// ========================================
 // NEON INTENSITY
 // ========================================
 

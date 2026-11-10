@@ -33,7 +33,6 @@
     features,
     neonIntensity,
     openAddPanel,
-    palette,
     pendingCaptcha,
     protocolFilter,
     pushSpeedSample,
@@ -144,10 +143,14 @@
       bootState = s;
     });
 
-    // Initialize theme + palette + intensity
-    // Apply theme class
+    // Initialize theme + intensity
     document.documentElement.classList.toggle("light", $theme === "light");
-    document.documentElement.classList.add(`palette-${$palette}`);
+    // The accent used to be a user choice; drop what an older build stored.
+    try {
+      localStorage.removeItem("color-palette");
+    } catch {
+      // Storage can be unavailable (private mode); nothing to clean up then.
+    }
     applyIntensity($neonIntensity);
 
     handleShareTarget();

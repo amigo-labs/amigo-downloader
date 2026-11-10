@@ -1,16 +1,7 @@
 <script lang="ts">
-  import { theme, palette, neonIntensity, getNeonLabel, type ColorPalette, type ThemeMode } from "../../lib/stores";
+  import { theme, neonIntensity, getNeonLabel, type ThemeMode } from "../../lib/stores";
   import { locale, tr } from "../../lib/i18n";
   import Icon from "@amigo-labs/krake-ui/components/Icon.svelte";
-
-  const paletteOptions: { id: ColorPalette; label: string; color: string }[] = [
-    { id: "blue", label: "Blue", color: "#3b82f6" },
-    { id: "teal", label: "Teal", color: "#14b8a6" },
-    { id: "indigo", label: "Indigo", color: "#6366f1" },
-    { id: "amber", label: "Amber", color: "#f59e0b" },
-    { id: "violet", label: "Violet", color: "#8b5cf6" },
-    { id: "rose", label: "Rose", color: "#f43f5e" },
-  ];
 
   const themeModes: { id: ThemeMode; key: string }[] = [
     { id: "dark", key: "theme.dark" },
@@ -37,29 +28,6 @@
             : "background: var(--bg-surface-2); color: var(--text-secondary); border: 1px solid transparent"}
         >
           {tr($locale, mode.key)}
-        </button>
-      {/each}
-    </div>
-  </div>
-
-  <!-- Color palette -->
-  <div class="neon-card rounded-xl p-5 mb-4" style="background: var(--bg-surface)">
-    <span class="text-sm font-semibold mb-3 block" style="color: var(--text-primary)">{tr($locale, "settings.color_palette")}</span>
-    <div class="flex gap-3 flex-wrap">
-      {#each paletteOptions as opt}
-        <button
-          onclick={() => palette.set(opt.id)}
-          class="flex flex-col items-center gap-1.5 p-2 rounded-lg transition-colors"
-          style={$palette === opt.id
-            ? "background: color-mix(in srgb, var(--neon-primary) 10%, transparent)"
-            : ""}
-        >
-          <div
-            class="color-swatch"
-            class:active={$palette === opt.id}
-            style="--swatch-color: {opt.color}; background: {opt.color}"
-          ></div>
-          <span class="text-[10px] font-medium" style="color: {$palette === opt.id ? opt.color : 'var(--text-secondary)'}">{opt.label}</span>
         </button>
       {/each}
     </div>

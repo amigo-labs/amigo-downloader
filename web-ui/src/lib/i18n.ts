@@ -395,7 +395,6 @@ const translations: Record<Locale, Record<string, string>> = {
     "settings.theme": "Theme",
     "theme.dark": "Dark",
     "theme.light": "Light",
-    "settings.color_palette": "Color Palette",
     "settings.neon_intensity": "Neon Intensity",
 
     // Settings — downloads
@@ -430,7 +429,6 @@ const translations: Record<Locale, Record<string, string>> = {
     "cmd.add_download": "Add download",
     "cmd.toggle_theme": "Toggle light / dark",
     "cmd.show_shortcuts": "Show keyboard shortcuts",
-    "cmd.set_palette": "Palette: {name}",
     "cmd.set_intensity": "Neon intensity: {name}",
     "cmd.hint_open": "Open command palette",
 
@@ -808,7 +806,6 @@ const translations: Record<Locale, Record<string, string>> = {
     "settings.theme": "Design",
     "theme.dark": "Dunkel",
     "theme.light": "Hell",
-    "settings.color_palette": "Farbpalette",
     "settings.neon_intensity": "Neon-Intensität",
 
     "settings.downloads": "Downloads",
@@ -839,7 +836,6 @@ const translations: Record<Locale, Record<string, string>> = {
     "cmd.add_download": "Download hinzufügen",
     "cmd.toggle_theme": "Hell / Dunkel umschalten",
     "cmd.show_shortcuts": "Tastenkürzel anzeigen",
-    "cmd.set_palette": "Palette: {name}",
     "cmd.set_intensity": "Neon-Intensität: {name}",
     "cmd.hint_open": "Befehlspalette öffnen",
 

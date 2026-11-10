@@ -69,7 +69,7 @@
     <button
       onclick={onsave}
       class="action-btn px-4 py-2 rounded-lg text-sm font-semibold"
-      style="background: var(--neon-primary); color: var(--bg-deep)"
+      style="background: var(--accent-solid); color: var(--on-accent)"
     >{tr($locale, "common.save")}</button>
   </div>
 </section>
