@@ -216,23 +216,23 @@ Settled by a prototype (2026-11-10, 4 vCPU container, release build):
 
 | AC    | Test | Status | Commit |
 | ----- | ---- | ------ | ------ |
-| AC-01 |      | open   |        |
-| AC-02 |      | open   |        |
-| AC-03 |      | open   |        |
-| AC-04 |      | open   |        |
-| AC-05 |      | open   |        |
-| AC-06 |      | open   |        |
-| AC-07 |      | open   |        |
-| AC-08 |      | open   |        |
-| AC-09 |      | open   |        |
-| AC-10 |      | open   |        |
-| AC-11 |      | open   |        |
-| AC-12 |      | open   |        |
-| AC-13 |      | open   |        |
-| AC-14 |      | open   |        |
-| AC-15 |      | open   |        |
-| AC-16 |      | open   |        |
-| AC-17 |      | open   |        |
+| AC-01 | `guest_imports_only_what_the_executor_defines` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
+| AC-02 | `manifests_of_shipped_plugins_match_the_native_engine`, `invalid_sources_fail_with_the_native_message` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
+| AC-03 | `resolve_makes_the_same_host_calls_and_returns_the_same_package` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
+| AC-04 | `post_process_matches_the_native_engine`, `shipped_plugin_specs_give_the_native_results` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
+| AC-05 | `bytecode_round_trip_behaves_like_the_source`, `corrupt_bytecode_is_an_error_not_a_crash` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
+| AC-06 | `host_function_errors_are_catchable_js_errors` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
+| AC-07 | `runaway_code_ends_with_a_timeout` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
+| AC-08 | `exceeding_the_memory_limit_fails_the_call_only` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
+| AC-09 | `unbounded_recursion_fails_the_call_only` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
+| AC-10 | `a_trapping_guest_is_contained` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
+| AC-11 | `instances_share_no_state_and_keep_their_own_deadline` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
+| AC-12 | `a_blocked_host_call_does_not_block_other_instances` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
+| AC-13 | `wasm_executor_startup_baseline` (crates/plugin-runtime/tests/perf_baseline.rs, ignored, run by hand): engine 1.6 ms, instance 0.8 ms (median of 5, three runs, release, 4 vCPU container, 2026-11-10) | built |        |
+| AC-14 | clean local build (`rm -rf target && cargo test -p krake-plugin-runtime`); CI: Rust job and Docker build | built |        |
+| AC-15 | `missing_tools_are_named_with_install_commands`, `clang_without_a_wasm_target_names_the_fix` (crates/plugin-runtime/src/guest_tools.rs) | built |        |
+| AC-16 | `hostile_host_calls_are_rejected` (crates/plugin-runtime/tests/wasm_guest_tests.rs), `host_call_arguments_must_match_the_table_row` (crates/plugin-runtime/src/wasm.rs) | built |        |
+| AC-17 | `foreign_bytes_are_refused_without_a_panic` (crates/plugin-runtime/src/wasm.rs) | built |        |
 
 ## Decisions
 
@@ -244,3 +244,45 @@ Settled by a prototype (2026-11-10, 4 vCPU container, release build):
   and cannot drift from the code.
 - 2026-11-10: `wasm32-unknown-unknown`, not WASI — the module then cannot even
   name a system call; `rquickjs-sys` ships the libc pieces it needs.
+- 2026-11-10 (build): the guest is thin. It offers primitives (evaluate,
+  read an export, compile, run bytecode, run a pending job); the scripts for
+  `resolve`, `postProcess` and plugin specs stay in `engine.rs` and are shared
+  by both engines, so their behavior cannot drift.
+- 2026-11-10 (build): the host-function table and the JS shim are sent to
+  the guest when an instance is created, so `HOST_FNS` stays the single
+  source and the guest crate shares no code with the runtime.
+- 2026-11-10 (build): frames are length-prefixed bytes, not JSON as the
+  technical notes sketched — bytecode is binary and the guest then needs no
+  JSON library.
+- 2026-11-10 (build): the Wasm stack limit is 512 KiB (wasmtime's default),
+  not the 1 MiB of the technical notes: plugin-host worker threads have 2 MiB
+  of native stack, and the limit must stay well below it.
+- 2026-11-10 (build): the deadline is wall-clock per call, as in the native
+  engine: time blocked in a host call counts, and a call whose deadline
+  passed while it was blocked times out when control returns to the guest.
+- 2026-11-10 (build): the guest has a self-test operation (`trap`,
+  `bad-index`, `bad-pointer`, `bad-frame`) that makes it misbehave on
+  purpose. AC-10 and AC-16 need a guest that traps or passes hostile
+  arguments, and no JavaScript can make a correct QuickJS do that. Only the
+  executor can send operations; plugin code cannot reach it.
+- 2026-11-10 (build): `unsafe` beyond the approved `Module::deserialize`: the
+  guest's exported `alloc` / `dealloc` / `call`, its `host_call` import and
+  the raw QuickJS calls for bytecode (moved from `bytecode_cache.rs`). All of
+  it runs inside the Wasm instance; a pointer ABI is the only way across the
+  boundary. For review.
+- 2026-11-10 (build): tests were written after the first working build, not
+  before: they need the embedded module to compile at all. Red runs that did
+  happen: `runaway_code_ends_with_a_timeout` hung because the deadline ticker
+  stopped when the engine was dropped before its instances (fixed: instances
+  keep the ticker alive).
+- 2026-11-10 (build): a host-function error reaches JS as an `Error` whose
+  message carries rquickjs's prefix ("Error converting from js 'string' into
+  type 'Error': …") — under both engines, so AC-06 compares them and checks
+  that the message ends with the host's text.
+- 2026-11-10 (build): the release workflow already gets the toolchain steps
+  (wasm32 target, clang and lld on Linux, Homebrew LLVM on macOS), because the
+  next release would fail without them. Their proof stays AC-09 of
+  `plugin-wasm-sandbox`.
+- New public API: `wasm::WasmEngine` (`new`, `create_context`,
+  `guest_imports`, `defined_imports`), `wasm::WasmContext` (the operations of
+  `engine::PluginContext`, plus `is_unusable`).

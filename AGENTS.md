@@ -153,7 +153,9 @@ amigo-krake/
 │   │       ├── sandbox.rs
 │   │       ├── transpiler.rs    # TypeScript → JS via SWC
 │   │       ├── types.rs
-│   │       └── updater.rs       # Plugin auto-updates
+│   │       ├── updater.rs       # Plugin auto-updates
+│   │       └── wasm.rs          # Wasm executor: runs the plugin guest in wasmtime
+│   ├── plugin-guest/            # QuickJS as WebAssembly (not a workspace member)
 │   ├── server/
 │   │   ├── Cargo.toml
 │   │   └── src/
@@ -691,6 +693,9 @@ Power users and tech enthusiasts managing downloads (HTTP, Usenet) centrally. Da
 
 Pitfalls that code and git history don't show. Short entries; `/spec-build` adds to this list when a loop surprised it.
 
+- **The build needs `clang` with a WebAssembly target and the Rust target `wasm32-unknown-unknown`.** `crates/plugin-runtime/build.rs` builds `crates/plugin-guest` (QuickJS as Wasm) with a nested `cargo` and embeds it precompiled. The guest is not a workspace member: `cargo fmt --all`, clippy and `cargo test --workspace` do not see it; run `cargo fmt` inside `crates/plugin-guest`, and it has its own `Cargo.lock`. Apple's clang has no Wasm target (`brew install llvm`, then `CC_wasm32_unknown_unknown`).
+- **A Wasm instance outliving its `WasmEngine` still needs the deadline ticker.** Instances hold the ticker alive themselves; a test that creates the engine as a temporary once hung forever in `while (true) {}` because nothing advanced the epoch.
+- **`pkill -f <test name>` kills the shell that runs it**, because the pattern is in its own command line. Stop a hung test binary by PID.
 - **The build needs `protoc`.** `cargo build` / `clippy` fail in `pssh-box`'s build script without it (`apt-get install protobuf-compiler`); CI installs it.
 - **`vite dev` hides what the server enforces.** It sets no CSP header and proxies `/api`, so a blocked font or script only shows against the real server (`cargo run -p krake-server`). A debug server reads `web-ui/dist` from disk: rebuild the UI, no server restart.
 - **The server refuses downloads from private addresses**, loopback included (`crates/server/src/net_guard.rs`, no setting). A local test server therefore cannot feed running downloads into a served UI; tests reach the coordinator directly (`crates/core/tests/download_lifecycle_tests.rs`). For a UI run with live transfers use a public URL, or a throwaway binary built with the guard argument flipped — never committed.
