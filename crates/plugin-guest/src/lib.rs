@@ -5,7 +5,7 @@
 //! computation inside its own linear memory. The executor in
 //! `krake-plugin-runtime` (`wasm.rs`) drives it through [`call`].
 //!
-//! Wire format (the executor's `wasm_abi.rs` mirrors it):
+//! Wire format (the executor, `krake-plugin-runtime`'s `wasm.rs`, mirrors it):
 //!
 //! - request: `[op u8][nargs u8]` then per argument `[len u32 LE][bytes]`
 //! - response: `[tag u8][bytes]`, tag 0 = no value, 1 = value, 2 = error

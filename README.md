@@ -23,7 +23,7 @@ Extensible for HTTP, Usenet, and more.
 
 - **Multi-chunk parallel downloads** with automatic resume and retry
 - **Built-in extractors** — YouTube (with N-parameter challenge), HLS, DASH
-- **TypeScript plugin system** — scriptable hoster support in plain `.ts` files, run in a separate sandboxed process
+- **TypeScript plugin system** — scriptable hoster support in plain `.ts` files, run in a separate process without file or network access of their own
 - **Plugin marketplace** — install and update plugins from the registry
 - **Responsive Web UI** — Svelte 5 + Tailwind, dark/light themes, adjustable neon intensity
 - **PWA with Share Target** — install on your phone, share links directly to add downloads
@@ -72,10 +72,12 @@ Rust target `wasm32-unknown-unknown`, which `rustup` installs from
 `rust-toolchain.toml`.
 
 A `--release` build (and therefore `cargo install`) refuses to compile without
-the pinned signing keys: set `KRAKE_UPDATE_PUBKEY_HEX` and
-`KRAKE_REGISTRY_PUBKEY_HEX` to your own Ed25519 public keys (64 hex chars
-each). Debug builds run without them and skip signature verification with a
-warning.
+the pinned signing keys `KRAKE_UPDATE_PUBKEY_HEX` and
+`KRAKE_REGISTRY_PUBKEY_HEX` (Ed25519 public keys, 64 hex chars each). They
+decide whose releases and plugin registry the binary trusts: with keys of your
+own, self-update and registry installs only accept what you signed yourself,
+and the official releases and registry fail verification. Debug builds run
+without keys and skip signature verification with a warning.
 
 ### CLI
 
