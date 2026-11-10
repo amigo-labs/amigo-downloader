@@ -51,9 +51,12 @@ jobs:
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
           components: clippy
+          targets: wasm32-unknown-unknown
 
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+      # clang and lld build the plugin guest (QuickJS as WebAssembly); the
+      # wasm32 target comes from rust-toolchain.toml.
+      - name: Install protobuf compiler, clang and lld
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler clang lld
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -102,8 +105,12 @@ jobs:
             exit 1
           fi
       - uses: dtolnay/rust-toolchain@1.99.0
-      - name: Install protobuf compiler
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+        with:
+          targets: wasm32-unknown-unknown
+      # clang and lld build the plugin guest (QuickJS as WebAssembly); the
+      # wasm32 target comes from rust-toolchain.toml.
+      - name: Install protobuf compiler, clang and lld
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler clang lld
       - uses: Swatinem/rust-cache@v2
         with:
           save-if: ${{ github.ref == 'refs/heads/main' }}

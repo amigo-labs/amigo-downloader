@@ -23,7 +23,10 @@ RUN pnpm --filter @amigo-labs/krake-web-ui build
 # (the toolchain file is deliberately not copied into the image — the tag
 # is the source of truth here).
 FROM rust:1.99.0-bookworm AS rust-builder
-RUN apt-get update && apt-get install -y protobuf-compiler libclang-dev && rm -rf /var/lib/apt/lists/*
+# clang, lld and the wasm32 target build the plugin guest (QuickJS as
+# WebAssembly), which crates/plugin-runtime/build.rs embeds in the plugin host.
+RUN apt-get update && apt-get install -y protobuf-compiler libclang-dev clang lld && rm -rf /var/lib/apt/lists/* \
+    && rustup target add wasm32-unknown-unknown
 WORKDIR /app
 COPY Cargo.toml Cargo.lock ./
 COPY crates/ crates/

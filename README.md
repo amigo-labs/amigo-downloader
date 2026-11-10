@@ -66,6 +66,11 @@ cd web-ui && npm ci && npx vite build && cd ..
 cargo run --bin krake-server
 ```
 
+The build needs `protoc`, `clang` with a WebAssembly target (`apt-get install
+protobuf-compiler clang lld`; on macOS `brew install protobuf llvm`) and the
+Rust target `wasm32-unknown-unknown`, which `rustup` installs from
+`rust-toolchain.toml`.
+
 A `--release` build (and therefore `cargo install`) refuses to compile without
 the pinned signing keys: set `KRAKE_UPDATE_PUBKEY_HEX` and
 `KRAKE_REGISTRY_PUBKEY_HEX` to your own Ed25519 public keys (64 hex chars
