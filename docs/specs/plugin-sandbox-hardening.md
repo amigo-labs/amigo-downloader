@@ -216,7 +216,12 @@ network reach as the daemon until SH-7b lands.
   no new reach. The parent re-validates everything it trusts from a manifest
   (allowlist, URL pattern, API version).
 
-## SH-7b. OS sandbox for the plugin host (#79) — open
+## SH-7b. OS sandbox for the plugin host (#79) — replaced
+
+> **Replaced on 2026-11-10** by memory isolation through WebAssembly
+> (AGENTS.md, "Wichtige Design-Entscheidungen" 14): `plugin-wasm-guest.md` and
+> `plugin-wasm-sandbox.md`. The decisions below are kept as the record of the
+> alternative that was not built.
 
 These decisions are settled here so the implementation PR does not have to
 argue them again:

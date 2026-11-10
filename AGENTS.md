@@ -654,6 +654,7 @@ Two more shared skills are vendored for the web UI: `improve <target> [idea]` (m
 11. **Eigenes Extractor-Crate** — YouTube, HLS, DASH als Built-in Extractors
 12. **i18n** — JSON-basierte Locale-Dateien (en, de)
 13. **Eine Akzentfarbe** — die Web-UI nutzt nur die Markenfarbe Limette `#9be22d` (`docs/site/project.yml`), keine wählbaren Paletten: die Farbe gehört zur Marke, nicht zu den Einstellungen
+14. **Plugin-Isolation durch WebAssembly** — QuickJS läuft als Wasm-Modul (`wasm32-unknown-unknown`, ohne WASI) in `wasmtime` innerhalb von `krake-plugin-host`, statt einer OS-Sandbox pro Plattform (Landlock/seccomp, AppContainer, `sandbox_init`): ein Mechanismus für Windows, macOS und Linux, in CI testbar, und ein Speicherfehler in QuickJS bleibt im Wasm-Speicher. Der eigene Prozess bleibt als zweite Schicht; es gibt keinen nativen Ausweichweg. Neue Abhängigkeit `wasmtime`; der Build braucht `clang` mit Wasm-Target. Specs: `docs/specs/plugin-wasm-guest.md`, `docs/specs/plugin-wasm-sandbox.md` (#79)
 
 ---
 

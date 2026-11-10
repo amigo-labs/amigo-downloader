@@ -1,0 +1,246 @@
+---
+status: todo
+created: 2026-11-10
+size: L
+design: [AGENTS.md "Plugin-System", AGENTS.md "Wichtige Design-Entscheidungen" 14, docs/specs/plugin-runtime-wasm-portability.md, docs/specs/plugin-sandbox-hardening.md SH-7a]
+surfaces: [core]
+---
+
+# Plugin Wasm guest: QuickJS as a WebAssembly module with an executor
+
+## Context
+
+Plugin JavaScript runs in QuickJS, a C interpreter with a history of
+JS-reachable memory-safety bugs. Since SH-7a it runs in the child process
+`krake-plugin-host`, which contains a crash but not an exploit: native code
+in the child has the daemon user's file and network access (#79).
+
+Decision 14 (2026-11-10) replaces the per-platform OS sandbox planned as SH-7b
+with memory isolation: QuickJS is compiled to WebAssembly and executed by
+`wasmtime` inside the plugin host. A memory-safety bug in QuickJS then corrupts
+only the module's linear memory. The module has no system interface; the only
+way out is the host-function table (`host_fns::HOST_FNS`).
+
+This is the first of two specs. It delivers the module and an executor for it,
+proven by its own tests. `plugin-wasm-sandbox` then makes the plugin host use
+the executor for every plugin and removes native QuickJS from it.
+
+Settled by a prototype (2026-11-10, 4 vCPU container, release build):
+
+- `rquickjs` 0.14 builds for `wasm32-unknown-unknown` with the system `clang`
+  18 and `wasm-ld`; the module is 0.85 MB and has one import (a clock).
+- Compiling the module with Cranelift takes about 1.0 s, with Winch about
+  0.17 s; loading a module precompiled at build time takes 1.5 ms.
+- A loop of 3 million iterations runs in 0.29 s (Cranelift).
+- QuickJS's own stack-limit check misfires in Wasm and must stay off; the
+  Wasm runtime's stack limit takes its place.
+
+## Scope
+
+### In scope
+
+- A guest module, built from source with the workspace, that contains QuickJS
+  and the engine logic that today lives in `engine.rs` (evaluate a plugin,
+  read its manifest exports, call `resolve` / `postProcess`, run a plugin
+  spec, compile to and evaluate from QuickJS bytecode).
+- An executor in `krake-plugin-runtime` that runs the guest in `wasmtime`,
+  one instance per plugin, and offers the operations the plugin host needs.
+- Host functions reach the guest only through the existing table
+  (`HOST_FNS`): pure helpers run natively in the executor's process, parent
+  routes go to a caller-supplied dispatcher.
+- Limits per instance: memory, execution deadline, stack depth.
+- Build tooling: the guest builds locally, in CI's Rust job and in the Docker
+  image build. The five release targets are proven in `plugin-wasm-sandbox`
+  (its AC-09), because only the release workflow builds them.
+
+### Out of scope
+
+- Using the executor in `krake-plugin-host` and removing native QuickJS from
+  it — because that is `plugin-wasm-sandbox`; this spec stays testable on its
+  own and within one size L.
+- TypeScript transpilation inside the guest — because SWC is memory-safe Rust
+  and stays native in the plugin host.
+- The YouTube extractor's native QuickJS (`crates/extractors`,
+  `n_challenge.rs`) — because it is a different code path with its own trust
+  question; it is listed in the spec index backlog.
+- Fuel metering and per-plugin CPU quotas — because the wall-clock deadline is
+  the existing contract (`SandboxLimits`), and nothing asks for deterministic
+  metering yet.
+- Any change to the plugin API (`krake.*`, `krake.d.ts`, `HOST_API_VERSION`) —
+  because plugins must not notice the engine change.
+
+## Acceptance criteria
+
+- [ ] AC-01 (always): Krake's guest module imports nothing but functions
+  the executor defines for it (the host-function call and a clock) and no
+  WASI function; any other import fails a test.
+- [ ] AC-02 (event): When the executor loads a plugin source that exports a
+  valid manifest and `resolve`, then it returns the same manifest fields
+  (id, name, version, apiVersion, urlPattern, pluginType, permissions) the
+  native engine reads from that source; when the source is invalid (syntax
+  error, no `resolve`, a manifest field of the wrong type), then loading fails
+  with the same error message as natively. Sources: every plugin under
+  `plugins/` and the fixtures of this spec's tests.
+- [ ] AC-03 (event): When `resolve(url)` is called through the executor on a
+  plugin that calls pure helpers (`krake.regexMatch`, `krake.sha256`,
+  `krake.urlResolve`, `krake.htmlQueryAttr`) and parent-routed functions
+  (`krake.httpGet`, `krake.storageSet`, `krake.storageGet`), then the
+  dispatcher receives the parent-routed calls with the same qualified names
+  and arguments as under the native engine, and the returned
+  `DownloadPackage` is structurally equal JSON.
+- [ ] AC-04 (event): When `postProcess` or a plugin spec (`plugin.spec.ts`
+  source, already transpiled) is run through the executor, then the result
+  JSON / test results are structurally equal to the native engine's for the
+  same input (the shipped `plugins/**/plugin.spec.ts` and a `postProcess`
+  fixture).
+- [ ] AC-05 (event): When a plugin is compiled to bytecode through the
+  executor and that bytecode is evaluated in a fresh instance, then its manifest
+  and its `resolve` result equal those of the same plugin loaded from source.
+- [ ] AC-06 (error): If a host function returns an error, then the plugin
+  sees a JS `Error` with that message and can catch it; if it does not catch
+  it, the call fails with an execution error carrying the message.
+- [ ] AC-07 (error): If plugin code runs longer than its deadline (an
+  infinite loop in the module body, in `resolve`, in a manifest getter, or a
+  catastrophically backtracking JavaScript `RegExp`), then the call ends with
+  a timeout error within the deadline plus 1 s of the time spent in the guest
+  (time blocked in a host call does not count), and the instance is unusable.
+- [ ] AC-08 (error): If plugin code allocates more than the instance's memory
+  limit, then the call fails with an execution error, the process keeps
+  running, the instance is unusable and other instances are unaffected.
+- [ ] AC-09 (error): If plugin code recurses without bound, then the call
+  fails with an execution error, the process keeps running and the instance
+  is unusable.
+- [ ] AC-10 (error): If the guest traps (an out-of-bounds memory access or
+  `unreachable`, as a memory-safety bug in QuickJS would cause), then the call
+  fails with an execution error, the instance is unusable, the process keeps
+  running, and a new instance of the same plugin works.
+- [ ] AC-11 (always): Two instances share no JS state and no memory: a global
+  set in one plugin is undefined in another, and each has its own deadline, so
+  a plugin finishing does not disarm another's.
+- [ ] AC-12 (state): While one instance is blocked in a parent-routed host
+  call, other instances run and complete.
+- [ ] AC-13 (always): Creating the executor (making the module ready to
+  instantiate) takes under 50 ms, and creating one plugin instance under 5 ms,
+  in a release build on the 4 vCPU container (`cargo test -p
+  krake-plugin-runtime --release --test perf_baseline -- --ignored
+  --nocapture`, median of 5; the ignored benchmark is run by hand like the
+  SH-6 baseline, and its numbers go into Evidence).
+- [ ] AC-14 (always, CI: Rust job and Docker build): A clean checkout builds
+  the plugin runtime, guest included, with the ordinary workspace build and
+  no manual step, locally and in CI's Rust job and Docker build.
+- [ ] AC-15 (error): If the tools the guest build needs are missing (`clang`
+  with a WebAssembly target, the `wasm32-unknown-unknown` Rust target), then
+  the build fails with a message that names the missing tool and the command
+  that installs it on Linux, macOS and Windows. The check is a function a
+  unit test calls with an empty tool search path.
+- [ ] AC-16 (error): If the guest passes the executor a host-function index
+  outside the table, arguments that are not valid JSON, or a pointer/length
+  outside its memory, then that call fails with an execution error and the
+  process keeps running; nothing outside the instance is read or written.
+- [ ] AC-17 (error): If the embedded module cannot be made ready (it does not
+  match the running CPU or `wasmtime`), then creating the executor returns an
+  error that says so, without a panic.
+
+## Technical notes
+
+- **Guest crate.** A `cdylib` for `wasm32-unknown-unknown`, outside the
+  default workspace members so `cargo test --workspace` on the host target
+  does not try to build it natively. `rquickjs` without the `parallel` and
+  `bindgen` features (the target has no threads, and bindings ship
+  pregenerated). `Runtime::set_max_stack_size(0)`; the memory limit is
+  the instance's linear-memory limit, not `set_memory_limit`.
+- **ABI.** Strings cross as (pointer, length) into guest memory, with exported
+  `alloc` / `dealloc`. One import carries every host call: function index
+  into `HOST_FNS` plus JSON-encoded `HostArgs`, returning `HostResult`.
+  One export handles a JSON request (`load`, `resolve`, `postProcess`,
+  `runSpec`, `compile`) so the surface stays as small as the IPC `Request`.
+- **Embedding.** `build.rs` of `krake-plugin-runtime` builds the guest crate
+  (nested `cargo build --target wasm32-unknown-unknown`, its own target
+  directory under `OUT_DIR`) and precompiles it with the same `wasmtime`
+  version for the target triple (`Config::target`), so start-up is a
+  deserialize, not a compile (AC-13). `Module::deserialize` is `unsafe`: the
+  bytes are produced by this build and embedded in the binary, which is the
+  documented safe use; the `// SAFETY:` comment says so.
+- **Terms.** "The process" is the one the executor runs in (a test binary
+  here, the plugin host later). "Timeout error" is `Error::Timeout`,
+  "execution error" `Error::Execution` of `krake-plugin-runtime`. An
+  "unusable" instance returns an execution error on every further call; its
+  owner drops it and loads the plugin again.
+- **Limits.** Values come from `SandboxLimits` (64 MB linear memory per
+  instance, which holds the QuickJS heap and the engine; 30 s per call, 5 s
+  per load) and a 1 MiB Wasm stack.
+- **Deadline.** Epoch interruption with a ticker thread; each store's
+  deadline is set per call. The 1 s of AC-07 is the tick granularity plus
+  scheduling slack.
+- **Concurrency.** One `Store` per plugin; a call takes `&mut` on its
+  instance, so two calls on one instance cannot overlap. Stores are
+  independent, so plugins run in parallel as today.
+- **Budgets.** AC-13's 50 ms and 5 ms are about 30 times the prototype's
+  1.5 ms and 0.1 ms: loose enough for a slower machine, tight enough to fail
+  if the module is compiled at start (about 1 s).
+- **Toolchain.** `rust-toolchain.toml` gains the `wasm32-unknown-unknown`
+  target; CI, `docker/Dockerfile` and `Cross.toml` install `clang` and `lld`.
+  Windows and macOS release runners need LLVM with the WebAssembly target
+  (Apple's `clang` has none: `brew install llvm`).
+- **Dependencies** (approved with decision 14): `wasmtime` (features
+  `cranelift`, `runtime`, `std` and what precompiling for other targets
+  needs) in `krake-plugin-runtime`, also as a build dependency.
+
+## Edge cases
+
+| Scenario | Expected behavior |
+| -------- | ----------------- |
+| Plugin source with a syntax error | Load fails with the syntax error message, as natively; the instance is discarded |
+| Host function result larger than the guest's free memory | The call fails with an execution error (AC-08), no trap of the process |
+| A parent-routed call is made after the deadline passed while it was blocked | The call ends with a timeout once control returns to the guest |
+| Corrupt or truncated bytecode is evaluated | The call fails with an execution error (QuickJS rejects it, or the guest traps as in AC-10); the caller falls back to the source, as the bytecode cache does today. Bytecode of another guest build is kept out by the cache key (`plugin-wasm-sandbox` AC-06) |
+| The dispatcher returns an error or is gone | The host call fails like any host-function error (AC-06) |
+| Empty plugin source | Load fails as natively: no manifest |
+| Plugin throws a non-`Error` value (string, object) | The execution error carries its string form, as natively |
+| Cross build (x86_64 host, aarch64 target) | The embedded precompiled module is for the target; the binary starts on the target without compiling |
+| `resolve` returns a `Promise` | It is settled inside the guest's job queue and its value is returned, as natively |
+
+## Assumptions
+
+| Assumption | Reason | Risk |
+| ---------- | ------ | ---- |
+| The native engine stays in the tree during this spec as the reference for AC-02 to AC-05 | "Equal to native" is the cheapest precise oracle; `plugin-wasm-sandbox` removes it | Low: two engines exist for one spec's duration |
+| Precompiling at build time is acceptable although it adds one `unsafe` call | The alternative is about 1 s on every plugin-host start, including every `krake <url>` run | Medium: a new `unsafe` is a stopping point; it is listed here for review |
+| LLVM with a WebAssembly target can be installed on the Windows and macOS release runners | `choco install llvm` / `brew install llvm` provide it | Medium: only CI can prove it; AC-14 covers Linux, the release jobs are checked in `plugin-wasm-sandbox` |
+
+## Open questions
+
+<!-- One bullet per open question; empty means: everything settled, spec-build may start -->
+
+## Evidence
+
+| AC    | Test | Status | Commit |
+| ----- | ---- | ------ | ------ |
+| AC-01 |      | open   |        |
+| AC-02 |      | open   |        |
+| AC-03 |      | open   |        |
+| AC-04 |      | open   |        |
+| AC-05 |      | open   |        |
+| AC-06 |      | open   |        |
+| AC-07 |      | open   |        |
+| AC-08 |      | open   |        |
+| AC-09 |      | open   |        |
+| AC-10 |      | open   |        |
+| AC-11 |      | open   |        |
+| AC-12 |      | open   |        |
+| AC-13 |      | open   |        |
+| AC-14 |      | open   |        |
+| AC-15 |      | open   |        |
+| AC-16 |      | open   |        |
+| AC-17 |      | open   |        |
+
+## Decisions
+
+- 2026-11-10: `wasmtime` over `wasmi` — a JS interpreter inside a Wasm
+  interpreter is an order of magnitude slower and would put CPU-heavy plugins
+  at risk of the 30 s limit; `wasmtime` is the audited reference runtime.
+- 2026-11-10: the guest is built from source in every build, not committed as
+  a binary — the user had no preference; a build from source is reviewable
+  and cannot drift from the code.
+- 2026-11-10: `wasm32-unknown-unknown`, not WASI — the module then cannot even
+  name a system call; `rquickjs-sys` ships the libc pieces it needs.
