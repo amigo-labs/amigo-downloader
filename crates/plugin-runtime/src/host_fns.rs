@@ -275,7 +275,7 @@ pub fn parent_fn(qualified: &str) -> Option<&'static HostFn> {
 
 /// JavaScript shim that wraps raw JSON-returning functions into
 /// object-returning ones. Injected after every table function is registered.
-const JS_SHIM: &str = r#"
+pub(crate) const JS_SHIM: &str = r#"
 (function() {
     var a = krake;
 

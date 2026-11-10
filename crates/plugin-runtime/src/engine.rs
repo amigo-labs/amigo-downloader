@@ -401,39 +401,7 @@ impl PluginContext {
     /// Call the async `resolve(url)` function and return the result as JSON string.
     /// The JS function returns a Promise which we resolve synchronously via the event loop.
     pub fn call_resolve(&self, url: &str, timeout: Duration) -> Result<String, crate::Error> {
-        // Serialise the URL as a JSON string literal — also a valid JS string
-        // literal — so quotes/backslashes/control chars are escaped correctly
-        // instead of relying on hand-rolled string escaping.
-        let url_lit = serde_json::to_string(url)
-            .map_err(|e| crate::Error::Execution(format!("failed to encode url: {e}")))?;
-
-        // We wrap the resolve call in a script that catches the Promise result
-        let script = format!(
-            r#"
-            (function() {{
-                var __resolve_result = null;
-                var __resolve_error = null;
-                var __resolve_done = false;
-
-                var p = __plugin_exports.resolve({url_lit});
-                if (p && typeof p.then === 'function') {{
-                    p.then(function(r) {{
-                        __resolve_result = JSON.stringify(r);
-                        __resolve_done = true;
-                    }}).catch(function(e) {{
-                        __resolve_error = String(e);
-                        __resolve_done = true;
-                    }});
-                }} else {{
-                    // Synchronous return
-                    __resolve_result = JSON.stringify(p);
-                    __resolve_done = true;
-                }}
-
-                return __resolve_done ? (__resolve_error ? "ERROR:" + __resolve_error : __resolve_result) : "PENDING";
-            }})()
-            "#,
-        );
+        let script = resolve_script(url)?;
 
         self.with_deadline(timeout, |ctx, deadline_ms| {
             let result: String = ctx
@@ -454,7 +422,7 @@ impl PluginContext {
 
                     // Check if done
                     let check: String = ctx
-                        .eval(r#"__resolve_done ? (__resolve_error ? "ERROR:" + __resolve_error : __resolve_result) : "PENDING""#)
+                        .eval(RESOLVE_POLL)
                         .map_err(|e| js_error(&ctx, e, deadline_ms, timeout, "Job check failed"))?;
 
                     if check != "PENDING" {
@@ -495,23 +463,7 @@ impl PluginContext {
         context_json: &str,
         timeout: Duration,
     ) -> Result<String, crate::Error> {
-        // Encode the JSON document as a JS string literal (valid JS, correctly
-        // escaped) and parse it back inside the VM, instead of hand-rolling
-        // quote escaping into a single-quoted literal.
-        let ctx_lit = serde_json::to_string(context_json)
-            .map_err(|e| crate::Error::Execution(format!("failed to encode context: {e}")))?;
-        let script = format!(
-            r#"
-            (function() {{
-                if (typeof __plugin_exports.postProcess !== 'function') {{
-                    return JSON.stringify({{ success: true, message: "no postProcess hook" }});
-                }}
-                var ctx = JSON.parse({ctx_lit});
-                var result = __plugin_exports.postProcess(ctx);
-                return JSON.stringify(result);
-            }})()
-            "#,
-        );
+        let script = post_process_script(context_json)?;
 
         // Enforce the timeout via the runtime-wide interrupt handler — this
         // catches synchronous infinite loops that a tokio-level timeout can't
@@ -554,8 +506,100 @@ impl PluginContext {
         spec_filename: &str,
         timeout: Duration,
     ) -> TestResults {
-        // Inject test harness, then run the spec
-        let harness = r#"
+        // Inject harness
+        if let Err(e) = self.eval_source(TEST_HARNESS, "<test-harness>") {
+            return failed_run("<harness>", format!("Failed to inject test harness: {e}"));
+        }
+        if let Err(e) = self.eval_source(spec_source, spec_filename) {
+            return failed_run("<spec>", format!("Spec file error: {e}"));
+        }
+        test_results(self.eval_js_with_timeout(TEST_RUNNER, timeout))
+    }
+}
+
+/// Results from running a plugin spec file.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct TestResults {
+    pub passed: u32,
+    pub failed: u32,
+    pub skipped: u32,
+    pub results: Vec<SingleTestResult>,
+}
+
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct SingleTestResult {
+    pub name: String,
+    pub passed: bool,
+    pub skipped: bool,
+    pub skip_reason: Option<String>,
+    pub error: Option<String>,
+}
+
+/// Script that calls `resolve(url)` and leaves its outcome in VM-local
+/// state: it evaluates to the JSON result, `ERROR:<message>`, or `PENDING`
+/// when `resolve` returned a Promise that has not settled yet.
+pub(crate) fn resolve_script(url: &str) -> Result<String, crate::Error> {
+    // Serialise the URL as a JSON string literal — also a valid JS string
+    // literal — so quotes/backslashes/control chars are escaped correctly
+    // instead of relying on hand-rolled string escaping.
+    let url_lit = serde_json::to_string(url)
+        .map_err(|e| crate::Error::Execution(format!("failed to encode url: {e}")))?;
+
+    // We wrap the resolve call in a script that catches the Promise result
+    Ok(format!(
+        r#"
+        (function() {{
+            var __resolve_result = null;
+            var __resolve_error = null;
+            var __resolve_done = false;
+
+            var p = __plugin_exports.resolve({url_lit});
+            if (p && typeof p.then === 'function') {{
+                p.then(function(r) {{
+                    __resolve_result = JSON.stringify(r);
+                    __resolve_done = true;
+                }}).catch(function(e) {{
+                    __resolve_error = String(e);
+                    __resolve_done = true;
+                }});
+            }} else {{
+                // Synchronous return
+                __resolve_result = JSON.stringify(p);
+                __resolve_done = true;
+            }}
+
+            return __resolve_done ? (__resolve_error ? "ERROR:" + __resolve_error : __resolve_result) : "PENDING";
+        }})()
+        "#,
+    ))
+}
+
+/// Script that calls `postProcess(context)` and evaluates to its JSON result.
+pub(crate) fn post_process_script(context_json: &str) -> Result<String, crate::Error> {
+    // Encode the JSON document as a JS string literal (valid JS, correctly
+    // escaped) and parse it back inside the VM, instead of hand-rolling
+    // quote escaping into a single-quoted literal.
+    let ctx_lit = serde_json::to_string(context_json)
+        .map_err(|e| crate::Error::Execution(format!("failed to encode context: {e}")))?;
+    Ok(format!(
+        r#"
+        (function() {{
+            if (typeof __plugin_exports.postProcess !== 'function') {{
+                return JSON.stringify({{ success: true, message: "no postProcess hook" }});
+            }}
+            var ctx = JSON.parse({ctx_lit});
+            var result = __plugin_exports.postProcess(ctx);
+            return JSON.stringify(result);
+        }})()
+        "#,
+    ))
+}
+
+/// Polls the state [`resolve_script`] leaves behind.
+pub(crate) const RESOLVE_POLL: &str = r#"__resolve_done ? (__resolve_error ? "ERROR:" + __resolve_error : __resolve_result) : "PENDING""#;
+
+/// Test harness injected before a plugin spec.
+pub(crate) const TEST_HARNESS: &str = r#"
 var __tests = [];
 var __test_results = [];
 
@@ -590,7 +634,8 @@ function skip(reason) {
 }
 "#;
 
-        let runner = r#"
+/// Runs the tests a spec registered and evaluates to their results as JSON.
+pub(crate) const TEST_RUNNER: &str = r#"
 for (var i = 0; i < __tests.length; i++) {
     var t = __tests[i];
     try {
@@ -607,128 +652,74 @@ for (var i = 0; i < __tests.length; i++) {
 JSON.stringify(__test_results);
 "#;
 
-        // Inject harness
-        if let Err(e) = self.eval_source(harness, "<test-harness>") {
-            return TestResults {
-                passed: 0,
-                failed: 1,
-                skipped: 0,
-                results: vec![SingleTestResult {
-                    name: "<harness>".into(),
-                    passed: false,
-                    skipped: false,
-                    skip_reason: None,
-                    error: Some(format!("Failed to inject test harness: {e}")),
-                }],
-            };
-        }
-
-        // Run spec file
-        if let Err(e) = self.eval_source(spec_source, spec_filename) {
-            return TestResults {
-                passed: 0,
-                failed: 1,
-                skipped: 0,
-                results: vec![SingleTestResult {
-                    name: "<spec>".into(),
-                    passed: false,
-                    skipped: false,
-                    skip_reason: None,
-                    error: Some(format!("Spec file error: {e}")),
-                }],
-            };
-        }
-
-        // Execute tests and collect results
-        match self.eval_js_with_timeout(runner, timeout) {
-            Ok(json) => {
-                let raw: Vec<serde_json::Value> = match serde_json::from_str(&json) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        return TestResults {
-                            passed: 0,
-                            failed: 1,
-                            skipped: 0,
-                            results: vec![SingleTestResult {
-                                name: "<test-runner>".to_string(),
-                                passed: false,
-                                skipped: false,
-                                skip_reason: None,
-                                error: Some(format!("Test results JSON parse error: {e}")),
-                            }],
-                        };
-                    }
-                };
-                let mut passed = 0;
-                let mut failed = 0;
-                let mut skipped = 0;
-                let mut results = Vec::new();
-
-                for entry in &raw {
-                    let name = entry["name"].as_str().unwrap_or("?").to_string();
-                    let ok = entry["passed"].as_bool().unwrap_or(false);
-                    let is_skipped = entry["skipped"].as_bool().unwrap_or(false);
-                    let error = entry["error"].as_str().map(|s| s.to_string());
-                    let skip_reason = entry["skipReason"].as_str().map(|s| s.to_string());
-
-                    if is_skipped {
-                        skipped += 1;
-                    } else if ok {
-                        passed += 1;
-                    } else {
-                        failed += 1;
-                    }
-                    results.push(SingleTestResult {
-                        name,
-                        passed: ok,
-                        skipped: is_skipped,
-                        skip_reason,
-                        error,
-                    });
-                }
-
-                TestResults {
-                    passed,
-                    failed,
-                    skipped,
-                    results,
-                }
-            }
-            Err(e) => TestResults {
-                passed: 0,
-                failed: 1,
-                skipped: 0,
-                results: vec![SingleTestResult {
-                    name: "<runner>".into(),
-                    passed: false,
-                    skipped: false,
-                    skip_reason: None,
-                    error: Some(format!("Test runner failed: {e}")),
-                }],
-            },
-        }
+/// A run that failed before any test ran.
+pub(crate) fn failed_run(name: &str, error: String) -> TestResults {
+    TestResults {
+        passed: 0,
+        failed: 1,
+        skipped: 0,
+        results: vec![SingleTestResult {
+            name: name.into(),
+            passed: false,
+            skipped: false,
+            skip_reason: None,
+            error: Some(error),
+        }],
     }
 }
 
-/// Results from running a plugin spec file.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct TestResults {
-    pub passed: u32,
-    pub failed: u32,
-    pub skipped: u32,
-    pub results: Vec<SingleTestResult>,
+/// Turn the outcome of [`TEST_RUNNER`] into [`TestResults`].
+pub(crate) fn test_results(run: Result<String, crate::Error>) -> TestResults {
+    let json = match run {
+        Ok(json) => json,
+        Err(e) => return failed_run("<runner>", format!("Test runner failed: {e}")),
+    };
+    let raw: Vec<serde_json::Value> = match serde_json::from_str(&json) {
+        Ok(v) => v,
+        Err(e) => {
+            return failed_run(
+                "<test-runner>",
+                format!("Test results JSON parse error: {e}"),
+            );
+        }
+    };
+    let mut passed = 0;
+    let mut failed = 0;
+    let mut skipped = 0;
+    let mut results = Vec::new();
+
+    for entry in &raw {
+        let name = entry["name"].as_str().unwrap_or("?").to_string();
+        let ok = entry["passed"].as_bool().unwrap_or(false);
+        let is_skipped = entry["skipped"].as_bool().unwrap_or(false);
+        let error = entry["error"].as_str().map(|s| s.to_string());
+        let skip_reason = entry["skipReason"].as_str().map(|s| s.to_string());
+
+        if is_skipped {
+            skipped += 1;
+        } else if ok {
+            passed += 1;
+        } else {
+            failed += 1;
+        }
+        results.push(SingleTestResult {
+            name,
+            passed: ok,
+            skipped: is_skipped,
+            skip_reason,
+            error,
+        });
+    }
+
+    TestResults {
+        passed,
+        failed,
+        skipped,
+        results,
+    }
 }
 
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct SingleTestResult {
-    pub name: String,
-    pub passed: bool,
-    pub skipped: bool,
-    pub skip_reason: Option<String>,
-    pub error: Option<String>,
-}
-
-fn parse_resolve_result(result: &str) -> Result<String, crate::Error> {
+pub(crate) fn parse_resolve_result(result: &str) -> Result<String, crate::Error> {
     if let Some(err) = result.strip_prefix("ERROR:") {
         Err(crate::Error::Execution(err.to_string()))
     } else {
