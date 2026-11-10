@@ -102,8 +102,9 @@ Settled by a prototype (2026-11-10, 4 vCPU container, release build):
 - [ ] AC-07 (error): If plugin code runs longer than its deadline (an
   infinite loop in the module body, in `resolve`, in a manifest getter, or a
   catastrophically backtracking JavaScript `RegExp`), then the call ends with
-  a timeout error within the deadline plus 1 s of the time spent in the guest
-  (time blocked in a host call does not count), and the instance is unusable.
+  a timeout error within the deadline plus 1 s, and the instance is unusable.
+  The deadline is wall-clock per call; if it passes while the guest is blocked
+  in a host call, the call ends with the timeout when that host call returns.
 - [ ] AC-08 (error): If plugin code allocates more than the instance's memory
   limit, then the call fails with an execution error, the process keeps
   running, the instance is unusable and other instances are unaffected.
@@ -134,7 +135,7 @@ Settled by a prototype (2026-11-10, 4 vCPU container, release build):
   that installs it on Linux, macOS and Windows. The check is a function a
   unit test calls with an empty tool search path.
 - [ ] AC-16 (error): If the guest passes the executor a host-function index
-  outside the table, arguments that are not valid JSON, or a pointer/length
+  outside the table, a malformed argument frame, or a pointer/length
   outside its memory, then that call fails with an execution error and the
   process keeps running; nothing outside the instance is read or written.
 - [ ] AC-17 (error): If the embedded module cannot be made ready (it does not
@@ -143,17 +144,20 @@ Settled by a prototype (2026-11-10, 4 vCPU container, release build):
 
 ## Technical notes
 
-- **Guest crate.** A `cdylib` for `wasm32-unknown-unknown`, outside the
-  default workspace members so `cargo test --workspace` on the host target
-  does not try to build it natively. `rquickjs` without the `parallel` and
+- **Guest crate.** A `cdylib` for `wasm32-unknown-unknown`. It is not a
+  workspace member (the workspace `exclude`s it and it has its own
+  `[workspace]` and `Cargo.lock`), so `cargo test --workspace` on the host
+  target never selects it. `rquickjs` without the `parallel` and
   `bindgen` features (the target has no threads, and bindings ship
   pregenerated). `Runtime::set_max_stack_size(0)`; the memory limit is
   the instance's linear-memory limit, not `set_memory_limit`.
-- **ABI.** Strings cross as (pointer, length) into guest memory, with exported
+- **ABI.** Buffers cross as (pointer, length) into guest memory, with exported
   `alloc` / `dealloc`. One import carries every host call: function index
-  into `HOST_FNS` plus JSON-encoded `HostArgs`, returning `HostResult`.
-  One export handles a JSON request (`load`, `resolve`, `postProcess`,
-  `runSpec`, `compile`) so the surface stays as small as the IPC `Request`.
+  into `HOST_FNS` plus a length-prefixed argument frame, returning a
+  `HostResult` frame. One export handles a request frame: an operation
+  (evaluate, read an export, compile, run bytecode, run a pending job) and
+  its arguments. The guest is thin; the `resolve`, `postProcess` and spec
+  scripts stay in `engine.rs` (see Decisions).
 - **Embedding.** `build.rs` of `krake-plugin-runtime` builds the guest crate
   (nested `cargo build --target wasm32-unknown-unknown`, its own target
   directory under `OUT_DIR`) and precompiles it with the same `wasmtime`
@@ -168,7 +172,7 @@ Settled by a prototype (2026-11-10, 4 vCPU container, release build):
   owner drops it and loads the plugin again.
 - **Limits.** Values come from `SandboxLimits` (64 MB linear memory per
   instance, which holds the QuickJS heap and the engine; 30 s per call, 5 s
-  per load) and a 1 MiB Wasm stack.
+  per load) and a 512 KiB Wasm stack.
 - **Deadline.** Epoch interruption with a ticker thread; each store's
   deadline is set per call. The 1 s of AC-07 is the tick granularity plus
   scheduling slack.
@@ -226,7 +230,7 @@ Settled by a prototype (2026-11-10, 4 vCPU container, release build):
 | AC-08 | `exceeding_the_memory_limit_fails_the_call_only` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
 | AC-09 | `unbounded_recursion_fails_the_call_only` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
 | AC-10 | `a_trapping_guest_is_contained` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
-| AC-11 | `instances_share_no_state_and_keep_their_own_deadline` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
+| AC-11 | `instances_share_no_state_and_keep_their_own_deadline`, `a_finishing_instance_does_not_disarm_another_deadline` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
 | AC-12 | `a_blocked_host_call_does_not_block_other_instances` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
 | AC-13 | `wasm_executor_startup_baseline` (crates/plugin-runtime/tests/perf_baseline.rs, ignored, run by hand): engine 1.6 ms, instance 0.8 ms (median of 5, three runs, release, 4 vCPU container, 2026-11-10) | built |        |
 | AC-14 | clean local build (`rm -rf target && cargo test -p krake-plugin-runtime`); CI: Rust job and Docker build | built |        |
@@ -286,3 +290,17 @@ Settled by a prototype (2026-11-10, 4 vCPU container, release build):
 - New public API: `wasm::WasmEngine` (`new`, `create_context`,
   `guest_imports`, `defined_imports`), `wasm::WasmContext` (the operations of
   `engine::PluginContext`, plus `is_unusable`).
+- 2026-11-10 (revision after review and the first acceptance round): AC-07
+  and AC-16 reworded to what was built and tested (wall-clock deadline;
+  argument frames, not JSON); technical notes brought in line with the
+  Decisions above. No behavior changed, so their Evidence stays `built`.
+- 2026-11-10 (acceptance round 1): the edge case "`resolve` returns a
+  `Promise`" failed under both engines with `__resolve_done is not defined` —
+  a bug already on `main`: the resolve script kept its state in function
+  locals, the poll read globals. Fixed in the shared script; regression test
+  `a_promise_from_resolve_is_settled_under_both_engines` (crates/plugin-runtime/tests/wasm_guest_tests.rs), red before
+  the fix.
+- 2026-11-10 (acceptance round 1): tests widened — the template plugin in the
+  manifest comparison (AC-02), all seven manifest fields after a bytecode
+  round trip (AC-05), a finishing instance not disarming another's deadline
+  (AC-11).
