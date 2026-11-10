@@ -42,7 +42,7 @@
   {:else if name === "x"}
     <path d="M6 18L18 6M6 6l12 12" />
   {:else if name === "pause"}
-    <path d="M10 9v6m4-6v6" />
+    <path d="M9 5v14M15 5v14" />
   {:else if name === "play"}
     <path d="M8 5.14v14l11-7-11-7z" />
   {:else if name === "trash"}

@@ -105,7 +105,8 @@
   .knob {
     position: absolute;
     border-radius: var(--radius-full);
-    background: var(--text-primary);
+    /* Muted while off: a full-strength knob on a light track read as "on". */
+    background: var(--text-secondary);
     transition: transform var(--dur-fast) var(--ease-out), background-color var(--dur-fast) var(--ease-out);
   }
 
