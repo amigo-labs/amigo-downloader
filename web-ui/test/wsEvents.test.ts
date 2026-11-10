@@ -39,12 +39,12 @@ describe("interpretWsEvent", () => {
     });
   });
 
-  it("names a completed download by filename, falling back to the URL, then the id", () => {
+  it("names a completed download by filename, then by its URL, then by its id", () => {
     expect(interpretWsEvent({ type: "completed", id: "d1" }, downloads)).toMatchObject({
       name: "ubuntu.iso",
     });
     expect(interpretWsEvent({ type: "completed", id: "d2" }, downloads)).toMatchObject({
-      name: "https://example.com/get?id=2",
+      name: "get",
     });
     expect(interpretWsEvent({ type: "completed", id: "gone" }, downloads)).toMatchObject({
       name: "gone",

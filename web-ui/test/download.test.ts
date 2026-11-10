@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   fileIcon, progressPct, statusInk, statusTone, statusLabelKey, isKnownStatus,
   canPause, canResume, canRetry, etaSeconds, formatEta, statusCounts, displayName,
+  downloadStatusKey, failureReason, isRetrying,
 } from "../src/lib/download";
 
 const base = {
@@ -106,9 +107,43 @@ describe("statusCounts", () => {
 });
 
 describe("displayName", () => {
-  it("prefers the filename and falls back to the URL", () => {
-    expect(displayName({ filename: "a.zip", url: "https://x/y" })).toBe("a.zip");
-    expect(displayName({ filename: null, url: "https://x/y" })).toBe("https://x/y");
-    expect(displayName({ filename: "", url: "https://x/y" })).toBe("https://x/y");
+  it("prefers the filename", () => {
+    expect(displayName({ filename: "a.iso", url: "https://example.com/b.iso" })).toBe("a.iso");
+  });
+
+  it("treats an empty filename like a missing one", () => {
+    expect(displayName({ filename: "", url: "https://x/y" })).toBe("y");
+  });
+
+  it("falls back to the decoded last path segment, without the query", () => {
+    expect(
+      displayName({ filename: null, url: "https://example.com/dl/My%20File.zip?token=abc&x=1" }),
+    ).toBe("My File.zip");
+  });
+
+  it("falls back to the URL when there is no path segment or it cannot be parsed", () => {
+    expect(displayName({ filename: null, url: "https://example.com/" })).toBe("https://example.com/");
+    expect(displayName({ filename: null, url: "not a url" })).toBe("not a url");
+  });
+});
+
+describe("retry and failure state", () => {
+  it("shows a running download between attempts as retrying, not as an error", () => {
+    const d = { status: "downloading", error: "retrying" };
+    expect(isRetrying(d)).toBe(true);
+    expect(downloadStatusKey(d)).toBe("status.retrying");
+    expect(failureReason(d)).toBeNull();
+  });
+
+  it("gives the reason of a failed download", () => {
+    const d = { status: "failed", error: "HTTP 404 Not Found" };
+    expect(isRetrying(d)).toBe(false);
+    expect(downloadStatusKey(d)).toBe("status.failed");
+    expect(failureReason(d)).toBe("HTTP 404 Not Found");
+  });
+
+  it("has no reason without an error", () => {
+    expect(failureReason({ status: "failed", error: null })).toBeNull();
+    expect(failureReason({ status: "completed", error: "stale" })).toBeNull();
   });
 });

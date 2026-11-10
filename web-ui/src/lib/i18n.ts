@@ -198,6 +198,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "status.failed": "failed",
     "status.paused": "paused",
     "status.queued": "queued",
+    "status.retrying": "retrying",
 
     // Toasts
     "toast.download_complete": "Download complete",
@@ -218,6 +219,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "detail.gone_hint": "It was removed, here or from another client.",
     "detail.protocol": "Protocol",
     "detail.size": "Size",
+    "detail.downloaded": "Downloaded",
+    "detail.file": "File",
     "detail.progress": "Progress",
     "detail.chunks": "Chunks",
     "detail.chunks_paused": "Chunks (paused)",
@@ -624,6 +627,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "status.failed": "Fehler",
     "status.paused": "Pausiert",
     "status.queued": "Warteschl.",
+    "status.retrying": "Neuer Versuch",
 
     "toast.download_complete": "Download abgeschlossen",
     "toast.download_failed": "Download fehlgeschlagen",
@@ -641,6 +645,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "detail.gone_hint": "Er wurde entfernt — hier oder von einem anderen Client.",
     "detail.protocol": "Protokoll",
     "detail.size": "Größe",
+    "detail.downloaded": "Geladen",
+    "detail.file": "Datei",
     "detail.progress": "Fortschritt",
     "detail.chunks": "Chunks",
     "detail.chunks_paused": "Chunks (pausiert)",

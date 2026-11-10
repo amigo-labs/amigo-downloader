@@ -3,8 +3,9 @@
   import { openDetailPanel, selectedDownloadId, type Download } from "../../lib/stores";
   import { locale, tr } from "../../lib/i18n";
   import {
-    fileIcon, progressPct, statusInk, statusFill, statusTone, statusLabelKey,
+    fileIcon, progressPct, statusInk, statusFill, statusTone,
     isActive as isActiveFn, canPause, canResume, canRetry, etaSeconds, formatEta, displayName,
+    downloadStatusKey, failureReason,
   } from "../../lib/download";
   import { createDownloadActions } from "../../lib/downloadActions.svelte";
   import { handleCheckboxClick } from "../../lib/selection";
@@ -49,7 +50,8 @@
   let active = $derived(isActiveFn(download));
   let ink = $derived(statusInk(download.status));
   let label = $derived(displayName(download));
-  let statusText = $derived(tr($locale, statusLabelKey(download.status)));
+  let statusText = $derived(tr($locale, downloadStatusKey(download)));
+  let failure = $derived(failureReason(download));
   let eta = $derived(formatEta(etaSeconds(download)));
   let isOpen = $derived($selectedDownloadId === download.id);
   let checked = $derived($selectedIds.has(download.id));
@@ -141,6 +143,10 @@
 
     {#if variant === "card"}
       <p class="dl-url">{download.url}</p>
+    {/if}
+
+    {#if failure}
+      <p class="dl-error" title={failure}>{failure}</p>
     {/if}
 
     <div class="dl-progress">
@@ -437,6 +443,17 @@
     text-overflow: ellipsis;
   }
 
+  /* Why it failed, on the row itself: the reason used to be one click
+     away in the detail panel, or nowhere on a phone. */
+  .dl-error {
+    margin: 0.25rem 0 0;
+    font-size: 0.6875rem;
+    color: var(--danger-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .dl-progress {
     margin: 0.5rem 0;
   }
@@ -447,7 +464,9 @@
 
   .dl-meta {
     display: flex;
-    gap: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.125rem 0.75rem;
+    white-space: nowrap;
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     font-variant-numeric: tabular-nums;
@@ -481,6 +500,36 @@
     align-items: center;
     gap: 0.125rem;
     flex-shrink: 0;
+  }
+
+  /* On a phone the actions took the title's width: with three buttons
+     beside it the filename shrank to nothing. They move to their own line
+     and the status badge drops below the title, so the name always gets
+     the full row. */
+  @media (max-width: 639px) {
+    .dl-item {
+      flex-wrap: wrap;
+    }
+
+    .dl-head {
+      flex-wrap: wrap;
+      row-gap: 0.25rem;
+    }
+
+    .dl-title {
+      flex-basis: calc(100% - 1.5rem);
+    }
+
+    .dl-actions,
+    .card .dl-actions {
+      flex-basis: 100%;
+      justify-content: flex-end;
+      align-self: auto;
+    }
+
+    .row .dl-actions {
+      margin-top: -0.25rem;
+    }
   }
 
   .card .dl-actions {

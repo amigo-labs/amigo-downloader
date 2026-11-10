@@ -3,8 +3,9 @@
   import { formatBytes, formatSpeed } from "../lib/api";
   import { locale, tr } from "../lib/i18n";
   import {
-    progressPct, statusInk, statusFill, statusTone, statusLabelKey,
+    progressPct, statusInk, statusFill, statusTone,
     canPause, canResume, canRetry, etaSeconds, formatEta,
+    downloadStatusKey, failureReason,
   } from "../lib/download";
   import { createDownloadActions } from "../lib/downloadActions.svelte";
   import ChunkViz from "@amigo-labs/krake-ui/components/ChunkViz.svelte";
@@ -26,7 +27,8 @@
 
   let progress = $derived(dl ? progressPct(dl) : 0);
   let eta = $derived(dl ? formatEta(etaSeconds(dl)) : "");
-  let statusText = $derived(dl ? tr($locale, statusLabelKey(dl.status)) : "");
+  let statusText = $derived(dl ? tr($locale, downloadStatusKey(dl)) : "");
+  let failure = $derived(dl ? failureReason(dl) : null);
 
   async function deleteAndClose() {
     const wasConfirming = actions.confirmingDelete;
@@ -70,10 +72,22 @@
           <span style="color: var(--text-secondary)">{tr($locale, "detail.protocol")}</span>
           <span class="uppercase text-xs font-semibold" style="color: var(--text-primary)">{dl.protocol}</span>
         </div>
+        {#if dl.filename}
+          <div class="flex justify-between gap-3">
+            <span class="info-key">{tr($locale, "detail.file")}</span>
+            <span class="info-value truncate" title={dl.filename}>{dl.filename}</span>
+          </div>
+        {/if}
         {#if dl.filesize}
           <div class="flex justify-between">
             <span style="color: var(--text-secondary)">{tr($locale, "detail.size")}</span>
             <span style="font-family: var(--font-mono); color: var(--text-primary)">{formatBytes(dl.filesize)}</span>
+          </div>
+        {/if}
+        {#if dl.status !== "completed"}
+          <div class="flex justify-between">
+            <span class="info-key">{tr($locale, "detail.downloaded")}</span>
+            <span class="info-value mono">{formatBytes(dl.bytes_downloaded)}</span>
           </div>
         {/if}
         <div class="flex justify-between">
@@ -122,9 +136,9 @@
       </section>
     {/if}
 
-    {#if dl.error}
+    {#if failure}
       <Banner tone="danger" role="alert" title={tr($locale, "detail.error")}>
-        <span style="font-family: var(--font-mono)">{dl.error}</span>
+        <span style="font-family: var(--font-mono)">{failure}</span>
       </Banner>
     {/if}
 
@@ -180,3 +194,18 @@
     {/snippet}
   </EmptyState>
 {/if}
+
+<style>
+  .info-key {
+    flex-shrink: 0;
+    color: var(--text-secondary);
+  }
+
+  .info-value {
+    color: var(--text-primary);
+  }
+
+  .info-value.mono {
+    font-family: var(--font-mono);
+  }
+</style>
