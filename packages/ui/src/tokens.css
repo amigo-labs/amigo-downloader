@@ -22,7 +22,7 @@
                      --accent-ink on it is >= 4.5:1.
 
    The same split applies to success / warning / danger. `packages/ui/scripts/
-   check-contrast.mjs` asserts every pair across 6 palettes x 2 themes.
+   check-contrast.mjs` asserts every pair in both themes.
    ======================================== */
 
 /* Inter is self-hosted, not fetched from Google Fonts: the server ships a
@@ -90,9 +90,10 @@
    DARK MODE (default) — VS Code Dark
    ======================================== */
 :root {
-  /* Accent — blue palette defaults; overridden by .palette-* below */
-  --accent: #3b82f6;
-  --accent-ink: #60a5fa;
+  /* Accent — Krake's brand lime (docs/site/project.yml `accent`). One
+     colour, no user palettes: the brand decides it. */
+  --accent: #9be22d;
+  --accent-ink: #9be22d;
   --accent-solid: var(--accent-ink);
   --on-accent: #10131a;
 
@@ -207,18 +208,6 @@
 }
 
 /* ========================================
-   COLOR PALETTES — dark
-   --accent keeps the saturated 500 hue (the glow colour is unchanged);
-   --accent-ink is the 400 tint that clears 4.5:1 on all three surfaces.
-   ======================================== */
-:root.palette-blue   { --accent: #3b82f6; --accent-ink: #60a5fa; }
-:root.palette-teal   { --accent: #14b8a6; --accent-ink: #2dd4bf; }
-:root.palette-indigo { --accent: #6366f1; --accent-ink: #818cf8; }
-:root.palette-amber  { --accent: #f59e0b; --accent-ink: #fbbf24; }
-:root.palette-violet { --accent: #8b5cf6; --accent-ink: #a78bfa; }
-:root.palette-rose   { --accent: #f43f5e; --accent-ink: #fb7185; }
-
-/* ========================================
    LIGHT MODE
    ======================================== */
 :root.light {
@@ -231,8 +220,11 @@
   --border-color: rgba(0, 0, 0, 0.15);
   --hover-bg: color-mix(in srgb, var(--accent) 8%, transparent);
 
-  /* Dark ink on light surfaces; white on the filled control */
-  --accent-ink: #1d4ed8;
+  /* The brand lime nearly vanishes on white (1.45:1 on --bg-deep): fills
+     and glows take the next darker lime, and the ink and the filled
+     control a dark one that clears 4.5:1. */
+  --accent: #84cc16;
+  --accent-ink: #3f6212;
   --on-accent: #ffffff;
   --accent-subtle: color-mix(in srgb, var(--accent-ink) 12%, var(--bg-surface));
 
@@ -254,18 +246,6 @@
   --elev-2: 0 4px 12px rgb(0 0 0 / 8%);
   --elev-3: 0 12px 32px rgb(0 0 0 / 14%);
 }
-
-/* ========================================
-   COLOR PALETTES — light ink
-   Amber cannot stay amber-looking and clear 4.5:1 on white; --accent stays
-   #f59e0b so the glow is still amber, only the ink goes burnt.
-   ======================================== */
-:root.light.palette-blue   { --accent-ink: #1d4ed8; }
-:root.light.palette-teal   { --accent-ink: #0f766e; }
-:root.light.palette-indigo { --accent-ink: #4f46e5; }
-:root.light.palette-amber  { --accent-ink: #9a4d0a; }
-:root.light.palette-violet { --accent-ink: #7c3aed; }
-:root.light.palette-rose   { --accent-ink: #be123c; }
 
 /* ========================================
    BASE (60% — dark backgrounds)
