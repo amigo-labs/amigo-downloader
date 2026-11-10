@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   fileIcon, progressPct, statusInk, statusTone, statusLabelKey, isKnownStatus,
   canPause, canResume, canRetry, etaSeconds, formatEta, statusCounts, displayName,
-  downloadStatusKey, failureReason, isRetrying,
+  downloadStatusKey, failureReason, isRetrying, urlHost,
 } from "../src/lib/download";
 
 const base = {
@@ -145,5 +145,19 @@ describe("retry and failure state", () => {
   it("has no reason without an error", () => {
     expect(failureReason({ status: "failed", error: null })).toBeNull();
     expect(failureReason({ status: "completed", error: "stale" })).toBeNull();
+  });
+});
+
+describe("urlHost", () => {
+  it("gives the host without path and query", () => {
+    expect(urlHost("https://cdn.example.com/dl/a%20b.zip?token=1")).toBe("cdn.example.com");
+  });
+
+  it("keeps a non-default port", () => {
+    expect(urlHost("http://nas.local:8080/file.iso")).toBe("nas.local:8080");
+  });
+
+  it("falls back to the input when it is not a URL", () => {
+    expect(urlHost("not a url")).toBe("not a url");
   });
 });

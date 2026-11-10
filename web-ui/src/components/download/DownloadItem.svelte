@@ -5,7 +5,7 @@
   import {
     fileIcon, progressPct, statusInk, statusFill, statusTone,
     isActive as isActiveFn, canPause, canResume, canRetry, etaSeconds, formatEta, displayName,
-    downloadStatusKey, failureReason,
+    downloadStatusKey, failureReason, urlHost,
   } from "../../lib/download";
   import { createDownloadActions } from "../../lib/downloadActions.svelte";
   import { handleCheckboxClick } from "../../lib/selection";
@@ -52,6 +52,7 @@
   let label = $derived(displayName(download));
   let statusText = $derived(tr($locale, downloadStatusKey(download)));
   let failure = $derived(failureReason(download));
+  let host = $derived(urlHost(download.url));
   let eta = $derived(formatEta(etaSeconds(download)));
   let isOpen = $derived($selectedDownloadId === download.id);
   let checked = $derived($selectedIds.has(download.id));
@@ -141,8 +142,10 @@
       <span class="dl-status">{statusText}</span>
     </div>
 
+    <!-- Name and source are what identify a download; the full URL with
+         its path is in the detail panel and in this tooltip. -->
     {#if variant === "card"}
-      <p class="dl-url">{download.url}</p>
+      <p class="dl-host" title={download.url}>{host}</p>
     {/if}
 
     {#if failure}
@@ -164,6 +167,7 @@
     </div>
 
     <div class="dl-meta">
+      {#if variant === "row"}<span class="dl-host" title={download.url}>{host}</span>{/if}
       <span class="dl-bytes">
         {formatBytes(download.bytes_downloaded)}{download.filesize ? ` / ${formatBytes(download.filesize)}` : ""}
       </span>
@@ -433,7 +437,7 @@
     background: color-mix(in srgb, var(--status-fill) 14%, transparent);
   }
 
-  .dl-url {
+  .dl-host {
     margin: 0.125rem 0 0;
     font-family: var(--font-mono);
     font-size: 0.6875rem;
@@ -452,6 +456,10 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .dl-meta .dl-host {
+    margin: 0;
   }
 
   .dl-progress {
@@ -482,8 +490,7 @@
      first; the filename and the actions never do. */
   @media (max-width: 639px) {
     .row .dl-pct,
-    .row .dl-eta,
-    .row .dl-url {
+    .row .dl-eta {
       display: none;
     }
 

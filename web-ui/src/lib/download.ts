@@ -146,6 +146,18 @@ export function urlBasename(url: string): string | null {
 }
 
 /**
+ * Host a download comes from, with a non-default port. Falls back to the
+ * raw URL when it cannot be parsed, so a row never loses its source.
+ */
+export function urlHost(url: string): string {
+  try {
+    return new URL(url).host || url;
+  } catch {
+    return url;
+  }
+}
+
+/**
  * Human label for a download: the filename, else the name the URL points
  * at, else the raw URL. The server learns the real filename only once the
  * transfer has started, and a row titled with a full URL and its query
