@@ -7,7 +7,7 @@ Plugins are TypeScript (`.ts`) files that run in a sandboxed QuickJS VM. TypeScr
 1. Copy `plugins/template/plugin.ts`
 2. Implement the required exports
 3. Drop into `plugins/hosters/<your-plugin>/` or `plugins/extractors/<your-plugin>/`
-4. It auto-loads on startup (hot-reload supported)
+4. It loads on the next server start (there is no file watcher); iterate with `krake plugins test <plugin.ts> [url]`
 
 Type definitions for IDE support: `plugins/types/krake.d.ts`
 

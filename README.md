@@ -23,9 +23,9 @@ Extensible for HTTP, Usenet, and more.
 
 - **Multi-chunk parallel downloads** with automatic resume and retry
 - **Built-in extractors** — YouTube (with N-parameter challenge), HLS, DASH
-- **TypeScript plugin system** — scriptable hoster support, hot-reloadable `.ts` files
+- **TypeScript plugin system** — scriptable hoster support in plain `.ts` files, run in a separate sandboxed process
 - **Plugin marketplace** — install and update plugins from the registry
-- **Responsive Web UI** — Svelte 5 + Tailwind, dark/light themes, 6 accent colors
+- **Responsive Web UI** — Svelte 5 + Tailwind, dark/light themes, adjustable neon intensity
 - **PWA with Share Target** — install on your phone, share links directly to add downloads
 - **DLC container** import and export (JDownloader compatible)
 - **Usenet support** — NZB parsing, NNTP/SSL multi-connection, yEnc decoding
@@ -63,8 +63,14 @@ Open `http://localhost:1516` in your browser.
 cd web-ui && npm ci && npx vite build && cd ..
 
 # Build and run server
-cargo run --release --bin krake-server
+cargo run --bin krake-server
 ```
+
+A `--release` build (and therefore `cargo install`) refuses to compile without
+the pinned signing keys: set `KRAKE_UPDATE_PUBKEY_HEX` and
+`KRAKE_REGISTRY_PUBKEY_HEX` to your own Ed25519 public keys (64 hex chars
+each). Debug builds run without them and skip signature verification with a
+warning.
 
 ### CLI
 
@@ -79,11 +85,11 @@ installs to `/usr/local/bin` (override with `KRAKE_INSTALL_DIR`). Or build from
 source with Cargo:
 
 ```bash
-# Install to ~/.cargo/bin/
-cargo install --path crates/cli
+# Debug build (a release build needs the signing keys, see "From source")
+cargo build -p krake-cli -p krake-plugin-runtime
 
-# Use it
-krake https://example.com/file.zip
+# Use it (krake-plugin-host sits next to it in target/debug/)
+target/debug/krake https://example.com/file.zip
 ```
 
 <details>
@@ -422,7 +428,7 @@ docker compose -f docker/docker-compose.local.yml up -d --build
 1. Copy `plugins/template/plugin.ts`
 2. Set `id`, `name`, `version`, `urlPattern` and implement `resolve()` on the exported object
 3. Drop the `.ts` file into `plugins/hosters/` or `plugins/extractors/`
-4. It's auto-detected and loaded (hot-reload supported)
+4. It's loaded on the next server start (there is no file watcher); iterate with `krake plugins test <plugin.ts> [url]`
 
 Type definitions are available in `plugins/types/krake.d.ts` for IDE support.
 
