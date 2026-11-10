@@ -419,7 +419,9 @@ jobs:
       - name: SHA256SUMS
         working-directory: artifacts
         run: |
-          find . -maxdepth 1 -type f ! -name '*.sha256' ! -name '*.sig' ! -name 'latest.json' -printf '%f\0' \
+          # SHA256SUMS itself is excluded: the redirection creates it before
+          # find lists the directory.
+          find . -maxdepth 1 -type f ! -name '*.sha256' ! -name '*.sig' ! -name 'latest.json' ! -name SHA256SUMS -printf '%f\0' \
             | sort -z | xargs -0 sha256sum > SHA256SUMS
           cat SHA256SUMS
 
