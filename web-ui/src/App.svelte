@@ -54,7 +54,7 @@
   import { locale, tr } from "./lib/i18n";
   import { addToast } from "./lib/toast";
   import { interpretWsEvent } from "./lib/wsEvents";
-  import { registerBindings, startKeymap, type Binding } from "./lib/keymap";
+  import { formatChord, registerBindings, startKeymap, type Binding } from "./lib/keymap";
   import { pruneSelection } from "./lib/selection";
   import PairingModal from "./components/PairingModal.svelte";
 
@@ -355,6 +355,8 @@
     })),
   ];
 
+  const paletteKey = formatChord({ key: "k", mod: true });
+
   let pageTitle = $derived(tr($locale, `nav.${$currentPage}`));
 </script>
 
@@ -414,7 +416,7 @@
       <button class="search-trigger" onclick={() => openAddPanel()}>
         <Icon name="plus" size={16} />
         <span>{tr($locale, "sidebar.add")}</span>
-        <kbd>Ctrl+N</kbd>
+        <kbd>{formatChord({ key: "n", mod: true })}</kbd>
       </button>
     {/if}
 
@@ -431,7 +433,7 @@
           <Icon name={item.icon} size={18} />
           {#if !$sidebarCollapsed}
             <span class="flex-1 text-left">{tr($locale, `nav.${item.id}`)}</span>
-            <span class="text-[10px] opacity-30">{i + 1}</span>
+            <kbd class="nav-key" aria-hidden="true">{i + 1}</kbd>
           {/if}
         </button>
       {/each}
@@ -451,7 +453,7 @@
           <Icon name={item.icon} size={18} />
           {#if !$sidebarCollapsed}
             <span class="flex-1 text-left">{tr($locale, `nav.${item.id}`)}</span>
-            <span class="text-[10px] opacity-30">{mainNavItems.length + i + 1}</span>
+            <kbd class="nav-key" aria-hidden="true">{mainNavItems.length + i + 1}</kbd>
           {/if}
         </button>
       {/each}
@@ -550,7 +552,7 @@
               aria-label={tr($locale, "cmd.hint_open")}
             >
               <Icon name="search" size={14} />
-              <kbd class="text-[10px]" style="font-family: var(--font-mono)">⌘K</kbd>
+              <kbd class="text-[10px]" style="font-family: var(--font-mono)">{paletteKey}</kbd>
             </button>
             <button onclick={() => theme.toggle()} class="icon-btn p-1.5 rounded-lg" style="color: var(--text-secondary)" aria-label={$theme === "dark" ? "Switch to Light mode" : "Switch to Dark mode"}>
               <Icon name={$theme === "light" ? "moon" : "sun"} size={16} />
@@ -611,7 +613,9 @@
 
       <!-- Global status bar — status at a glance from any page -->
       <div class="flex items-center gap-3 md:gap-5 shrink-0">
-        <div class="hidden sm:flex items-center gap-3 lg:gap-5" aria-label="Download status">
+        <!-- The expanded sidebar already shows these figures; the header
+             repeats them only where the sidebar is hidden or collapsed. -->
+        <div class="hidden sm:flex items-center gap-3 lg:gap-5 {$sidebarCollapsed ? '' : 'lg:hidden'}" aria-label="Download status">
           <div class="flex items-center gap-2">
             <span class="stat-label">{tr($locale, "sidebar.speed")}</span>
             <span class="text-xs tabular-nums" style="color: var(--accent-ink); font-family: var(--font-mono)">
@@ -646,7 +650,7 @@
           aria-label={tr($locale, "cmd.hint_open")}
         >
           <Icon name="search" size={14} />
-          <kbd style="font-family: var(--font-mono)">⌘K</kbd>
+          <kbd style="font-family: var(--font-mono)">{paletteKey}</kbd>
         </button>
 
         <button
