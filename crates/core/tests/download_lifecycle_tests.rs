@@ -241,13 +241,6 @@ async fn test_client_error_fails_without_retrying() {
     assert!(error.contains("404"), "error names the status: {error}");
 }
 
-// Known-broken: tracked by audit #13 follow-up in
-// `docs/specs/audit-2026-04-25.md` — the coordinator's per-attempt cancel
-// oneshot is fabricated fresh after attempt 0 and the dummy sender is
-// dropped immediately, which closes the receiver and produces a
-// "Download cancelled" error on every retry. Fixing that bug will make
-// this test pass; run with `cargo test -- --ignored` to verify.
-#[ignore = "audit #13: retry loop self-cancels because cancel oneshot is recreated and dropped"]
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_download_retries_on_transient_5xx() {
     let mock = MockServer::start().await;
