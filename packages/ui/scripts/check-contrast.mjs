@@ -2,8 +2,7 @@
 /**
  * Contrast checker for the @amigo-labs/krake-ui design tokens.
  *
- * Parses `src/tokens.css` as text, resolves the cascade for every
- * (palette x theme) combination, evaluates `var()` / `color-mix()` /
+ * Parses `src/tokens.css` as text, resolves the cascade for every theme, evaluates `var()` / `color-mix()` /
  * `rgba()` itself, and asserts the WCAG 2.1 ratios declared in
  * `src/tokens.spec.json`.
  *
@@ -23,7 +22,6 @@ const HERE = dirname(fileURLToPath(import.meta.url));
 const TOKENS = join(HERE, "..", "src", "tokens.css");
 const SPEC = join(HERE, "..", "src", "tokens.spec.json");
 
-const PALETTES = ["blue", "teal", "indigo", "amber", "violet", "rose"];
 const THEMES = ["dark", "light"];
 
 /* ------------------------------------------------------------------ *
@@ -135,14 +133,12 @@ function parseRules(source) {
   return rules;
 }
 
-/** Does this selector apply to the given theme/palette? */
-function applies(selector, theme, palette) {
+/** Does this selector apply to the given theme? */
+function applies(selector, theme) {
   const classes = [...selector.matchAll(/\.([\w-]+)/g)].map((m) => m[1]);
   for (const c of classes) {
     if (c === "light") {
       if (theme !== "light") return false;
-    } else if (c.startsWith("palette-")) {
-      if (c !== `palette-${palette}`) return false;
     } else {
       return false; // unknown modifier — not part of the theme matrix
     }
@@ -151,9 +147,9 @@ function applies(selector, theme, palette) {
 }
 
 /** Flatten the cascade into one {prop: rawValue} map. */
-function resolveTheme(rules, theme, palette) {
+function resolveTheme(rules, theme) {
   const applicable = rules
-    .filter((r) => applies(r.selector, theme, palette))
+    .filter((r) => applies(r.selector, theme))
     .map((r, i) => ({ ...r, spec: (r.selector.match(/\./g) || []).length, order: i }));
 
   applicable.sort((a, b) => (a.spec - b.spec) || (a.order - b.order));
@@ -308,53 +304,51 @@ function main() {
   let checks = 0;
 
   for (const theme of THEMES) {
-    for (const palette of PALETTES) {
-      const vars = resolveTheme(rules, theme, palette);
+    const vars = resolveTheme(rules, theme);
 
-      for (const entry of spec) {
-        let fg;
+    for (const entry of spec) {
+      let fg;
+      try {
+        fg = resolve(entry.fg, vars);
+      } catch (e) {
+        failures.push(`${theme}: cannot resolve ${entry.fg} — ${e.message}`);
+        continue;
+      }
+
+      for (const bgName of entry.bg) {
+        let bg;
         try {
-          fg = resolve(entry.fg, vars);
+          bg = resolve(bgName, vars);
         } catch (e) {
-          failures.push(`${theme}/${palette}: cannot resolve ${entry.fg} — ${e.message}`);
+          failures.push(`${theme}: cannot resolve ${bgName} — ${e.message}`);
           continue;
         }
 
-        for (const bgName of entry.bg) {
-          let bg;
-          try {
-            bg = resolve(bgName, vars);
-          } catch (e) {
-            failures.push(`${theme}/${palette}: cannot resolve ${bgName} — ${e.message}`);
-            continue;
-          }
+        // A translucent background is composited over the page backdrop.
+        const page = resolve("--bg-deep", vars);
+        const bgSolid = over(bg, page);
+        const fgSolid = over(fg, bgSolid);
+        const ratio = contrast(fgSolid, bgSolid);
+        checks++;
 
-          // A translucent background is composited over the page backdrop.
-          const page = resolve("--bg-deep", vars);
-          const bgSolid = over(bg, page);
-          const fgSolid = over(fg, bgSolid);
-          const ratio = contrast(fgSolid, bgSolid);
-          checks++;
-
-          const ok = ratio >= entry.min - 0.005;
-          rows.push({ theme, palette, fg: entry.fg, bg: bgName, ratio, min: entry.min, ok });
-          if (!ok) {
-            failures.push(
-              `${theme}/${palette}: ${entry.fg} ${hex(fgSolid)} on ${bgName} ${hex(bgSolid)} ` +
-              `= ${ratio.toFixed(2)} (need ${entry.min.toFixed(2)})`
-            );
-          }
+        const ok = ratio >= entry.min - 0.005;
+        rows.push({ theme, fg: entry.fg, bg: bgName, ratio, min: entry.min, ok });
+        if (!ok) {
+          failures.push(
+            `${theme}: ${entry.fg} ${hex(fgSolid)} on ${bgName} ${hex(bgSolid)} ` +
+            `= ${ratio.toFixed(2)} (need ${entry.min.toFixed(2)})`
+          );
         }
       }
     }
   }
 
   if (report) {
-    console.log("| theme | palette | foreground | background | ratio | min | |");
-    console.log("|---|---|---|---|---|---|---|");
+    console.log("| theme | foreground | background | ratio | min | |");
+    console.log("|---|---|---|---|---|---|");
     for (const r of rows) {
       console.log(
-        `| ${r.theme} | ${r.palette} | \`${r.fg}\` | \`${r.bg}\` | ${r.ratio.toFixed(2)} | ${r.min} | ${r.ok ? "ok" : "FAIL"} |`
+        `| ${r.theme} | \`${r.fg}\` | \`${r.bg}\` | ${r.ratio.toFixed(2)} | ${r.min} | ${r.ok ? "ok" : "FAIL"} |`
       );
     }
     console.log("");
@@ -367,7 +361,7 @@ function main() {
     process.exit(1);
   }
 
-  console.log(`contrast: ${checks} assertions passed (${PALETTES.length} palettes x ${THEMES.length} themes)`);
+  console.log(`contrast: ${checks} assertions passed (${THEMES.length} themes)`);
 }
 
 main();

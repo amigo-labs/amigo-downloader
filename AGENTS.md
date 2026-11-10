@@ -635,6 +635,8 @@ Torrent/Magnet sind aktuell nicht implementiert. `crates/core/src/protocol/` ent
 
 Features are built with the shared spec workflow from [amigo-labs/skills](https://github.com/amigo-labs/skills): `spec` → `spec-build` → `spec-check`, bugs with `spec-fix`, the gates with `qa`. The rules are the managed block "Spec-driven workflow" at the end of this file; the project facts the skills rely on are in "Spec workflow profile" below. Skills live in `.agents/skills/` (every agent) and are mirrored to `.claude/skills/` for Claude Code; `node .agents/sync.mjs` updates them.
 
+Two more shared skills are vendored for the web UI: `improve <target> [idea]` (measure a screen, flow or module with scripts, change it once, keep the change only if a blind old/new comparison wins in both orders) and `ui-polish` (screenshot-scored improvement loop). The facts `improve` needs are under **Improve** in the profile.
+
 ---
 
 ## Wichtige Design-Entscheidungen
@@ -651,6 +653,7 @@ Features are built with the shared spec workflow from [amigo-labs/skills](https:
 10. **Click'n'Load** auf Port 9666 — Browser-Extension Ökosystem nutzen
 11. **Eigenes Extractor-Crate** — YouTube, HLS, DASH als Built-in Extractors
 12. **i18n** — JSON-basierte Locale-Dateien (en, de)
+13. **Eine Akzentfarbe** — die Web-UI nutzt nur die Markenfarbe Limette `#9be22d` (`docs/site/project.yml`), keine wählbaren Paletten: die Farbe gehört zur Marke, nicht zu den Einstellungen
 
 ---
 
@@ -663,7 +666,7 @@ Power users and tech enthusiasts managing downloads (HTTP, Usenet) centrally. Da
 
 ### Brand: Technical, Precise, Powerful
 - Corporate Neon — professional at rest, electric on interaction
-- 6 color palettes: Blue, Teal, Indigo, Amber, Violet, Rose
+- One accent: the brand lime `#9be22d` (no user palettes)
 - Dark mode primary, "Lights On" as alternative
 - Neon intensity 5 levels (Off to Full), CRT scanlines only at Full
 
@@ -680,6 +683,19 @@ Power users and tech enthusiasts managing downloads (HTTP, Usenet) centrally. Da
 - **60:30:10**: 60% dark bg, 30% surfaces/text/borders, 10% neon accents
 - **Neon Glow**: --neon-glow-sm/md/lg, --neon-text-glow, --neon-border (scaled by intensity)
 - **Status**: online=#22c55e, warning=#eab308, error=#ef4444
+
+---
+
+## Gotchas
+
+Pitfalls that code and git history don't show. Short entries; `/spec-build` adds to this list when a loop surprised it.
+
+- **The build needs `protoc`.** `cargo build` / `clippy` fail in `pssh-box`'s build script without it (`apt-get install protobuf-compiler`); CI installs it.
+- **`vite dev` hides what the server enforces.** It sets no CSP header and proxies `/api`, so a blocked font or script only shows against the real server (`cargo run -p krake-server`). A debug server reads `web-ui/dist` from disk: rebuild the UI, no server restart.
+- **The server refuses downloads from private addresses**, loopback included (`crates/server/src/net_guard.rs`, no setting). A local test server therefore cannot feed running downloads into a served UI; tests reach the coordinator directly (`crates/core/tests/download_lifecycle_tests.rs`). For a UI run with live transfers use a public URL, or a throwaway binary built with the guard argument flipped — never committed.
+- **Login is rate-limited** (10 attempts per window, `crates/server/src/login.rs`). A browser script that logs in once per state or width locks itself out and then times out waiting for the list: log in once and reuse the cookies.
+- **Progress lives in memory until a transfer ends.** Bytes and speed of a running download are not in SQLite; REST handlers overlay them with `Coordinator::overlay_live_progress`. A new endpoint that returns download rows needs the same call.
+- **`DownloadEvent` is the WebSocket wire format.** It is serialized as is (fields next to `type`); `web-ui/src/lib/wsEvents.ts` parses exactly that. `crates/core/tests/event_wire_format.rs` and `web-ui/test/wsEvents.test.ts` pin the same payloads: change both sides together.
 
 ---
 
@@ -700,6 +716,7 @@ The project facts the shared spec skills (`spec`, `spec-build`, `spec-check`, `s
 - **Stopping points** — a new dependency (`Cargo.toml`, `package.json`), a change of the plugin host API (`HOST_API_VERSION`, `krake.d.ts`, `docs/plugin-api.md`), a SQLite schema change, a widened plugin sandbox, new `unsafe`, a test that would have to be disabled, an architectural decision not yet under "Wichtige Design-Entscheidungen", an AC that turns out wrong.
 - **Sizing** — one session builds about one M task (3–6 files, ~400 changed lines); a bigger feature is split into several specs.
 - **Commits** — Conventional Commits (release-please: `feat` and `fix` start a release), one concept per commit, scopes `core`, `extractors`, `plugin-runtime`, `server`, `cli`, `web-ui`, `ui`, `sdk`, `plugins`, `tauri`, `docker`, `spec`. Example: `feat(core): resume DASH downloads per segment (AC-02, AC-03)`.
+- **Improve** — for `/improve`. Serve the UI: `pnpm build:web-ui`, then `KRAKE_CONFIG_DIR=<scratch>/cfg KRAKE_SETUP_USER=admin KRAKE_SETUP_PASSWORD=<8+ chars> cargo run -p krake-server` from a scratch working directory (downloads land in `./downloads`), URL `http://127.0.0.1:1516/`; a builder's worktree is served with `pnpm exec vite dev --port <p> --strictPort` in its `web-ui/`, which proxies `/api` to that server. Playwright is not a dependency of this repository: `sweep.mjs --pkg <dir>` needs a folder whose `package.json` resolves the preinstalled `playwright`. Project checks: `node scripts/ui-lint.mjs` (hard bans, inline-style budget that only ratchets down; `--update` locks an improvement in), `pnpm --filter @amigo-labs/krake-ui check` (contrast pairs, primitives compile), `pnpm --filter @amigo-labs/krake-web-ui check`, `test` and `build`. Covering tests: `web-ui/test/*.test.ts` (grep for the target's helpers in `web-ui/src/lib/`); there is no browser suite. Stress setups live in the run's scratch folder: log in once and reuse the session cookie, set `localStorage` `locale` (`en` / `de`) and `theme`, seed downloads through `POST /api/v1/downloads` (see Gotchas for local test servers). Builder constraints: only the tokens of `packages/ui/src/tokens.css` (one accent, no raw colours), primitives from `packages/ui`, classes in `<style>` blocks rather than new `style=` attributes, every string through `tr()` with both languages in `web-ui/src/lib/i18n.ts`, keep the row classes `.dl-item`, `.dl-open`, `.dl-check`, `.dl-meta` and every accessible name, do not regress `docs/specs/ui-review-2026-07.md`.
 - **Branches** — changes reach `main` through PRs; feature branch `feat/<spec-name>`.
 
 <!-- amigo-skills:begin spec-workflow -->

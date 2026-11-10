@@ -500,9 +500,19 @@ impl Coordinator {
             let mut progress_rx = progress_rx.clone();
             let event_tx = self.event_tx.clone();
             let id = id.to_string();
+            let storage = self.storage.clone();
             tokio::spawn(async move {
+                let mut size_recorded = false;
                 while progress_rx.changed().await.is_ok() {
                     let p = progress_rx.borrow().clone();
+                    // Persist the size once it is known, so a list fetched
+                    // over REST can show a percentage, not only the socket.
+                    if !size_recorded && let Some(total) = p.total_bytes {
+                        size_recorded = true;
+                        let _ = storage
+                            .update_download_file_info(&id, None, Some(total))
+                            .await;
+                    }
                     let _ = event_tx.send(DownloadEvent::Progress {
                         id: id.clone(),
                         progress: p,
@@ -544,6 +554,8 @@ impl Coordinator {
                 let crx = cancel_rx.clone();
 
                 let storage = &storage;
+                let event_tx = &event_tx;
+                let max_retries = retry_policy.max_retries;
                 let download_id = &download_id;
                 let protocol = &protocol;
                 let url = &url;
@@ -555,9 +567,12 @@ impl Coordinator {
 
                 async move {
                     if attempt > 0 {
-                        let _ = storage
-                            .update_download_error(download_id, "retrying", attempt)
-                            .await;
+                        // The wait is over: this attempt is a transfer again.
+                        let _ = storage.clear_retrying_mark(download_id).await;
+                        let _ = event_tx.send(DownloadEvent::StatusChanged {
+                            id: download_id.to_string(),
+                            status: "downloading".to_string(),
+                        });
                     }
 
                     let job = crate::protocol::DownloadJob {
@@ -599,8 +614,23 @@ impl Coordinator {
                     match result {
                         Ok(value) => RetryOutcome::Success(value),
                         Err(e @ crate::Error::Cancelled) => RetryOutcome::Abort(e),
+                        Err(e) if is_permanent_failure(&e) => {
+                            warn!("Download failed permanently: {download_id} — {e}");
+                            RetryOutcome::Abort(e)
+                        }
                         Err(e) => {
                             warn!("Download attempt failed: {download_id} — {e}");
+                            // Marked before the backoff sleep, so the row
+                            // reads "retrying" while it actually waits.
+                            if attempt < max_retries {
+                                let _ = storage
+                                    .update_download_error(download_id, "retrying", attempt + 1)
+                                    .await;
+                                let _ = event_tx.send(DownloadEvent::StatusChanged {
+                                    id: download_id.to_string(),
+                                    status: "downloading".to_string(),
+                                });
+                            }
                             RetryOutcome::Retry(e)
                         }
                     }
@@ -612,6 +642,14 @@ impl Coordinator {
                 Ok((bytes, actual_path)) => {
                     let _ = storage
                         .update_download_progress(&download_id, bytes, 0)
+                        .await;
+                    // A Usenet job returns the first of several files; its
+                    // row keeps the NZB's name.
+                    let saved_as = (protocol != "usenet")
+                        .then(|| actual_path.file_name().and_then(|n| n.to_str()))
+                        .flatten();
+                    let _ = storage
+                        .update_download_file_info(&download_id, saved_as, Some(bytes))
                         .await;
 
                     // Run post-processing
@@ -628,6 +666,7 @@ impl Coordinator {
                     let _ = storage
                         .update_download_status(&download_id, QueueStatus::Completed)
                         .await;
+                    let _ = storage.record_history(&download_id).await;
                     let _ = event_tx.send(DownloadEvent::Completed {
                         id: download_id.clone(),
                     });
@@ -732,6 +771,19 @@ impl Coordinator {
         Ok(())
     }
 
+    /// Overlay the live progress of running transfers onto rows read from
+    /// storage. Bytes and speed are only written to the database when a
+    /// transfer ends, so without this a list fetched over REST shows every
+    /// running download at 0 B.
+    pub async fn overlay_live_progress(&self, rows: &mut [DownloadRow]) {
+        let active = self.active.lock().await;
+        for row in rows {
+            if let Some(dl) = active.get(&row.id) {
+                apply_live_progress(row, &dl.progress_rx.borrow());
+            }
+        }
+    }
+
     /// Get progress for an active download.
     pub async fn get_progress(&self, id: &str) -> Option<DownloadProgress> {
         let active = self.active.lock().await;
@@ -796,6 +848,33 @@ impl Coordinator {
             }
         }
         None
+    }
+}
+
+/// Copy a running transfer's progress into its row.
+fn apply_live_progress(row: &mut DownloadRow, progress: &DownloadProgress) {
+    row.bytes_downloaded = progress.bytes_downloaded;
+    row.speed_current = progress.speed_bytes_per_sec;
+    if let Some(total) = progress.total_bytes {
+        row.filesize = Some(total);
+    }
+}
+
+/// Whether an error will repeat on every attempt, so retrying only delays
+/// the failure: an HTTP client error other than timeout / too-early /
+/// rate-limit.
+fn is_permanent_failure(error: &crate::Error) -> bool {
+    match error {
+        crate::Error::Http(e) => e.status().is_some_and(|s| {
+            s.is_client_error()
+                && !matches!(
+                    s,
+                    reqwest::StatusCode::REQUEST_TIMEOUT
+                        | reqwest::StatusCode::TOO_EARLY
+                        | reqwest::StatusCode::TOO_MANY_REQUESTS
+                )
+        }),
+        _ => false,
     }
 }
 
@@ -916,6 +995,59 @@ impl Protocol {
 mod tests {
     use super::*;
     use std::assert_matches;
+
+    fn stored_row(filesize: Option<u64>) -> DownloadRow {
+        DownloadRow {
+            id: "d1".into(),
+            url: "https://example.com/file.bin".into(),
+            protocol: "http".into(),
+            filename: None,
+            filesize,
+            status: "downloading".into(),
+            priority: 0,
+            package_id: None,
+            plugin_id: None,
+            download_dir: None,
+            bytes_downloaded: 0,
+            speed_current: 0,
+            error_message: None,
+            retry_count: 0,
+            created_at: String::new(),
+            started_at: None,
+            completed_at: None,
+            owner: None,
+        }
+    }
+
+    #[test]
+    fn apply_live_progress_running_transfer_replaces_stored_zeroes() {
+        let mut row = stored_row(None);
+        apply_live_progress(
+            &mut row,
+            &DownloadProgress {
+                bytes_downloaded: 500,
+                total_bytes: Some(2000),
+                speed_bytes_per_sec: 250,
+            },
+        );
+        assert_eq!(row.bytes_downloaded, 500);
+        assert_eq!(row.speed_current, 250);
+        assert_eq!(row.filesize, Some(2000));
+    }
+
+    #[test]
+    fn apply_live_progress_unknown_total_keeps_stored_size() {
+        let mut row = stored_row(Some(4000));
+        apply_live_progress(
+            &mut row,
+            &DownloadProgress {
+                bytes_downloaded: 10,
+                total_bytes: None,
+                speed_bytes_per_sec: 1,
+            },
+        );
+        assert_eq!(row.filesize, Some(4000));
+    }
 
     #[test]
     fn owner_cache_is_bounded_and_reflects_owner() {

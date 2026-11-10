@@ -10,6 +10,8 @@
 
   const KEYS = ["usenet", "rss_feeds", "server_stats"] as const;
 
+  // RSS import and the server statistics only exist inside Usenet mode;
+  // with it off they are shown disabled instead of as live switches.
   function toggle(key: (typeof KEYS)[number]) {
     config.features[key] = !config.features[key];
     onsave();
@@ -27,6 +29,7 @@
           checked={config.features[key]}
           label={tr($locale, `features.${key}`)}
           description={tr($locale, `features.${key}_desc`)}
+          disabled={key !== "usenet" && !config.features.usenet}
           onchange={() => toggle(key)}
         />
       {/each}

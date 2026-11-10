@@ -126,7 +126,65 @@ export function statusCounts(list: Pick<Download, "status">[]): Record<string, n
   return counts;
 }
 
-/** Human label for a download, preferring the filename over the raw URL. */
+/**
+ * Last path segment of a URL, decoded -- what the file will most likely be
+ * called. Null when the URL has no usable segment (a bare host, a trailing
+ * slash) or cannot be parsed.
+ */
+export function urlBasename(url: string): string | null {
+  try {
+    const segment = new URL(url).pathname.split("/").filter(Boolean).pop();
+    if (!segment) return null;
+    try {
+      return decodeURIComponent(segment);
+    } catch {
+      return segment;
+    }
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Host a download comes from, with a non-default port. Falls back to the
+ * raw URL when it cannot be parsed, so a row never loses its source.
+ */
+export function urlHost(url: string): string {
+  try {
+    return new URL(url).host || url;
+  } catch {
+    return url;
+  }
+}
+
+/**
+ * Human label for a download: the filename, else the name the URL points
+ * at, else the raw URL. The server learns the real filename only once the
+ * transfer has started, and a row titled with a full URL and its query
+ * string is unreadable.
+ */
 export function displayName(d: Pick<Download, "filename" | "url">): string {
-  return d.filename || d.url;
+  return d.filename || urlBasename(d.url) || d.url;
+}
+
+/**
+ * The server marks a running download that is waiting to try again with
+ * this sentinel in `error` (crates/core/src/coordinator.rs).
+ */
+const RETRYING = "retrying";
+
+/** True while a running download is between attempts. */
+export function isRetrying(d: Pick<Download, "status" | "error">): boolean {
+  return d.status === "downloading" && d.error === RETRYING;
+}
+
+/** Why a download failed, or null when it did not fail or gave no reason. */
+export function failureReason(d: Pick<Download, "status" | "error">): string | null {
+  if (d.status !== "failed" || !d.error || d.error === RETRYING) return null;
+  return d.error;
+}
+
+/** i18n key for the status badge of a download, including "retrying". */
+export function downloadStatusKey(d: Pick<Download, "status" | "error">): string {
+  return isRetrying(d) ? "status.retrying" : statusLabelKey(d.status);
 }

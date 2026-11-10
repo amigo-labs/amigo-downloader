@@ -3,8 +3,9 @@
   import { openDetailPanel, selectedDownloadId, type Download } from "../../lib/stores";
   import { locale, tr } from "../../lib/i18n";
   import {
-    fileIcon, progressPct, statusInk, statusFill, statusTone, statusLabelKey,
+    fileIcon, progressPct, statusInk, statusFill, statusTone,
     isActive as isActiveFn, canPause, canResume, canRetry, etaSeconds, formatEta, displayName,
+    downloadStatusKey, failureReason, urlHost,
   } from "../../lib/download";
   import { createDownloadActions } from "../../lib/downloadActions.svelte";
   import { handleCheckboxClick } from "../../lib/selection";
@@ -49,7 +50,9 @@
   let active = $derived(isActiveFn(download));
   let ink = $derived(statusInk(download.status));
   let label = $derived(displayName(download));
-  let statusText = $derived(tr($locale, statusLabelKey(download.status)));
+  let statusText = $derived(tr($locale, downloadStatusKey(download)));
+  let failure = $derived(failureReason(download));
+  let host = $derived(urlHost(download.url));
   let eta = $derived(formatEta(etaSeconds(download)));
   let isOpen = $derived($selectedDownloadId === download.id);
   let checked = $derived($selectedIds.has(download.id));
@@ -82,7 +85,14 @@
   ARIA, no heading in the document outline, and an accessible name that was
   the entire card read out as one string. The owning <li> lives in
   DownloadList, where animate:flip needs it.
+
+  `.dl-fit` is the size container the row lays itself out by: the list is
+  ~380px wide next to the docked side panel on a 1024px screen, so the
+  viewport says nothing about the room a row has. The context menu stays
+  outside it, because a size container may become the containing block of
+  fixed-position descendants.
 -->
+<div class="dl-fit">
 <div
   class="dl-item {variant}"
   class:is-open={isOpen}
@@ -136,11 +146,17 @@
           {label}
         </button>
       </h3>
-      <span class="dl-status">{statusText}</span>
     </div>
 
-    {#if variant === "card"}
-      <p class="dl-url">{download.url}</p>
+    <!-- Name and source are what identify a download; the full URL with
+         its path is in the detail panel and in this tooltip. -->
+    <div class="dl-sub">
+      <span class="dl-status">{statusText}</span>
+      <span class="dl-host" title={download.url}>{host}</span>
+    </div>
+
+    {#if failure}
+      <p class="dl-error" title={failure}>{failure}</p>
     {/if}
 
     <div class="dl-progress">
@@ -227,6 +243,7 @@
     />
   </div>
 </div>
+</div>
 
 {#if contextMenu}
   <ContextMenu
@@ -238,6 +255,10 @@
 {/if}
 
 <style>
+  .dl-fit {
+    container: dl-fit / inline-size;
+  }
+
   .dl-item {
     position: relative;
     display: flex;
@@ -295,20 +316,34 @@
 
   /* A real checkbox: focusable, Space-togglable, aria-checked for free.
      It fades in on hover/focus/checked so the resting list stays calm, but
-     it is always in the DOM and always in the tab order. */
+     it is always in the DOM and always in the tab order. The input is a
+     24px target (WCAG 2.5.8); the 18px box is drawn inside it, and the
+     negative margin keeps that box where an 18px input would put it. */
   .dl-check {
     appearance: none;
+    display: grid;
+    place-items: center;
     flex-shrink: 0;
-    width: 18px;
-    height: 18px;
-    margin: 0;
-    border: 2px solid var(--border-color);
+    width: 24px;
+    height: 24px;
+    margin: -3px;
+    border: none;
     border-radius: var(--radius-xs);
     background: transparent;
     cursor: pointer;
     opacity: 0.35;
-    transition: opacity var(--dur-fast) var(--ease-out),
-                background-color var(--dur-fast) var(--ease-out);
+    transition: opacity var(--dur-fast) var(--ease-out);
+  }
+
+  .dl-check::before {
+    content: "";
+    grid-area: 1 / 1;
+    box-sizing: border-box;
+    width: 18px;
+    height: 18px;
+    border: 2px solid var(--border-color);
+    border-radius: var(--radius-xs);
+    transition: background-color var(--dur-fast) var(--ease-out);
   }
 
   .dl-item:hover .dl-check,
@@ -317,17 +352,17 @@
     opacity: 1;
   }
 
-  .dl-check:checked {
+  .dl-check:checked::before {
     background: var(--accent-solid);
     border-color: var(--accent-solid);
   }
 
   .dl-check:checked::after {
     content: "";
-    display: block;
+    grid-area: 1 / 1;
     width: 4px;
     height: 8px;
-    margin: 1px auto 0;
+    margin-top: -2px;
     border: solid var(--on-accent);
     border-width: 0 2px 2px 0;
     transform: rotate(45deg);
@@ -338,12 +373,19 @@
   .dl-grip {
     display: flex;
     align-items: center;
+    justify-content: center;
     flex-shrink: 0;
-    padding: 0.25rem;
+    min-width: 24px;
+    min-height: 24px;
+    padding: 0;
     border: none;
     background: transparent;
     color: var(--text-muted);
     cursor: grab;
+  }
+
+  .card .dl-grip {
+    margin-top: -2px;
   }
 
   .dl-grip:disabled {
@@ -363,12 +405,33 @@
     background: var(--status-fill);
   }
 
+  /* One grid for both densities: the card stacks name, host, progress and
+     figures; the compact row puts the host in front of the figures. */
   .dl-body {
     flex: 1;
     min-width: 0;
+    display: grid;
+    align-items: center;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      "head status"
+      "host host"
+      "error error"
+      "progress progress"
+      "meta meta";
+  }
+
+  .row .dl-body {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "head head status"
+      "error error error"
+      "progress progress progress"
+      "host meta meta";
   }
 
   .dl-head {
+    grid-area: head;
     display: flex;
     align-items: center;
     gap: 0.5rem;
@@ -384,10 +447,14 @@
     font-weight: 600;
   }
 
+  /* The stretched ::after is the real target; the padding (taken back by
+     the margin, so the line keeps its height) makes the button's own box
+     24px as well. */
   .dl-open {
     display: block;
     width: 100%;
-    padding: 0;
+    margin: -2px 0;
+    padding: 2px 0;
     border: none;
     background: transparent;
     color: var(--text-primary);
@@ -415,19 +482,29 @@
     outline-offset: -2px;
   }
 
+  /* Status and host are one group in the markup; in a wide row they are
+     placed separately on the body grid. */
+  .dl-sub {
+    display: contents;
+  }
+
   .dl-status {
+    grid-area: status;
     flex-shrink: 0;
+    margin-left: 0.5rem;
     padding: 0.05rem 0.5rem;
     border-radius: var(--radius-full);
     font-size: 0.625rem;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.04em;
+    white-space: nowrap;
     color: var(--status-ink);
     background: color-mix(in srgb, var(--status-fill) 14%, transparent);
   }
 
-  .dl-url {
+  .dl-host {
+    grid-area: host;
     margin: 0.125rem 0 0;
     font-family: var(--font-mono);
     font-size: 0.6875rem;
@@ -437,7 +514,25 @@
     text-overflow: ellipsis;
   }
 
+  .row .dl-host {
+    max-width: 16rem;
+    margin: 0 0.75rem 0 0;
+  }
+
+  /* Why it failed, on the row itself: the reason used to be one click
+     away in the detail panel, or nowhere on a phone. */
+  .dl-error {
+    grid-area: error;
+    margin: 0.25rem 0 0;
+    font-size: 0.6875rem;
+    color: var(--danger-ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .dl-progress {
+    grid-area: progress;
     margin: 0.5rem 0;
   }
 
@@ -446,8 +541,11 @@
   }
 
   .dl-meta {
+    grid-area: meta;
     display: flex;
-    gap: 0.75rem;
+    flex-wrap: wrap;
+    gap: 0.125rem 0.75rem;
+    white-space: nowrap;
     font-family: var(--font-mono);
     font-size: 0.6875rem;
     font-variant-numeric: tabular-nums;
@@ -456,24 +554,6 @@
 
   .dl-speed {
     color: var(--accent-ink);
-  }
-
-  /* Below the phone breakpoint the row dropped to ~420px of fixed-width
-     columns and pushed the filename to zero. Secondary figures give way
-     first; the filename and the actions never do. */
-  @media (max-width: 639px) {
-    .row .dl-pct,
-    .row .dl-eta,
-    .row .dl-url {
-      display: none;
-    }
-
-    .row .dl-bytes {
-      max-width: 9rem;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
   }
 
   .dl-actions {
@@ -485,5 +565,137 @@
 
   .card .dl-actions {
     align-self: flex-end;
+  }
+
+  /* The narrow layout, keyed to the width the row really has (a phone, or
+     the list next to the docked side panel). Beside the name, three or
+     four buttons and the status badge left the filename one or two
+     characters. Now the name owns the first line, and progress and figures
+     run the full width. A card gives the host its own line under the name
+     and puts grip, status and actions on the next; a compact row keeps
+     grip, status, host and actions on one line, where only the host
+     gives way. */
+  @container dl-fit (max-width: 37.5rem) {
+    .dl-item,
+    .dl-item.card {
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.25rem 0.5rem;
+    }
+
+    .dl-item.card {
+      padding: var(--space-3);
+    }
+
+    .dl-body {
+      display: contents;
+    }
+
+    .dl-check {
+      order: 1;
+      margin: 0;
+    }
+
+    /* check (24px) + gap + name fill line one exactly enough that the
+       grip cannot join it. */
+    .dl-head {
+      order: 2;
+      flex: 1 1 calc(100% - 2.5rem);
+    }
+
+    .dl-host,
+    .row .dl-host {
+      order: 3;
+      min-width: 0;
+      max-width: none;
+      margin: 0;
+    }
+
+    /* Indented to sit under the name, not under the checkbox. */
+    .card .dl-host {
+      flex-basis: 100%;
+      padding-left: 2rem;
+    }
+
+    .dl-grip,
+    .card .dl-grip {
+      order: 4;
+      margin: 0;
+    }
+
+    .dl-status {
+      order: 5;
+      margin: 0;
+    }
+
+    .row .dl-sub {
+      order: 4;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex: 1 1 0;
+    }
+
+    /* Zero-width basis: the host takes what the line has left and never
+       pushes the actions off it. */
+    .row .dl-host {
+      flex: 1 1 0;
+      width: 0;
+    }
+
+    /* The buttons keep their full target; the negative margin only stops
+       them from making the line taller than it reads. */
+    .dl-actions,
+    .card .dl-actions {
+      order: 6;
+      align-self: auto;
+      gap: 0;
+      margin: -0.25rem 0 -0.25rem auto;
+    }
+
+    .dl-error {
+      order: 7;
+      flex-basis: 100%;
+      margin: 0;
+    }
+
+    .dl-progress,
+    .row .dl-progress {
+      order: 8;
+      flex-basis: 100%;
+      margin: 0.125rem 0;
+    }
+
+    .dl-meta {
+      order: 9;
+      flex-basis: 100%;
+    }
+
+    /* The status bar becomes an edge marker instead of a column. */
+    .dl-bar {
+      position: absolute;
+      left: -1px;
+      top: 0.75rem;
+      bottom: 0.75rem;
+      align-self: auto;
+    }
+  }
+
+  /* On the narrowest phones the figures would wrap, and grip, status and
+     three actions would not share a line: the ETA gives way and the card
+     gives up some padding. */
+  @container dl-fit (max-width: 21rem) {
+    .dl-item,
+    .dl-item.card {
+      column-gap: 0.375rem;
+    }
+
+    .dl-item.card {
+      padding: var(--space-2);
+    }
+
+    .dl-eta {
+      display: none;
+    }
   }
 </style>

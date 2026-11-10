@@ -198,6 +198,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "status.failed": "failed",
     "status.paused": "paused",
     "status.queued": "queued",
+    "status.retrying": "retrying",
 
     // Toasts
     "toast.download_complete": "Download complete",
@@ -218,6 +219,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "detail.gone_hint": "It was removed, here or from another client.",
     "detail.protocol": "Protocol",
     "detail.size": "Size",
+    "detail.downloaded": "Downloaded",
+    "detail.file": "File",
     "detail.progress": "Progress",
     "detail.chunks": "Chunks",
     "detail.chunks_paused": "Chunks (paused)",
@@ -392,7 +395,6 @@ const translations: Record<Locale, Record<string, string>> = {
     "settings.theme": "Theme",
     "theme.dark": "Dark",
     "theme.light": "Light",
-    "settings.color_palette": "Color Palette",
     "settings.neon_intensity": "Neon Intensity",
 
     // Settings — downloads
@@ -427,7 +429,6 @@ const translations: Record<Locale, Record<string, string>> = {
     "cmd.add_download": "Add download",
     "cmd.toggle_theme": "Toggle light / dark",
     "cmd.show_shortcuts": "Show keyboard shortcuts",
-    "cmd.set_palette": "Palette: {name}",
     "cmd.set_intensity": "Neon intensity: {name}",
     "cmd.hint_open": "Open command palette",
 
@@ -624,6 +625,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "status.failed": "Fehler",
     "status.paused": "Pausiert",
     "status.queued": "Warteschl.",
+    "status.retrying": "Neuer Versuch",
 
     "toast.download_complete": "Download abgeschlossen",
     "toast.download_failed": "Download fehlgeschlagen",
@@ -641,6 +643,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "detail.gone_hint": "Er wurde entfernt — hier oder von einem anderen Client.",
     "detail.protocol": "Protokoll",
     "detail.size": "Größe",
+    "detail.downloaded": "Geladen",
+    "detail.file": "Datei",
     "detail.progress": "Fortschritt",
     "detail.chunks": "Chunks",
     "detail.chunks_paused": "Chunks (pausiert)",
@@ -802,7 +806,6 @@ const translations: Record<Locale, Record<string, string>> = {
     "settings.theme": "Design",
     "theme.dark": "Dunkel",
     "theme.light": "Hell",
-    "settings.color_palette": "Farbpalette",
     "settings.neon_intensity": "Neon-Intensität",
 
     "settings.downloads": "Downloads",
@@ -833,7 +836,6 @@ const translations: Record<Locale, Record<string, string>> = {
     "cmd.add_download": "Download hinzufügen",
     "cmd.toggle_theme": "Hell / Dunkel umschalten",
     "cmd.show_shortcuts": "Tastenkürzel anzeigen",
-    "cmd.set_palette": "Palette: {name}",
     "cmd.set_intensity": "Neon-Intensität: {name}",
     "cmd.hint_open": "Befehlspalette öffnen",
 

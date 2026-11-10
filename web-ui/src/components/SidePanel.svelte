@@ -5,6 +5,7 @@
   import { openLayer, layerState } from "../lib/overlays.svelte";
   import { locale, tr } from "../lib/i18n";
   import { dur } from "../lib/motion";
+  import { displayName } from "../lib/download";
   import DetailPanel from "./DetailPanel.svelte";
   import AddPanel from "./AddPanel.svelte";
   import Dialog from "@amigo-labs/krake-ui/components/Dialog.svelte";
@@ -14,7 +15,9 @@
   let title = $derived(
     $sidePanelMode === "add"
       ? tr($locale, "add.title")
-      : $selectedDownload?.filename || $selectedDownload?.url || tr($locale, "panel.details"),
+      : $selectedDownload
+        ? displayName($selectedDownload)
+        : tr($locale, "panel.details"),
   );
 
   // Only the overlay variant joins the Escape stack; the docked desktop panel
@@ -44,8 +47,11 @@
   {/if}
 {/snippet}
 
-{#if isOpen}
-  {#if $isDesktop}
+<!-- The breakpoint is the outer block on purpose: transitions are local to
+     the inner `isOpen` block, so crossing the breakpoint with a panel open
+     swaps the variants at once instead of flying one out over the other. -->
+{#if $isDesktop}
+  {#if isOpen}
     <aside
       aria-label={$sidePanelMode === "add" ? tr($locale, "add.title") : tr($locale, "panel.details")}
       class="flex flex-col w-80 shrink-0 border-l overflow-y-auto"
@@ -56,14 +62,16 @@
         class="flex items-center justify-between gap-2 px-4 py-3 border-b"
         style="border-color: var(--border-color)"
       >
-        <h3 class="font-semibold text-sm truncate flex-1" style="color: var(--text-primary)">
+        <h3 class="font-semibold text-sm truncate flex-1" style="color: var(--text-primary)" {title}>
           {title}
         </h3>
         <IconButton icon="x" label={tr($locale, "common.close")} onclick={closeSidePanel} />
       </div>
       {@render body()}
     </aside>
-  {:else}
+  {/if}
+{:else}
+  {#if isOpen}
     <Dialog
       {title}
       align="right"

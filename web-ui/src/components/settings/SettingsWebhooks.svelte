@@ -55,7 +55,7 @@
     <button
       onclick={() => (showAdd = !showAdd)}
       class="action-btn px-3 py-1.5 rounded-lg text-xs font-semibold"
-      style="background: var(--neon-primary); color: var(--bg-deep)"
+      style="background: var(--accent-solid); color: var(--on-accent)"
     >+ {tr($locale, "settings.add_webhook")}</button>
   </div>
 
@@ -84,7 +84,7 @@
       <div class="flex gap-2 pt-1">
         <button onclick={handleAdd}
           class="action-btn px-4 py-2 rounded-lg text-sm font-semibold"
-          style="background: var(--neon-primary); color: var(--bg-deep)"
+          style="background: var(--accent-solid); color: var(--on-accent)"
           disabled={!name.trim() || !url.trim()}>{tr($locale, "common.save")}</button>
         <button onclick={() => (showAdd = false)}
           class="px-4 py-2 rounded-lg text-sm"

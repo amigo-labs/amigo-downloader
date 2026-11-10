@@ -333,7 +333,7 @@ POST   /{username}/jsonrpc
 The web interface is a Svelte 5 PWA with:
 
 - **Dual layout**: Modern (cards) or Classic (table) — your choice
-- **Theming**: Dark/Light mode + 6 accent colors (Blue, Green, Purple, Coral, Orange, Cyan)
+- **Theming**: Dark/Light mode in the brand lime, adjustable neon intensity
 - **Speed sparkline**: Mini graph showing speed history in the sidebar
 - **Chunk visualization**: See parallel chunks downloading in real-time
 - **Toast notifications**: Slide-in alerts for completed/failed downloads

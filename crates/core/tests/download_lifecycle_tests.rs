@@ -154,13 +154,133 @@ async fn test_simple_download_writes_file_to_disk() {
     assert_eq!(bytes, b"hello world");
 }
 
-// Known-broken: tracked by audit #13 follow-up in
-// `docs/specs/audit-2026-04-25.md` — the coordinator's per-attempt cancel
-// oneshot is fabricated fresh after attempt 0 and the dummy sender is
-// dropped immediately, which closes the receiver and produces a
-// "Download cancelled" error on every retry. Fixing that bug will make
-// this test pass; run with `cargo test -- --ignored` to verify.
-#[ignore = "audit #13: retry loop self-cancels because cancel oneshot is recreated and dropped"]
+/// A plain HTTP download has no plugin to name it; the row must still end
+/// up with the file's real name and size, or the UI can only show the URL
+/// and an empty progress bar.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_completed_download_records_filename_and_size() {
+    let mock = MockServer::start().await;
+    mount_static_file(&mock, "/file.bin", b"hello world").await;
+
+    let (_tmp, coord) = lifecycle_coordinator();
+    let rx = coord.subscribe();
+    let id = coord
+        .add_download(&format!("{}/file.bin?token=abc", mock.uri()), None)
+        .await
+        .expect("add_download");
+    assert_eq!(wait_for_terminal(rx, &id).await, Some(true));
+
+    let row = coord.storage().get_download(&id).await.unwrap().unwrap();
+    assert_eq!(row.filename.as_deref(), Some("file.bin"));
+    assert_eq!(row.filesize, Some(11));
+    assert_eq!(row.bytes_downloaded, 11);
+}
+
+/// "retrying" marks the wait between attempts: it is set when an attempt
+/// fails and gone once the download has completed on a later attempt.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_retrying_mark_covers_the_backoff_only() {
+    let mock = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/flaky.bin"))
+        .respond_with(ResponseTemplate::new(503))
+        .up_to_n_times(1)
+        .mount(&mock)
+        .await;
+    mount_static_file(&mock, "/flaky.bin", b"recovered").await;
+
+    // A long first backoff, so the waiting state can be observed.
+    let (_tmp, coord) = lifecycle_coordinator_with(|c| {
+        c.retry.base_delay_secs = 1.0;
+        c.retry.max_delay_secs = 1.0;
+    });
+    let rx = coord.subscribe();
+    let id = coord
+        .add_download(&format!("{}/flaky.bin", mock.uri()), None)
+        .await
+        .expect("add_download");
+
+    let mut seen_retrying = false;
+    for _ in 0..40 {
+        let row = coord.storage().get_download(&id).await.unwrap().unwrap();
+        if row.status == "downloading" && row.error_message.as_deref() == Some("retrying") {
+            seen_retrying = true;
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(25)).await;
+    }
+    assert!(seen_retrying, "the row reads retrying during the backoff");
+
+    assert_eq!(wait_for_terminal(rx, &id).await, Some(true));
+    let row = coord.storage().get_download(&id).await.unwrap().unwrap();
+    assert_eq!(row.error_message, None, "the mark is gone after the retry");
+}
+
+/// The history is the log of finished downloads: an entry appears when a
+/// download completes and outlives the row's removal from the list.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_completed_download_is_logged_in_history() {
+    let mock = MockServer::start().await;
+    mount_static_file(&mock, "/file.bin", b"hello world").await;
+
+    let (_tmp, coord) = lifecycle_coordinator();
+    let rx = coord.subscribe();
+    let id = coord
+        .add_download(&format!("{}/file.bin", mock.uri()), None)
+        .await
+        .expect("add_download");
+    assert_eq!(wait_for_terminal(rx, &id).await, Some(true));
+
+    let history = coord.storage().get_history().await.unwrap();
+    assert_eq!(history.len(), 1, "completion writes a history entry");
+    assert_eq!(history[0].id, id);
+    assert_eq!(history[0].filename.as_deref(), Some("file.bin"));
+    assert_eq!(history[0].filesize, Some(11));
+
+    coord.cancel(&id).await.expect("remove from the list");
+    assert!(coord.storage().get_download(&id).await.unwrap().is_none());
+    assert_eq!(coord.storage().get_history().await.unwrap().len(), 1);
+}
+
+/// A 404 will not get better by asking again: the download must fail on
+/// the first attempt instead of sitting in "downloading" through the whole
+/// backoff schedule.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_client_error_fails_without_retrying() {
+    let mock = MockServer::start().await;
+    Mock::given(method("HEAD"))
+        .and(path("/gone.bin"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&mock)
+        .await;
+    Mock::given(method("GET"))
+        .and(path("/gone.bin"))
+        .respond_with(ResponseTemplate::new(404))
+        .mount(&mock)
+        .await;
+
+    let (_tmp, coord) = lifecycle_coordinator();
+    let rx = coord.subscribe();
+    let id = coord
+        .add_download(&format!("{}/gone.bin", mock.uri()), None)
+        .await
+        .expect("add_download");
+    assert_eq!(wait_for_terminal(rx, &id).await, Some(false));
+
+    let heads = mock
+        .received_requests()
+        .await
+        .expect("request recording is on")
+        .iter()
+        .filter(|r| r.method.as_str() == "HEAD")
+        .count();
+    assert_eq!(heads, 1, "a 404 must not be retried");
+
+    let row = coord.storage().get_download(&id).await.unwrap().unwrap();
+    let error = row.error_message.expect("the failure reason is stored");
+    assert!(error.contains("404"), "error names the status: {error}");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn test_download_retries_on_transient_5xx() {
     let mock = MockServer::start().await;

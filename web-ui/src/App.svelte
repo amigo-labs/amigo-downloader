@@ -33,7 +33,6 @@
     features,
     neonIntensity,
     openAddPanel,
-    palette,
     pendingCaptcha,
     protocolFilter,
     pushSpeedSample,
@@ -53,7 +52,8 @@
   } from "./lib/stores";
   import { locale, tr } from "./lib/i18n";
   import { addToast } from "./lib/toast";
-  import { registerBindings, startKeymap, type Binding } from "./lib/keymap";
+  import { interpretWsEvent } from "./lib/wsEvents";
+  import { formatChord, registerBindings, startKeymap, type Binding } from "./lib/keymap";
   import { pruneSelection } from "./lib/selection";
   import PairingModal from "./components/PairingModal.svelte";
 
@@ -143,10 +143,14 @@
       bootState = s;
     });
 
-    // Initialize theme + palette + intensity
-    // Apply theme class
+    // Initialize theme + intensity
     document.documentElement.classList.toggle("light", $theme === "light");
-    document.documentElement.classList.add(`palette-${$palette}`);
+    // The accent used to be a user choice; drop what an older build stored.
+    try {
+      localStorage.removeItem("color-palette");
+    } catch {
+      // Storage can be unavailable (private mode); nothing to clean up then.
+    }
     applyIntensity($neonIntensity);
 
     handleShareTarget();
@@ -154,57 +158,51 @@
     const interval = setInterval(loadData, 10000);
 
     const ws = connectWebSocket((msg) => {
-      if (!msg.type) return;
-      // Some events (plugin_notification, queue_empty) have no id field
-      const idlessTypes = ["plugin_notification", "queue_empty"];
-      if (!msg.id && !idlessTypes.includes(msg.type)) return;
-
-      if (msg.type === "progress") {
-        const p = msg.data?.progress as
-          | {
-              bytes_downloaded?: number;
-              total_bytes?: number;
-              speed_bytes_per_sec?: number;
-            }
-          | undefined;
-        if (p) {
-          updateDownloadProgress(
-            msg.id,
-            p.bytes_downloaded ?? 0,
-            p.speed_bytes_per_sec ?? 0,
-            p.total_bytes ?? undefined,
-          );
+      const action = interpretWsEvent(msg, $downloads);
+      if (!action) return;
+      switch (action.kind) {
+        case "progress":
+          // Progress ticks only patch the store; no list refetch.
+          updateDownloadProgress(action.id, action.bytes, action.speed, action.total);
+          return;
+        case "status":
+          updateDownloadStatus(action.id, action.status);
+          break;
+        case "completed": {
+          updateDownloadStatus(action.id, "completed");
+          // The server stores the saved file's name when the transfer ends,
+          // so the list is refreshed first and the event read again: the
+          // notification then names the file, not the URL it came from.
+          void loadData().then(() => {
+            const fresh = interpretWsEvent(msg, $downloads);
+            const name = fresh?.kind === "completed" ? fresh.name : action.name;
+            const title = tr($locale, "toast.download_complete");
+            addToast("success", title, name);
+            ariaAnnouncement.set(`${title}: ${name}`);
+            notifyIfHidden(title, name);
+          });
+          return;
         }
-        return;
-      }
-
-      if (msg.type === "completed") {
-        updateDownloadStatus(msg.id, "completed");
-        const fname = (msg.data?.filename as string) || msg.id;
-        const title = tr($locale, "toast.download_complete");
-        addToast("success", title, fname);
-        ariaAnnouncement.set(`${title}: ${fname}`);
-        notifyIfHidden(title, fname);
-      } else if (msg.type === "failed") {
-        updateDownloadStatus(msg.id, "failed");
-        const errMsg = (msg.data?.error as string) || msg.id;
-        const title = tr($locale, "toast.download_failed");
-        addToast("error", title, errMsg);
-        ariaAnnouncement.set(`${title}: ${errMsg}`);
-        notifyIfHidden(title, errMsg);
-      } else if (msg.type === "captcha_challenge") {
-        pendingCaptcha.set(msg.data as unknown as CaptchaChallenge);
-      } else if (
-        msg.type === "captcha_solved" ||
-        msg.type === "captcha_timeout"
-      ) {
-        pendingCaptcha.set(null);
-      } else if (msg.type === "plugin_notification") {
-        addToast(
-          "info",
-          (msg.data?.title as string) || "Plugin",
-          msg.data?.message as string,
-        );
+        case "failed": {
+          updateDownloadStatus(action.id, "failed");
+          const title = tr($locale, "toast.download_failed");
+          const detail = action.error ? `${action.name} — ${action.error}` : action.name;
+          addToast("error", title, detail);
+          ariaAnnouncement.set(`${title}: ${detail}`);
+          notifyIfHidden(title, detail);
+          break;
+        }
+        case "captcha":
+          pendingCaptcha.set(action.challenge);
+          break;
+        case "captcha_done":
+          pendingCaptcha.set(null);
+          break;
+        case "notification":
+          addToast("info", action.title, action.message);
+          break;
+        case "refresh":
+          break;
       }
       loadData();
     });
@@ -367,6 +365,8 @@
     })),
   ];
 
+  const paletteKey = formatChord({ key: "k", mod: true });
+
   let pageTitle = $derived(tr($locale, `nav.${$currentPage}`));
 </script>
 
@@ -426,7 +426,7 @@
       <button class="search-trigger" onclick={() => openAddPanel()}>
         <Icon name="plus" size={16} />
         <span>{tr($locale, "sidebar.add")}</span>
-        <kbd>Ctrl+N</kbd>
+        <kbd>{formatChord({ key: "n", mod: true })}</kbd>
       </button>
     {/if}
 
@@ -443,7 +443,7 @@
           <Icon name={item.icon} size={18} />
           {#if !$sidebarCollapsed}
             <span class="flex-1 text-left">{tr($locale, `nav.${item.id}`)}</span>
-            <span class="text-[10px] opacity-30">{i + 1}</span>
+            <kbd class="nav-key" aria-hidden="true">{i + 1}</kbd>
           {/if}
         </button>
       {/each}
@@ -463,7 +463,7 @@
           <Icon name={item.icon} size={18} />
           {#if !$sidebarCollapsed}
             <span class="flex-1 text-left">{tr($locale, `nav.${item.id}`)}</span>
-            <span class="text-[10px] opacity-30">{mainNavItems.length + i + 1}</span>
+            <kbd class="nav-key" aria-hidden="true">{mainNavItems.length + i + 1}</kbd>
           {/if}
         </button>
       {/each}
@@ -562,7 +562,7 @@
               aria-label={tr($locale, "cmd.hint_open")}
             >
               <Icon name="search" size={14} />
-              <kbd class="text-[10px]" style="font-family: var(--font-mono)">⌘K</kbd>
+              <kbd class="text-[10px]" style="font-family: var(--font-mono)">{paletteKey}</kbd>
             </button>
             <button onclick={() => theme.toggle()} class="icon-btn p-1.5 rounded-lg" style="color: var(--text-secondary)" aria-label={$theme === "dark" ? "Switch to Light mode" : "Switch to Dark mode"}>
               <Icon name={$theme === "light" ? "moon" : "sun"} size={16} />
@@ -623,7 +623,9 @@
 
       <!-- Global status bar — status at a glance from any page -->
       <div class="flex items-center gap-3 md:gap-5 shrink-0">
-        <div class="hidden sm:flex items-center gap-3 lg:gap-5" aria-label="Download status">
+        <!-- The expanded sidebar already shows these figures; the header
+             repeats them only where the sidebar is hidden or collapsed. -->
+        <div class="hidden sm:flex items-center gap-3 lg:gap-5 {$sidebarCollapsed ? '' : 'lg:hidden'}" aria-label="Download status">
           <div class="flex items-center gap-2">
             <span class="stat-label">{tr($locale, "sidebar.speed")}</span>
             <span class="text-xs tabular-nums" style="color: var(--accent-ink); font-family: var(--font-mono)">
@@ -658,7 +660,7 @@
           aria-label={tr($locale, "cmd.hint_open")}
         >
           <Icon name="search" size={14} />
-          <kbd style="font-family: var(--font-mono)">⌘K</kbd>
+          <kbd style="font-family: var(--font-mono)">{paletteKey}</kbd>
         </button>
 
         <button

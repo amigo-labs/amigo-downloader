@@ -20,6 +20,7 @@ use tracing::{debug, info, warn};
 
 use krake_core::coordinator::Coordinator;
 use krake_core::queue::QueueStatus;
+use krake_core::storage::DownloadRow;
 
 use crate::api::AppState;
 
@@ -401,10 +402,9 @@ async fn handle_history(coordinator: &Arc<Coordinator>) -> RpcResult {
         .await
         .unwrap_or_default();
 
-    let items: Vec<Value> = completed
+    let rows = history_entries(completed, failed, history_rows);
+    let items: Vec<Value> = rows
         .iter()
-        .chain(failed.iter())
-        .chain(history_rows.iter())
         .map(|r| {
             let filesize = r.filesize.unwrap_or(0);
             let downloaded = r.bytes_downloaded;
@@ -460,6 +460,21 @@ async fn handle_history(coordinator: &Arc<Coordinator>) -> RpcResult {
     Ok(json!(items))
 }
 
+/// The rows NZBGet's `history` lists: finished downloads still in the list,
+/// then archived entries. A completed download is also logged in the
+/// history, so an archived entry whose download is still listed is dropped;
+/// otherwise it would appear twice under one NZBID.
+fn history_entries(
+    completed: Vec<DownloadRow>,
+    failed: Vec<DownloadRow>,
+    archived: Vec<DownloadRow>,
+) -> Vec<DownloadRow> {
+    let mut rows: Vec<DownloadRow> = completed.into_iter().chain(failed).collect();
+    let listed: std::collections::HashSet<String> = rows.iter().map(|r| r.id.clone()).collect();
+    rows.extend(archived.into_iter().filter(|r| !listed.contains(&r.id)));
+    rows
+}
+
 async fn handle_editqueue(coordinator: &Arc<Coordinator>, params: &[Value]) -> RpcResult {
     let command = params.first().and_then(|v| v.as_str()).unwrap_or("");
     let _param = params.get(1).and_then(|v| v.as_str()).unwrap_or("");
@@ -482,6 +497,21 @@ async fn handle_editqueue(coordinator: &Arc<Coordinator>, params: &[Value]) -> R
             .await
             .unwrap_or_default();
         let download = all.iter().find(|d| id_to_nzbid(&d.id) == nzbid as i32);
+
+        // A history delete also removes the archived entry, which outlives
+        // the download's row — and may be all that is left of it.
+        if matches!(command, "HistoryDelete" | "HistoryFinalDelete") {
+            let archived = coordinator
+                .storage()
+                .get_history()
+                .await
+                .unwrap_or_default();
+            if let Some(entry) = archived.iter().find(|h| id_to_nzbid(&h.id) == nzbid as i32)
+                && let Err(e) = coordinator.storage().delete_history(&entry.id).await
+            {
+                warn!("NZBGet editqueue {command} failed for {}: {e}", entry.id);
+            }
+        }
 
         if let Some(dl) = download {
             let result = match command {
@@ -670,5 +700,92 @@ mod tests {
         // disabled → no router. We can't build AppState easily here;
         // confirm via the config gate that nzbget_router would early-exit.
         assert!(!cfg.enabled);
+    }
+
+    fn row(id: &str, status: &str) -> DownloadRow {
+        DownloadRow {
+            id: id.into(),
+            url: format!("https://example.com/{id}.nzb"),
+            protocol: "usenet".into(),
+            filename: Some(format!("{id}.nzb")),
+            filesize: Some(10),
+            status: status.into(),
+            priority: 0,
+            package_id: None,
+            plugin_id: None,
+            download_dir: None,
+            bytes_downloaded: 10,
+            speed_current: 0,
+            error_message: None,
+            retry_count: 0,
+            created_at: String::new(),
+            started_at: None,
+            completed_at: None,
+            owner: None,
+        }
+    }
+
+    #[test]
+    fn history_entries_listed_download_is_not_repeated_from_the_archive() {
+        let rows = history_entries(
+            vec![row("a", "completed")],
+            vec![row("b", "failed")],
+            vec![row("a", "completed"), row("c", "completed")],
+        );
+        let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
+        assert_eq!(ids, ["a", "b", "c"]);
+    }
+
+    #[tokio::test]
+    async fn editqueue_history_delete_removes_the_archived_entry() {
+        let storage = krake_core::storage::Storage::open_memory().expect("in-memory storage");
+        let coordinator = Arc::new(Coordinator::new(
+            krake_core::config::Config::default(),
+            storage,
+        ));
+        let listed = row("listed", "completed");
+        let gone = row("gone", "completed");
+        for r in [&listed, &gone] {
+            coordinator
+                .storage()
+                .insert_download(r)
+                .await
+                .expect("insert");
+            coordinator
+                .storage()
+                .record_history(&r.id)
+                .await
+                .expect("log");
+        }
+        // "gone" was removed from the list; only its archived entry is left.
+        coordinator
+            .storage()
+            .delete_download("gone")
+            .await
+            .expect("delete");
+
+        for id in ["listed", "gone"] {
+            let params = [json!("HistoryDelete"), json!(""), json!([id_to_nzbid(id)])];
+            handle_editqueue(&coordinator, &params)
+                .await
+                .expect("editqueue");
+        }
+
+        assert!(
+            coordinator
+                .storage()
+                .get_history()
+                .await
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            coordinator
+                .storage()
+                .get_download("listed")
+                .await
+                .unwrap()
+                .is_none()
+        );
     }
 }

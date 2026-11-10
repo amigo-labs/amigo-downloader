@@ -520,6 +520,36 @@ impl Storage {
         Ok(())
     }
 
+    /// Record what a transfer learned about its file: the name it was saved
+    /// under and its total size. `None` leaves the stored value alone, so a
+    /// plugin-resolved name or size is never replaced by "unknown".
+    pub async fn update_download_file_info(
+        &self,
+        id: &str,
+        filename: Option<&str>,
+        filesize: Option<u64>,
+    ) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "UPDATE downloads SET filename = COALESCE(?1, filename), \
+             filesize = COALESCE(?2, filesize) WHERE id = ?3",
+            rusqlite::params![filename, filesize, id],
+        )?;
+        Ok(())
+    }
+
+    /// Clear the `"retrying"` mark of a running download once its next
+    /// attempt starts; any other recorded error is left alone.
+    pub async fn clear_retrying_mark(&self, id: &str) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "UPDATE downloads SET error_message = NULL \
+             WHERE id = ?1 AND error_message = 'retrying'",
+            rusqlite::params![id],
+        )?;
+        Ok(())
+    }
+
     pub async fn update_download_error(
         &self,
         id: &str,
@@ -570,6 +600,20 @@ impl Storage {
         Ok(())
     }
 
+    /// Log a finished download in the history, keeping its row in the list.
+    /// Recording the same download again replaces its entry.
+    pub async fn record_history(&self, id: &str) -> Result<(), crate::Error> {
+        let db = self.db.lock().await;
+        db.execute(
+            "INSERT OR REPLACE INTO history
+                 (id, url, protocol, filename, filesize, download_dir, completed_at)
+             SELECT id, url, protocol, filename, filesize, download_dir, datetime('now')
+             FROM downloads WHERE id = ?1",
+            rusqlite::params![id],
+        )?;
+        Ok(())
+    }
+
     pub async fn move_to_history(&self, id: &str) -> Result<(), crate::Error> {
         let db = self.db.lock().await;
         let tx = db.unchecked_transaction()?;
@@ -594,6 +638,13 @@ impl Storage {
         )?;
         let rows = stmt.query_map([], row_to_download)?;
         Ok(rows.collect::<Result<Vec<_>, _>>()?)
+    }
+
+    /// Remove one entry from the history. Returns whether it existed.
+    pub async fn delete_history(&self, id: &str) -> Result<bool, crate::Error> {
+        let db = self.db.lock().await;
+        let deleted = db.execute("DELETE FROM history WHERE id = ?1", rusqlite::params![id])?;
+        Ok(deleted > 0)
     }
 
     pub async fn clear_history(&self) -> Result<u64, crate::Error> {

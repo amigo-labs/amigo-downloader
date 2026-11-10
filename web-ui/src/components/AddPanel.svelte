@@ -132,7 +132,7 @@
       onclick={handleSubmit}
       disabled={!canSubmit}
       class="action-btn w-full py-2.5 rounded-lg font-semibold text-sm disabled:opacity-40"
-      style="background: var(--neon-primary); color: var(--bg-deep)"
+      style="background: var(--accent-solid); color: var(--on-accent)"
     >
       {loading ? tr($locale, "common.adding") : tr($locale, "add.submit")}
     </button>
