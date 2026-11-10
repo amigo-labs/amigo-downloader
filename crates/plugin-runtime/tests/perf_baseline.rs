@@ -120,3 +120,43 @@ async fn plugin_load_and_resolve_baseline() {
         median(samples)
     );
 }
+
+/// Start-up cost of the Wasm executor (docs/specs/plugin-wasm-guest.md,
+/// AC-13): making the embedded guest ready, and creating one plugin instance.
+#[test]
+#[ignore = "performance baseline; run with --ignored --nocapture"]
+fn wasm_executor_startup_baseline() {
+    use krake_plugin_runtime::engine::EngineConfig;
+    use krake_plugin_runtime::host_fns::{HostArgs, HostDispatch, HostResult};
+    use krake_plugin_runtime::wasm::WasmEngine;
+
+    struct Nothing;
+    impl HostDispatch for Nothing {
+        fn call(&self, _name: &str, _args: HostArgs) -> HostResult {
+            Ok(None)
+        }
+    }
+
+    const RUNS: usize = 5;
+    let mut create_engine = Vec::new();
+    let mut create_instance = Vec::new();
+    for _ in 0..RUNS {
+        let start = Instant::now();
+        let engine = WasmEngine::new().unwrap();
+        create_engine.push(start.elapsed());
+
+        let start = Instant::now();
+        let context = engine
+            .create_context(&EngineConfig::default(), std::sync::Arc::new(Nothing))
+            .unwrap();
+        create_instance.push(start.elapsed());
+        assert_eq!(context.eval_js("String(1 + 1)").unwrap(), "2");
+    }
+    let (engine, instance) = (median(create_engine), median(create_instance));
+    println!("wasm executor: create engine {engine:?}, create instance {instance:?}");
+    assert!(engine < Duration::from_millis(50), "engine: {engine:?}");
+    assert!(
+        instance < Duration::from_millis(5),
+        "instance: {instance:?}"
+    );
+}
