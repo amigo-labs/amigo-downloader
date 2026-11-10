@@ -651,6 +651,7 @@ Features are built with the shared spec workflow from [amigo-labs/skills](https:
 10. **Click'n'Load** auf Port 9666 — Browser-Extension Ökosystem nutzen
 11. **Eigenes Extractor-Crate** — YouTube, HLS, DASH als Built-in Extractors
 12. **i18n** — JSON-basierte Locale-Dateien (en, de)
+13. **Eine Akzentfarbe** — die Web-UI nutzt nur die Markenfarbe Limette `#9be22d` (`docs/site/project.yml`), keine wählbaren Paletten: die Farbe gehört zur Marke, nicht zu den Einstellungen
 
 ---
 
@@ -663,7 +664,7 @@ Power users and tech enthusiasts managing downloads (HTTP, Usenet) centrally. Da
 
 ### Brand: Technical, Precise, Powerful
 - Corporate Neon — professional at rest, electric on interaction
-- 6 color palettes: Blue, Teal, Indigo, Amber, Violet, Rose
+- One accent: the brand lime `#9be22d` (no user palettes)
 - Dark mode primary, "Lights On" as alternative
 - Neon intensity 5 levels (Off to Full), CRT scanlines only at Full
 
