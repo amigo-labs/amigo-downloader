@@ -39,17 +39,26 @@
     "longDescription": "Krake is a fast, modular download manager with HTTP multi-chunk downloads, Usenet support, a TypeScript plugin system, and a responsive web UI.",
     "linux": {
       "deb": {
-        "depends": ["ca-certificates"]
+        "depends": [
+          "ca-certificates"
+        ]
       }
     }
   },
   "plugins": {
     "deep-link": {
       "desktop": {
-        "schemes": ["krake", "amigo", "magnet"]
+        "schemes": [
+          "krake",
+          "amigo",
+          "magnet"
+        ]
       },
       "mobile": {
-        "schemes": ["krake", "amigo"]
+        "schemes": [
+          "krake",
+          "amigo"
+        ]
       }
     },
     "updater": {
