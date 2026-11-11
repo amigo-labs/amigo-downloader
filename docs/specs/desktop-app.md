@@ -1,6 +1,11 @@
-# Feature: Desktop App (embedded server, tray, self-update)
+---
+status: todo
+created: 2026-10-27
+size: L
+surfaces: [desktop, rest, web-ui]
+---
 
-> status: draft
+# Feature: Desktop App (embedded server, tray, self-update)
 
 ## Summary
 
@@ -35,6 +40,16 @@ This spec makes the desktop app a working product and keeps it current:
 
    The existing core-update banner in the web-ui drives it through a hook in
    `krake-server`.
+
+   **Update choice** (revision 2026-11-11, alike in amigo-pincel and
+   amigo-blinzel): on the first start a question offers "Install
+   automatically (recommended)", "Notify me when an update is available" and
+   "Never check for updates". The About section of the Settings page shows
+   the version and every update option, where the choice can be changed.
+   The **effective choice** is, in this order: the choice the user confirmed
+   or selected in this run (even if storing it failed), else the stored one,
+   else "install automatically" (also for copies that never get the
+   question), because silent updates keep most copies current.
 6. **Release plumbing:**
    - `createUpdaterArtifacts`;
    - a Tauri-2 `latest.json`;
@@ -49,7 +64,8 @@ origin cannot call native commands.
 
 Delivered in three PRs, in this order: **P1** embedded server, session, paths
 and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
-(AC-9 to AC-12). **P3** updater and release (AC-13 to AC-24).
+(AC-9 to AC-12). **P3** updater and release (AC-13 to AC-24, and the update
+choice AC-25 to AC-35).
 
 ## Acceptance Criteria
 
@@ -103,28 +119,37 @@ and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
 
 ### P3 — Self-update and release
 
-- [ ] AC-13: With `update.auto_check = true`, a background thread checks
-  `latest.json` 10 s after start, and then whenever
-  `update.check_interval_hours` have passed since `<app_data>/desktop.json`
-  `last_update_check`.
+- [ ] AC-13: While the effective update choice is "install automatically"
+  or "notify", a background check of `latest.json` is due 10 s after start
+  when no check is recorded or `update.check_interval_hours` have passed since
+  `<app_data>/desktop.json` `last_update_check`, and again whenever the
+  interval passes while the app runs. While it is "never check", no
+  background check runs.
 - [ ] AC-14: An update is downloaded and its minisign signature is verified
   against `plugins.updater.pubkey` (`3098504C1538B8F6`) before anything is
   installed. A wrong or missing signature installs nothing and is logged.
-- [ ] AC-15: How a verified update is installed depends on the platform:
+- [ ] AC-15: A verified update is installed by itself only while the update
+  choice is "install automatically"; otherwise only after Install in the
+  announcement (AC-28) or a manual apply. How it is installed depends on the
+  platform:
   - **macOS** replaces the app bundle;
   - **Linux AppImage** replaces the AppImage, and the new version runs at the
     next start;
   - **Windows** keeps the installer in memory and runs it (passive mode) on
     tray **Quit**.
 
-  Running downloads are never interrupted by an update.
+  An update never stops or restarts a running download; on Windows the
+  installer runs only after tray **Quit** has ended the app.
 - [ ] AC-16: The app never updates itself in debug builds or when it runs from
   a Linux `.deb`/`.rpm` install (no `APPIMAGE` env var).
 - [ ] AC-17: In desktop mode `GET /api/v1/updates/check` reports the
   desktop update in `core`, plus `distribution: "tauri"`,
-  `can_self_update` (from AC-16) and `pending_restart`.
-  `POST /api/v1/updates/core` runs check, download and verify through the
-  hook, and returns `{"status":"ready","version":"…"}`.
+  `can_self_update` (from AC-16), `pending_restart`, `update_mode`
+  (the effective choice: `"auto"`, `"notify"` or `"off"`) and
+  `update_mode_chosen` (whether a choice is stored).
+  `POST /api/v1/updates/core` runs check, download, verify and install (AC-15:
+  replaced on macOS and the AppImage, held for Quit on Windows) through the
+  hook, whatever the choice, and returns `{"status":"ready","version":"…"}`.
 - [ ] AC-18: The web-ui core-update banner works in desktop mode with no new
   page. After a successful apply it reads "Update ready — takes effect at the
   next start". When `can_self_update` is false it shows a hint instead of the
@@ -156,6 +181,77 @@ and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
 - [ ] AC-24: A desktop release needs the organization secrets
   `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The
   installer job fails early with a clear message when either is missing.
+
+### P3 — Update choice
+
+- [ ] AC-25 (event): When the desktop app shows its window for the first time
+  in a run and the copy can
+  update itself (AC-16) and no update choice is stored, then the web-ui asks
+  how Krake should handle updates, with the choices "Install automatically
+  (recommended)", "Notify me when an update is available" and "Never check
+  for updates", the first preselected, and a Confirm button. The question
+  never shows in the browser against `krake-server` or Docker, in debug
+  builds or in `.deb` / `.rpm` installs.
+- [ ] AC-26 (event): When the user confirms the question, then the chosen
+  option is stored and the question never shows again; when the user closes
+  it without confirming (Escape, the close button, or closing the window to
+  the tray — which the app itself counts as closing, even if the web-ui sent
+  nothing), nothing is stored, "install automatically" applies for this run,
+  and the question shows again at the next start.
+- [ ] AC-27 (state): While the first-start question is neither confirmed nor
+  closed in this run, no background update check starts; once it is, a check
+  that came due meanwhile starts at once.
+- [ ] AC-28 (event): When a background check finds a newer version while the
+  update choice is "notify" and that version was not announced before, then
+  nothing is downloaded and the web-ui shows "Krake <version> is available"
+  with Install and Later; Install downloads, verifies and installs it like
+  `POST /api/v1/updates/core` and then reads "Update ready — takes effect at
+  the next start"; Later (also Escape or the close button), or an Install
+  that succeeds, marks that version as announced, so later checks do not
+  announce it again, while a still newer version is announced. An Install
+  that fails shows the error and leaves the version unannounced, so the next
+  due check announces it again.
+- [ ] AC-29 (state): While the update choice is "never check", nothing is
+  announced; the core-update banner's manual check and apply still work.
+- [ ] AC-30 (state): While the Settings page's About section shows in the
+  desktop app, it shows the running version (the release version, not a
+  fixed string), the version that is downloaded and takes effect at the next
+  start (if any), the three update choices with the stored one selected, and
+  a Check for updates button, which works like the core-update banner's
+  check and apply whatever the choice; selecting a choice stores it at once
+  and takes effect without a restart: after "never check" no background check
+  runs in this run, after "notify" the next due check announces instead of
+  installing, after "install automatically" a due check starts at once. Where the copy cannot update itself it shows the
+  reason instead of the choices ("update with your package manager" for
+  `.deb` / `.rpm`). Outside the desktop app it shows the version only.
+- [ ] AC-31 (event): In desktop mode `PUT /api/v1/updates/mode` with
+  `{"mode":"auto"|"notify"|"off"}` makes the choice effective for this run,
+  stores it and returns the state of AC-34 plus `saved: false` when storing
+  failed; `{"dismissed":true}` records a close without a choice for this
+  run; any other body is `400`. Outside desktop mode the route answers `404`.
+- [ ] AC-34 (always): In desktop mode `GET /api/v1/updates/mode` answers
+  without contacting the network, also offline and under "never check":
+  `update_mode` (effective), `update_mode_chosen`, `question_pending` (no
+  choice stored and the question not closed in this run), `can_self_update`,
+  `pending_restart` and `announcement` (the version waiting to be announced,
+  or `null`). The first-start question, the announcement and the About
+  section read this, never `GET /updates/check`. Outside desktop mode `404`.
+- [ ] AC-35 (event): In desktop mode `POST /api/v1/updates/announced` with
+  `{"version":"x.y.z"}` marks exactly that version as announced (Later,
+  Escape, close, or a successful Install) and stores it; a version other than
+  the pending announcement, or any other body, is `400`. Showing the
+  announcement marks nothing, so quitting with it open leaves it unannounced
+  (AC-28). Outside desktop mode `404`.
+- [ ] AC-32 (event, manual: needs a real Windows install): When the Windows
+  setup runs silently (`/S`, as winget does) for a user who has no
+  `desktop.json` yet, then "install automatically" is stored for that user
+  and the first start shows no question, because a silent setup is a
+  scripted or managed one whose users should not meet a question;
+  interactive and passive (`/P`, the updater) installs store nothing, because
+  the person who ran an interactive setup gets the question at the first
+  start.
+- [ ] AC-33 (always): Every text of the question, the announcement and the
+  About section's update part exists in English and German.
 
 ## API Contract
 
@@ -210,6 +306,26 @@ pub trait DesktopUpdater: Send + Sync {
     async fn check(&self) -> Result<Option<DesktopUpdateInfo>, String>;
     /// Check, download, verify and install / hold (AC-14, AC-15).
     async fn apply(&self) -> Result<String, String>; // returns the version
+    /// Update-choice state without network access (AC-34).
+    fn mode_state(&self) -> DesktopModeState;
+    /// Make a choice effective for this run and store it (AC-31).
+    fn set_mode(&self, mode: UpdateMode) -> DesktopModeState;
+    /// Record a close of the first-start question without a choice (AC-26).
+    fn dismiss_question(&self);
+    /// Mark `version` as announced; `Err` if it is not the pending one (AC-35).
+    fn acknowledge(&self, version: &str) -> Result<(), String>;
+}
+
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct DesktopModeState {
+    pub update_mode: UpdateMode,
+    pub update_mode_chosen: bool,
+    pub question_pending: bool,
+    pub can_self_update: bool,
+    pub pending_restart: Option<String>,
+    pub announcement: Option<String>,
+    /// `false` after a failed write of `desktop.json` (only in PUT answers).
+    pub saved: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -226,6 +342,18 @@ pub struct DesktopState {
     pub port: Option<u16>,
     /// Unix seconds of the last background update check (AC-13).
     pub last_update_check: u64,
+    /// The user's update choice; `None` until confirmed (AC-25, AC-26).
+    pub update_mode: Option<UpdateMode>,
+    /// Last version announced in "notify" (AC-28).
+    pub announced_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateMode {
+    Auto,
+    Notify,
+    Off,
 }
 ```
 
@@ -234,8 +362,11 @@ pub struct DesktopState {
 | Method | Path | Request Body | Response | Status Codes |
 |--------|------|-------------|----------|-------------|
 | GET | `/api/v1/desktop/session?token=<hex>` | — | `303 Location: /` + `Set-Cookie` | 303, 401 (wrong / used / no desktop mode), 429 (rate limit) |
-| GET | `/api/v1/updates/check` | — | existing `UpdateCheck`; desktop mode: `core` from `DesktopUpdater::check`, plus `distribution: "tauri"`, `can_self_update`, `pending_restart: string \| null` | 200, 502 |
+| GET | `/api/v1/updates/check` | — | existing `UpdateCheck`; desktop mode: `core` from `DesktopUpdater::check`, plus `distribution: "tauri"`, `can_self_update`, `pending_restart: string \| null`, `update_mode: "auto" \| "notify" \| "off"` (effective), `update_mode_chosen: bool` | 200, 502 |
 | POST | `/api/v1/updates/core` | — | desktop mode: `{"status":"ready","version":"1.2.3"}` | 200, 400 (not allowed, AC-16), 502 (check, download or signature failed) |
+| GET | `/api/v1/updates/mode` | — | `DesktopModeState`, no network access (AC-34) | 200, 404 (no desktop mode) |
+| PUT | `/api/v1/updates/mode` | `{"mode":"auto"\|"notify"\|"off"}` or `{"dismissed":true}` | `DesktopModeState` (with `saved`) | 200, 400 (other body), 404 (no desktop mode) |
+| POST | `/api/v1/updates/announced` | `{"version":"x.y.z"}` | `DesktopModeState` | 200, 400 (not the pending announcement, other body), 404 (no desktop mode) |
 
 `/api/v1/desktop/session` is mounted only when `ServeOptions::desktop` is
 `Some`, and the token is compared in constant time. It is not behind
@@ -247,8 +378,12 @@ pub struct DesktopState {
   username `desktop`.
 - New file `<app_data>/desktop.json` (`DesktopState`), written with
   temp-file + rename.
-- Config: none. The desktop updater reuses `update.auto_check` and
-  `update.check_interval_hours`.
+- Config: none. The desktop updater reuses `update.check_interval_hours`;
+  whether it checks is the update choice in `desktop.json` (AC-13), not
+  `update.auto_check`, which keeps governing plugin update checks.
+- `desktop.json` also holds `update_mode` and `announced_version`. No
+  migration: no desktop release has shipped, so no copy has a choice from an
+  earlier version.
 
 ## UI Changes
 
@@ -259,6 +394,10 @@ pub struct DesktopState {
 - New locale keys in `locales/en.json` and `locales/de.json`.
 - No setup or login screen in desktop mode; this comes from the server
   (AC-4), with no web-ui change.
+- First-start update question (a dialog over any page), the "notify"
+  announcement (Install / Later), and the update part of the Settings page's
+  About section (AC-25 to AC-30), all desktop mode only; outside it the About
+  section shows the real version instead of the fixed `v0.1.0`.
 
 ## Affected Files
 
@@ -297,6 +436,11 @@ pub struct DesktopState {
   - check that the secrets are present.
 - `docs/site/project.yml` (`downloads`): direct desktop links on amigo-labs.dev.
 - `web-ui/src/pages/Plugins.svelte`, `locales/*.json`: banner states.
+- `web-ui/src/pages/Settings.svelte` (About section: real version, update
+  part in desktop mode), new components for the first-start question and the
+  announcement, their strings in English and German (AC-25 to AC-30, AC-33).
+- `tauri/windows/hooks.nsh`: new; the silent-install step of AC-32
+  (`bundle.windows.nsis.installerHooks`).
 - `docs/specs/tauri-workspace-integration.md`: point "Distribution
   detection" and the updater to this spec.
 
@@ -316,6 +460,18 @@ pub struct DesktopState {
 | Windows: Quit while an update download is still in progress | Quit is not delayed. Nothing is installed; the next start checks again. |
 | `krake-plugin-host` missing from a broken install | Plugin downloads fail with the existing "plugin host not found" error; built-in protocols keep working. |
 | Release built with a repository secret that shadows the org key | AC-21 stops the upload, naming the file and both key IDs. |
+| First start through a `krake://add` link | The link's download is queued; the question shows over the page. |
+| Window closed to the tray while the question is open | Counts as closed without a choice (AC-26); downloads go on. |
+| "notify" finds a version while the window is hidden in the tray | The announcement shows the next time the window opens. |
+| Announcement open when the app quits | That version counts as not announced; the next due check announces it again. |
+| `desktop.json` not writable when the user confirms | The choice applies for this run; the question shows again at the next start. |
+| User switches from "never check" to "install automatically" in About | A check that is due starts without a restart. |
+| Choice changes to "never check" while a check or download runs | That one completes and installs as before (Windows: on Quit); the new choice applies from the next check. |
+| Banner apply, About check and a background check at the same time | Checks share one request to `latest.json`. An apply waiting on a check still downloads, verifies and installs afterwards; concurrent applies of the same version share one download. |
+| A newer version comes out while the announcement of the previous one is open | The announcement names the newest version. |
+| `desktop.json` holds a port but no `update_mode` | No choice stored: the question shows. |
+| `desktop.json` not writable when the choice changes in About | The choice applies for this run; the section says it could not be saved. |
+| `PUT /updates/mode {"dismissed":true}` fails or never arrives | Hiding the window or quitting counts as closing (AC-26); otherwise the question stays until the next start. |
 
 ## Test Plan
 
@@ -366,16 +522,123 @@ pub struct DesktopState {
   - `krake://add` link;
   - update from version N to N+1 through the banner (AC-9 to AC-18).
 - [ ] Manual: the website links resolve after the release (AC-22, AC-23).
+- [ ] Unit (`tauri`): `UpdateMode` round trip in `desktop.json`, missing
+  field → not chosen; `is_due` per mode; the announcement once per version
+  (AC-13, AC-25 to AC-29).
+- [ ] Unit (`crates/server`), `update_api` with a fake `DesktopUpdater`:
+  `PUT /updates/mode` per mode, dismissed, bad body → 400, no desktop mode →
+  404, a failed write → effective anyway with `saved: false` (AC-31);
+  `GET /updates/mode` with an updater whose `check` panics → 200 (no network,
+  AC-34); `POST /updates/announced` with the pending version, another
+  version → 400 (AC-35); an apply that waits on a running check still
+  installs (edge case).
+- [ ] Web UI unit tests (`web-ui/test/`): question shown only for desktop
+  mode with `can_self_update` and no choice; announcement once per version;
+  About section states (AC-25, AC-28, AC-30).
 
 ## Out of Scope
 
 - Code signing / notarization (SmartScreen and Gatekeeper warn on first
   launch, as for amigo-pincel).
-- Rollback after a failed start.
+- Rollback after a failed start — because Tauri's updater has no mechanism
+  for it (as in amigo-pincel).
 - Linux `--install` for the AppImage, and self-update of `.deb`/`.rpm`
-  installs.
+  installs — because packages belong to the package manager and need root.
+- A silent machine-wide install (`perMachine`, another account such as
+  SYSTEM) — because the installer is per user (`installMode: currentUser`).
 - Windows or Linux on ARM64.
 - Tauri mobile.
 - Torrent / magnet support (AC-12 only declines it).
 - Moving `localStorage` settings into the server.
 - Native file dialogs / Tauri IPC for the web-ui.
+- An update question inside the Windows installer — because macOS has no
+  installer and Linux has none either; one first-start question serves every
+  platform alike (owner, 2026-11-11).
+- An update choice for `krake-server`, Docker and the CLI — because they
+  update through `krake update`, the banner or a new image; the question is
+  about the desktop app replacing itself.
+- Skipping a version for good, or postponing for a time span — because
+  "notify" announces each version once and the banner's check offers it again
+  at any time.
+
+## Open questions
+
+<!-- One bullet per open question; empty means: everything settled, spec-build may start -->
+
+## Evidence
+
+| AC    | Test | Status | Commit |
+| ----- | ---- | ------ | ------ |
+| AC-1 |      | open   |        |
+| AC-2 |      | open   |        |
+| AC-3 |      | open   |        |
+| AC-4 |      | open   |        |
+| AC-5 |      | open   |        |
+| AC-6 |      | open   |        |
+| AC-7 |      | open   |        |
+| AC-8 |      | open   |        |
+| AC-9 |      | open   |        |
+| AC-10 |      | open   |        |
+| AC-11 |      | open   |        |
+| AC-12 |      | open   |        |
+| AC-13 |      | open   |        |
+| AC-14 |      | open   |        |
+| AC-15 |      | open   |        |
+| AC-16 |      | open   |        |
+| AC-17 |      | open   |        |
+| AC-18 |      | open   |        |
+| AC-19 |      | open   |        |
+| AC-20 |      | open   |        |
+| AC-21 |      | open   |        |
+| AC-22 |      | open   |        |
+| AC-23 |      | open   |        |
+| AC-24 |      | open   |        |
+| AC-25 |      | open   |        |
+| AC-26 |      | open   |        |
+| AC-27 |      | open   |        |
+| AC-28 |      | open   |        |
+| AC-29 |      | open   |        |
+| AC-30 |      | open   |        |
+| AC-31 |      | open   |        |
+| AC-32 |      | open   |        |
+| AC-33 |      | open   |        |
+| AC-34 |      | open   |        |
+| AC-35 |      | open   |        |
+
+## Decisions
+
+- 2026-11-11: Converted to the feature-spec template (front matter, Open
+  questions, Evidence, Decisions); the earlier ACs keep their IDs and
+  wording, the new ones carry their form.
+- 2026-11-11: Update choice added (owner), alike in amigo-pincel
+  (`desktop-app`) and amigo-blinzel (`updates`): the user picks on the first
+  start — install automatically, notify, never check — and changes it in the
+  Settings page's About section, which shows the version and every update
+  option. Owner's answers: ask on the first start, not in the installer;
+  three choices; nobody asked → automatic (closing without a choice, silent
+  installs); "notify" announces each version once; closing the question
+  without a choice asks again at the next start. AC-13, AC-15 and AC-17
+  reworded; AC-25 to AC-33 new. The choice lives in `desktop.json`, not in
+  the config TOML, because it belongs to the desktop app alone and the
+  server's `update.auto_check` keeps governing plugin checks. New route
+  `PUT /api/v1/updates/mode` (desktop mode only), listed for review.
+- 2026-11-11, clarification pass: "effective choice" defined (the stored one,
+  else "install automatically"), so copies without the question still check;
+  AC-13 says when a check is due; AC-15 no longer claims an untestable
+  "never interrupted"; AC-17 and the REST table agree, and
+  `POST /updates/core` installs (or holds for Quit); a failed Install leaves
+  the version unannounced, because the user asked for it; an update already
+  running when the choice changes still completes, because stopping a
+  half-done install is riskier; AC-32 applies per user and only without a
+  `desktop.json`, because the hook cannot read JSON and the installer is per
+  user. Reasons for the owner's defaults: automatic when nobody answered and
+  preselected, because silent updates keep most copies current.
+- 2026-11-11, review on #111 (Copilot): the choice made in this run wins over
+  the stored one, also when storing it failed, because otherwise "applies for
+  this run" would not hold; the web-ui reads the update-choice state from a
+  network-free `GET /api/v1/updates/mode` (AC-34), because the question and
+  About must work offline and under "never check"; a version is announced
+  through `POST /api/v1/updates/announced` (AC-35), because the web-ui has no
+  Tauri IPC and showing the announcement must not mark it; a waiting apply
+  still installs after a shared check, because a check alone cannot satisfy
+  an apply. Two more desktop-only routes, listed for review.

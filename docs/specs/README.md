@@ -8,13 +8,13 @@ notes for Krake. The workflow is in `AGENTS.md`, "Spec-driven workflow".
 | # | Spec | Status | Depends on |
 | - | ---- | ------ | ---------- |
 | 1 | [plugin-wasm-sandbox](plugin-wasm-sandbox.md) | todo | plugin-wasm-guest (done) |
+| 2 | [desktop-app](desktop-app.md) | todo | — (three PRs: P1 embedded server, P2 tray, P3 updater, release and update choice) |
 
 ## Done
 
 Specs from before this workflow carry a bold `**Status**` header instead of
 front matter; they are converted when next revised.
 
-- [desktop-app](desktop-app.md)
 - [docker-security](docker-security.md)
 - [integration-tests](integration-tests.md)
 - [plugin-wasm-guest](plugin-wasm-guest.md)
