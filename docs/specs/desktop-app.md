@@ -46,9 +46,10 @@ This spec makes the desktop app a working product and keeps it current:
    automatically (recommended)", "Notify me when an update is available" and
    "Never check for updates". The About section of the Settings page shows
    the version and every update option, where the choice can be changed.
-   The **effective choice** is the stored one, or "install automatically"
-   while none is stored (also for copies that never get the question), because
-   silent updates keep most copies current.
+   The **effective choice** is, in this order: the choice the user confirmed
+   or selected in this run (even if storing it failed), else the stored one,
+   else "install automatically" (also for copies that never get the
+   question), because silent updates keep most copies current.
 6. **Release plumbing:**
    - `createUpdaterArtifacts`;
    - a Tauri-2 `latest.json`;
@@ -64,7 +65,7 @@ origin cannot call native commands.
 Delivered in three PRs, in this order: **P1** embedded server, session, paths
 and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
 (AC-9 to AC-12). **P3** updater and release (AC-13 to AC-24, and the update
-choice AC-25 to AC-33).
+choice AC-25 to AC-35).
 
 ## Acceptance Criteria
 
@@ -224,9 +225,23 @@ choice AC-25 to AC-33).
   reason instead of the choices ("update with your package manager" for
   `.deb` / `.rpm`). Outside the desktop app it shows the version only.
 - [ ] AC-31 (event): In desktop mode `PUT /api/v1/updates/mode` with
-  `{"mode":"auto"|"notify"|"off"}` stores the choice and returns it;
-  `{"dismissed":true}` records a close without a choice for this run; any
-  other body is `400`. Outside desktop mode the route answers `404`.
+  `{"mode":"auto"|"notify"|"off"}` makes the choice effective for this run,
+  stores it and returns the state of AC-34 plus `saved: false` when storing
+  failed; `{"dismissed":true}` records a close without a choice for this
+  run; any other body is `400`. Outside desktop mode the route answers `404`.
+- [ ] AC-34 (always): In desktop mode `GET /api/v1/updates/mode` answers
+  without contacting the network, also offline and under "never check":
+  `update_mode` (effective), `update_mode_chosen`, `question_pending` (no
+  choice stored and the question not closed in this run), `can_self_update`,
+  `pending_restart` and `announcement` (the version waiting to be announced,
+  or `null`). The first-start question, the announcement and the About
+  section read this, never `GET /updates/check`. Outside desktop mode `404`.
+- [ ] AC-35 (event): In desktop mode `POST /api/v1/updates/announced` with
+  `{"version":"x.y.z"}` marks exactly that version as announced (Later,
+  Escape, close, or a successful Install) and stores it; a version other than
+  the pending announcement, or any other body, is `400`. Showing the
+  announcement marks nothing, so quitting with it open leaves it unannounced
+  (AC-28). Outside desktop mode `404`.
 - [ ] AC-32 (event, manual: needs a real Windows install): When the Windows
   setup runs silently (`/S`, as winget does) for a user who has no
   `desktop.json` yet, then "install automatically" is stored for that user
@@ -291,6 +306,26 @@ pub trait DesktopUpdater: Send + Sync {
     async fn check(&self) -> Result<Option<DesktopUpdateInfo>, String>;
     /// Check, download, verify and install / hold (AC-14, AC-15).
     async fn apply(&self) -> Result<String, String>; // returns the version
+    /// Update-choice state without network access (AC-34).
+    fn mode_state(&self) -> DesktopModeState;
+    /// Make a choice effective for this run and store it (AC-31).
+    fn set_mode(&self, mode: UpdateMode) -> DesktopModeState;
+    /// Record a close of the first-start question without a choice (AC-26).
+    fn dismiss_question(&self);
+    /// Mark `version` as announced; `Err` if it is not the pending one (AC-35).
+    fn acknowledge(&self, version: &str) -> Result<(), String>;
+}
+
+#[derive(Debug, Clone, serde::Serialize, PartialEq, Eq)]
+pub struct DesktopModeState {
+    pub update_mode: UpdateMode,
+    pub update_mode_chosen: bool,
+    pub question_pending: bool,
+    pub can_self_update: bool,
+    pub pending_restart: Option<String>,
+    pub announcement: Option<String>,
+    /// `false` after a failed write of `desktop.json` (only in PUT answers).
+    pub saved: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
@@ -329,7 +364,9 @@ pub enum UpdateMode {
 | GET | `/api/v1/desktop/session?token=<hex>` | — | `303 Location: /` + `Set-Cookie` | 303, 401 (wrong / used / no desktop mode), 429 (rate limit) |
 | GET | `/api/v1/updates/check` | — | existing `UpdateCheck`; desktop mode: `core` from `DesktopUpdater::check`, plus `distribution: "tauri"`, `can_self_update`, `pending_restart: string \| null`, `update_mode: "auto" \| "notify" \| "off"` (effective), `update_mode_chosen: bool` | 200, 502 |
 | POST | `/api/v1/updates/core` | — | desktop mode: `{"status":"ready","version":"1.2.3"}` | 200, 400 (not allowed, AC-16), 502 (check, download or signature failed) |
-| PUT | `/api/v1/updates/mode` | `{"mode":"auto"\|"notify"\|"off"}` or `{"dismissed":true}` | `{"update_mode":"…","update_mode_chosen":bool}` | 200, 400 (other body), 404 (no desktop mode) |
+| GET | `/api/v1/updates/mode` | — | `DesktopModeState`, no network access (AC-34) | 200, 404 (no desktop mode) |
+| PUT | `/api/v1/updates/mode` | `{"mode":"auto"\|"notify"\|"off"}` or `{"dismissed":true}` | `DesktopModeState` (with `saved`) | 200, 400 (other body), 404 (no desktop mode) |
+| POST | `/api/v1/updates/announced` | `{"version":"x.y.z"}` | `DesktopModeState` | 200, 400 (not the pending announcement, other body), 404 (no desktop mode) |
 
 `/api/v1/desktop/session` is mounted only when `ServeOptions::desktop` is
 `Some`, and the token is compared in constant time. It is not behind
@@ -430,7 +467,7 @@ pub enum UpdateMode {
 | `desktop.json` not writable when the user confirms | The choice applies for this run; the question shows again at the next start. |
 | User switches from "never check" to "install automatically" in About | A check that is due starts without a restart. |
 | Choice changes to "never check" while a check or download runs | That one completes and installs as before (Windows: on Quit); the new choice applies from the next check. |
-| Banner apply, About check and a background check at the same time | One runs; the others wait for it and report its result; no second download. |
+| Banner apply, About check and a background check at the same time | Checks share one request to `latest.json`. An apply waiting on a check still downloads, verifies and installs afterwards; concurrent applies of the same version share one download. |
 | A newer version comes out while the announcement of the previous one is open | The announcement names the newest version. |
 | `desktop.json` holds a port but no `update_mode` | No choice stored: the question shows. |
 | `desktop.json` not writable when the choice changes in About | The choice applies for this run; the section says it could not be saved. |
@@ -490,7 +527,11 @@ pub enum UpdateMode {
   (AC-13, AC-25 to AC-29).
 - [ ] Unit (`crates/server`), `update_api` with a fake `DesktopUpdater`:
   `PUT /updates/mode` per mode, dismissed, bad body → 400, no desktop mode →
-  404 (AC-31).
+  404, a failed write → effective anyway with `saved: false` (AC-31);
+  `GET /updates/mode` with an updater whose `check` panics → 200 (no network,
+  AC-34); `POST /updates/announced` with the pending version, another
+  version → 400 (AC-35); an apply that waits on a running check still
+  installs (edge case).
 - [ ] Web UI unit tests (`web-ui/test/`): question shown only for desktop
   mode with `can_self_update` and no choice; announcement once per version;
   About section states (AC-25, AC-28, AC-30).
@@ -561,6 +602,8 @@ pub enum UpdateMode {
 | AC-31 |      | open   |        |
 | AC-32 |      | open   |        |
 | AC-33 |      | open   |        |
+| AC-34 |      | open   |        |
+| AC-35 |      | open   |        |
 
 ## Decisions
 
@@ -590,3 +633,12 @@ pub enum UpdateMode {
   `desktop.json`, because the hook cannot read JSON and the installer is per
   user. Reasons for the owner's defaults: automatic when nobody answered and
   preselected, because silent updates keep most copies current.
+- 2026-11-11, review on #111 (Copilot): the choice made in this run wins over
+  the stored one, also when storing it failed, because otherwise "applies for
+  this run" would not hold; the web-ui reads the update-choice state from a
+  network-free `GET /api/v1/updates/mode` (AC-34), because the question and
+  About must work offline and under "never check"; a version is announced
+  through `POST /api/v1/updates/announced` (AC-35), because the web-ui has no
+  Tauri IPC and showing the announcement must not mark it; a waiting apply
+  still installs after a shared check, because a check alone cannot satisfy
+  an apply. Two more desktop-only routes, listed for review.
