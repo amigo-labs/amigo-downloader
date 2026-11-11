@@ -54,6 +54,20 @@ highlights:
   - value: "0"
     label: { en: external services — SQLite embedded, de: externe Dienste – SQLite eingebettet }
 
+screenshots:
+  - src: screenshots/downloads.png
+    alt:
+      en: The Downloads page in the dark theme — five running downloads with speed, progress and time left, one paused, four finished
+      de: Die Download-Seite im dunklen Design – fünf laufende Downloads mit Geschwindigkeit, Fortschritt und Restzeit, einer pausiert, vier fertig
+  - src: screenshots/plugins.png
+    alt:
+      en: The Plugins page with the six bundled plugins, each with its version and the addresses it handles
+      de: Die Plugin-Seite mit den sechs mitgelieferten Plugins, jeweils mit Version und den Adressen, für die es zuständig ist
+  - src: screenshots/downloads-compact-light.png
+    alt:
+      en: The same download list in the light theme and the compact layout, ten downloads on one screen
+      de: Dieselbe Download-Liste im hellen Design und im kompakten Layout, zehn Downloads auf einem Bildschirm
+
 features:
   - title: { en: Multi-chunk HTTP, de: Multi-Chunk-HTTP }
     text:
@@ -128,14 +142,34 @@ downloads:
     - { os: linux, label: { en: CLI (krake), de: CLI (krake) }, arch: arm64, asset: krake-linux-aarch64.tar.gz }
   install:
     - label: Docker
-      command: docker run -d --name krake -p 1516:1516 -p 9666:9666 -v ./config:/config -v ./downloads:/downloads -e AMIGO_BIND=0.0.0.0:1516 ghcr.io/amigo-labs/krake:latest
+      command: docker run -d --name krake -p 1516:1516 -v ./config:/config -v ./downloads:/downloads -e KRAKE_BIND=0.0.0.0:1516 ghcr.io/amigo-labs/krake:latest
       requiresRelease: true
       note:
-        en: Then open http://localhost:1516; the setup wizard creates the admin account. Port 9666 is Click'n'Load.
-        de: Danach http://localhost:1516 öffnen; der Einrichtungsassistent legt das Admin-Konto an. Port 9666 ist Click'n'Load.
+        en: Then open http://localhost:1516; the setup wizard creates the admin account. Click'n'Load needs the server or the desktop app on the same machine as the browser, not the container.
+        de: Danach http://localhost:1516 öffnen; der Einrichtungsassistent legt das Admin-Konto an. Click'n'Load braucht den Server oder die Desktop-App auf demselben Rechner wie der Browser, nicht den Container.
     - label: { en: Install script (CLI), de: Installationsskript (CLI) }
       command: curl -fsSL https://raw.githubusercontent.com/amigo-labs/amigo-krake/main/scripts/install.sh | bash
       requiresRelease: true
       note:
         en: Linux and macOS, x86_64 and aarch64. Installs krake from the latest release after checking its SHA-256 checksum.
         de: Linux und macOS, x86_64 und aarch64. Installiert krake aus dem neuesten Release, nachdem die SHA-256-Prüfsumme geprüft wurde.
+
+pages:
+  - slug: install
+    title: { en: Install Krake, de: Krake installieren }
+    summary:
+      en: Docker, server binary, command line, desktop app, or built from source.
+      de: Docker, Server-Binary, Kommandozeile, Desktop-App oder aus dem Quelltext gebaut.
+    body: { en: pages/install.md, de: pages/install.de.md }
+  - slug: cli
+    title: { en: The krake command line, de: Die Kommandozeile krake }
+    summary:
+      en: Direct downloads, the queue, DLC containers, plugins and updates from the terminal.
+      de: Direkte Downloads, Warteschlange, DLC-Container, Plugins und Updates im Terminal.
+    body: { en: pages/cli.md, de: pages/cli.de.md }
+  - slug: configuration
+    title: { en: Configuration, de: Konfiguration }
+    summary:
+      en: "config.toml, speed limits and schedules, Usenet, plugins, and the interfaces for other tools."
+      de: "config.toml, Geschwindigkeitslimits und Zeitpläne, Usenet, Plugins und die Schnittstellen für andere Werkzeuge."
+    body: { en: pages/configuration.md, de: pages/configuration.de.md }

@@ -460,3 +460,81 @@ async fn test_pause_does_not_mark_failed() {
         "paused download must stay 'paused', not become 'failed'"
     );
 }
+
+/// A server that trickles the first `sent` bytes of a `total`-byte file and
+/// then stalls, so a transfer has made progress but is still running.
+async fn stalling_server(total: usize, sent: usize) -> String {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        loop {
+            let Ok((mut socket, _)) = listener.accept().await else {
+                return;
+            };
+            tokio::spawn(async move {
+                let mut request = vec![0u8; 4096];
+                let n = socket.read(&mut request).await.unwrap_or(0);
+                let head = request[..n].starts_with(b"HEAD");
+                let headers = format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/octet-stream\r\n\
+                     content-length: {total}\r\naccept-ranges: none\r\n\r\n"
+                );
+                let _ = socket.write_all(headers.as_bytes()).await;
+                if head {
+                    return;
+                }
+                // In pieces over about 1.5 s: the transfer publishes its
+                // progress at most every 500 ms, when a piece arrives.
+                let piece = vec![7u8; sent / 16];
+                for _ in 0..16 {
+                    let _ = socket.write_all(&piece).await;
+                    let _ = socket.flush().await;
+                    tokio::time::sleep(Duration::from_millis(100)).await;
+                }
+                tokio::time::sleep(Duration::from_secs(30)).await;
+            });
+        }
+    });
+    format!("http://{addr}/partial.bin")
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn test_pause_keeps_the_progress_made_so_far() {
+    // Regression: progress lives in memory while a transfer runs. Pausing
+    // dropped it without writing it down, so a paused download showed
+    // "0 B" in the list although part of the file was on disk.
+    let url = stalling_server(1024 * 1024, 256 * 1024).await;
+    let (_tmp, coord) = lifecycle_coordinator();
+    let id = coord.add_download(&url, None).await.expect("add_download");
+
+    let mut seen = 0;
+    for _ in 0..100 {
+        seen = coord
+            .get_progress(&id)
+            .await
+            .map_or(0, |p| p.bytes_downloaded);
+        if seen > 0 {
+            break;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
+    assert!(seen > 0, "the transfer never reported progress");
+
+    coord.pause(&id).await.expect("pause");
+    tokio::time::sleep(Duration::from_millis(600)).await;
+
+    let row = coord
+        .storage()
+        .get_download(&id)
+        .await
+        .unwrap()
+        .expect("paused download row must still exist");
+    assert_eq!(row.status, "paused");
+    assert!(
+        row.bytes_downloaded >= seen,
+        "paused row shows {} B, the transfer had reached {seen} B",
+        row.bytes_downloaded
+    );
+    assert_eq!(row.speed_current, 0, "a paused download has no speed");
+}
