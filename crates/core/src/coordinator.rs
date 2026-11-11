@@ -707,7 +707,14 @@ impl Coordinator {
     pub async fn pause(&self, id: &str) -> Result<(), crate::Error> {
         let mut active = self.active.lock().await;
         if let Some(dl) = active.remove(id) {
+            // Progress lives in memory while a transfer runs and is only
+            // written down when it ends. Pausing ends it here, so keep what
+            // it had reached; otherwise the paused row reads 0 B.
+            let reached = dl.progress_rx.borrow().bytes_downloaded;
             dl.cancel_tx.send_replace(true);
+            self.storage
+                .update_download_progress(id, reached, 0)
+                .await?;
         }
         self.storage
             .update_download_status(id, QueueStatus::Paused)
