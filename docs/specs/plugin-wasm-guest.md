@@ -1,5 +1,5 @@
 ---
-status: todo
+status: implemented
 created: 2026-11-10
 size: L
 design: [AGENTS.md "Plugin-System", AGENTS.md "Wichtige Design-Entscheidungen" 14, docs/specs/plugin-runtime-wasm-portability.md, docs/specs/plugin-sandbox-hardening.md SH-7a]
@@ -71,74 +71,74 @@ Settled by a prototype (2026-11-10, 4 vCPU container, release build):
 
 ## Acceptance criteria
 
-- [ ] AC-01 (always): Krake's guest module imports nothing but functions
+- [x] AC-01 (always): Krake's guest module imports nothing but functions
   the executor defines for it (the host-function call and a clock) and no
   WASI function; any other import fails a test.
-- [ ] AC-02 (event): When the executor loads a plugin source that exports a
+- [x] AC-02 (event): When the executor loads a plugin source that exports a
   valid manifest and `resolve`, then it returns the same manifest fields
   (id, name, version, apiVersion, urlPattern, pluginType, permissions) the
   native engine reads from that source; when the source is invalid (syntax
   error, no `resolve`, a manifest field of the wrong type), then loading fails
   with the same error message as natively. Sources: every plugin under
   `plugins/` and the fixtures of this spec's tests.
-- [ ] AC-03 (event): When `resolve(url)` is called through the executor on a
+- [x] AC-03 (event): When `resolve(url)` is called through the executor on a
   plugin that calls pure helpers (`krake.regexMatch`, `krake.sha256`,
   `krake.urlResolve`, `krake.htmlQueryAttr`) and parent-routed functions
   (`krake.httpGet`, `krake.storageSet`, `krake.storageGet`), then the
   dispatcher receives the parent-routed calls with the same qualified names
   and arguments as under the native engine, and the returned
   `DownloadPackage` is structurally equal JSON.
-- [ ] AC-04 (event): When `postProcess` or a plugin spec (`plugin.spec.ts`
+- [x] AC-04 (event): When `postProcess` or a plugin spec (`plugin.spec.ts`
   source, already transpiled) is run through the executor, then the result
   JSON / test results are structurally equal to the native engine's for the
   same input (the shipped `plugins/**/plugin.spec.ts` and a `postProcess`
   fixture).
-- [ ] AC-05 (event): When a plugin is compiled to bytecode through the
+- [x] AC-05 (event): When a plugin is compiled to bytecode through the
   executor and that bytecode is evaluated in a fresh instance, then its manifest
   and its `resolve` result equal those of the same plugin loaded from source.
-- [ ] AC-06 (error): If a host function returns an error, then the plugin
+- [x] AC-06 (error): If a host function returns an error, then the plugin
   sees a JS `Error` with that message and can catch it; if it does not catch
   it, the call fails with an execution error carrying the message.
-- [ ] AC-07 (error): If plugin code runs longer than its deadline (an
+- [x] AC-07 (error): If plugin code runs longer than its deadline (an
   infinite loop in the module body, in `resolve`, in a manifest getter, or a
   catastrophically backtracking JavaScript `RegExp`), then the call ends with
   a timeout error within the deadline plus 1 s, and the instance is unusable.
   The deadline is wall-clock per call; if it passes while the guest is blocked
   in a host call, the call ends with the timeout when that host call returns.
-- [ ] AC-08 (error): If plugin code allocates more than the instance's memory
+- [x] AC-08 (error): If plugin code allocates more than the instance's memory
   limit, then the call fails with an execution error, the process keeps
   running, the instance is unusable and other instances are unaffected.
-- [ ] AC-09 (error): If plugin code recurses without bound, then the call
+- [x] AC-09 (error): If plugin code recurses without bound, then the call
   fails with an execution error, the process keeps running and the instance
   is unusable.
-- [ ] AC-10 (error): If the guest traps (an out-of-bounds memory access or
+- [x] AC-10 (error): If the guest traps (an out-of-bounds memory access or
   `unreachable`, as a memory-safety bug in QuickJS would cause), then the call
   fails with an execution error, the instance is unusable, the process keeps
   running, and a new instance of the same plugin works.
-- [ ] AC-11 (always): Two instances share no JS state and no memory: a global
+- [x] AC-11 (always): Two instances share no JS state and no memory: a global
   set in one plugin is undefined in another, and each has its own deadline, so
   a plugin finishing does not disarm another's.
-- [ ] AC-12 (state): While one instance is blocked in a parent-routed host
+- [x] AC-12 (state): While one instance is blocked in a parent-routed host
   call, other instances run and complete.
-- [ ] AC-13 (always): Creating the executor (making the module ready to
+- [x] AC-13 (always): Creating the executor (making the module ready to
   instantiate) takes under 50 ms, and creating one plugin instance under 5 ms,
   in a release build on the 4 vCPU container (`cargo test -p
   krake-plugin-runtime --release --test perf_baseline -- --ignored
   --nocapture`, median of 5; the ignored benchmark is run by hand like the
   SH-6 baseline, and its numbers go into Evidence).
-- [ ] AC-14 (always, CI: Rust job and Docker build): A clean checkout builds
+- [x] AC-14 (always, CI: Rust job and Docker build): A clean checkout builds
   the plugin runtime, guest included, with the ordinary workspace build and
   no manual step, locally and in CI's Rust job and Docker build.
-- [ ] AC-15 (error): If the tools the guest build needs are missing (`clang`
+- [x] AC-15 (error): If the tools the guest build needs are missing (`clang`
   with a WebAssembly target, the `wasm32-unknown-unknown` Rust target), then
   the build fails with a message that names the missing tool and the command
   that installs it on Linux, macOS and Windows. The check is a function a
   unit test calls with an empty tool search path.
-- [ ] AC-16 (error): If the guest passes the executor a host-function index
+- [x] AC-16 (error): If the guest passes the executor a host-function index
   outside the table, a malformed argument frame, or a pointer/length
   outside its memory, then that call fails with an execution error and the
   process keeps running; nothing outside the instance is read or written.
-- [ ] AC-17 (error): If the embedded module cannot be made ready (it does not
+- [x] AC-17 (error): If the embedded module cannot be made ready (it does not
   match the running CPU or `wasmtime`), then creating the executor returns an
   error that says so, without a panic.
 
@@ -220,23 +220,40 @@ Settled by a prototype (2026-11-10, 4 vCPU container, release build):
 
 | AC    | Test | Status | Commit |
 | ----- | ---- | ------ | ------ |
-| AC-01 | `guest_imports_only_what_the_executor_defines` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
-| AC-02 | `manifests_of_shipped_plugins_match_the_native_engine`, `invalid_sources_fail_with_the_native_message` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
-| AC-03 | `resolve_makes_the_same_host_calls_and_returns_the_same_package` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
-| AC-04 | `post_process_matches_the_native_engine`, `shipped_plugin_specs_give_the_native_results` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
-| AC-05 | `bytecode_round_trip_behaves_like_the_source`, `corrupt_bytecode_is_an_error_not_a_crash` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
-| AC-06 | `host_function_errors_are_catchable_js_errors`, `a_missing_return_value_reads_like_the_native_engine` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
-| AC-07 | `runaway_code_ends_with_a_timeout`, `a_deadline_that_passes_during_a_host_call_ends_the_call_on_return` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
-| AC-08 | `exceeding_the_memory_limit_fails_the_call_only` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
-| AC-09 | `unbounded_recursion_fails_the_call_only` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
-| AC-10 | `a_trapping_guest_is_contained` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
-| AC-11 | `instances_share_no_state_and_keep_their_own_deadline`, `a_finishing_instance_does_not_disarm_another_deadline` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
-| AC-12 | `a_blocked_host_call_does_not_block_other_instances` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | built |        |
-| AC-13 | `wasm_executor_startup_baseline` (crates/plugin-runtime/tests/perf_baseline.rs, ignored, run by hand): engine 1.6 ms, instance 0.8 ms (median of 5, three runs, release, 4 vCPU container, 2026-11-10) | built |        |
-| AC-14 | clean local build (`rm -rf target && cargo test -p krake-plugin-runtime`); CI: Rust job and Docker build | built |        |
-| AC-15 | `missing_tools_are_named_with_install_commands`, `clang_without_a_wasm_target_names_the_fix` (crates/plugin-runtime/src/guest_tools.rs) | built |        |
-| AC-16 | `hostile_host_calls_are_rejected` (crates/plugin-runtime/tests/wasm_guest_tests.rs), `host_call_arguments_must_match_the_table_row` (crates/plugin-runtime/src/wasm.rs) | built |        |
-| AC-17 | `foreign_bytes_are_refused_without_a_panic` (crates/plugin-runtime/src/wasm.rs) | built |        |
+| AC-01 | `guest_imports_only_what_the_executor_defines` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | verified | 48ce491 |
+| AC-02 | `manifests_of_shipped_plugins_match_the_native_engine`, `invalid_sources_fail_with_the_native_message` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | verified | 82955de |
+| AC-03 | `resolve_makes_the_same_host_calls_and_returns_the_same_package` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | verified | 82955de |
+| AC-04 | `post_process_matches_the_native_engine`, `shipped_plugin_specs_give_the_native_results` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | verified | 82955de |
+| AC-05 | `bytecode_round_trip_behaves_like_the_source`, `corrupt_bytecode_is_an_error_not_a_crash` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | verified | 82955de |
+| AC-06 | `host_function_errors_are_catchable_js_errors`, `a_missing_return_value_reads_like_the_native_engine` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | verified | 82955de |
+| AC-07 | `runaway_code_ends_with_a_timeout`, `a_deadline_that_passes_during_a_host_call_ends_the_call_on_return` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | verified | 82955de |
+| AC-08 | `exceeding_the_memory_limit_fails_the_call_only` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | verified | 82955de |
+| AC-09 | `unbounded_recursion_fails_the_call_only` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | verified | 82955de |
+| AC-10 | `a_trapping_guest_is_contained` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | verified | 82955de |
+| AC-11 | `instances_share_no_state_and_keep_their_own_deadline`, `a_finishing_instance_does_not_disarm_another_deadline` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | verified | 82955de |
+| AC-12 | `a_blocked_host_call_does_not_block_other_instances` (crates/plugin-runtime/tests/wasm_guest_tests.rs) | verified | 82955de |
+| AC-13 | `wasm_executor_startup_baseline` (crates/plugin-runtime/tests/perf_baseline.rs, ignored, run by hand): engine 1.6 ms, instance 0.8 ms (median of 5, three runs, release, 4 vCPU container, 2026-11-10); spec-check 2026-11-11: six runs, engine 1.6 to 5.2 ms, instance 0.87 to 3.1 ms (the slowest right after the build) | verified | 82955de |
+| AC-14 | clean local build (`rm -rf target && cargo test -p krake-plugin-runtime`); CI: Rust job and Docker build green for 60f6e46 (PR #106); spec-check built the release profile from an empty `target/release` | verified | 9c3345f |
+| AC-15 | `missing_tools_are_named_with_install_commands`, `clang_without_a_wasm_target_names_the_fix` (crates/plugin-runtime/src/guest_tools.rs) | verified | 82955de |
+| AC-16 | `hostile_host_calls_are_rejected` (crates/plugin-runtime/tests/wasm_guest_tests.rs), `host_call_arguments_must_match_the_table_row` (crates/plugin-runtime/src/wasm.rs) | verified | 82955de |
+| AC-17 | `foreign_bytes_are_refused_without_a_panic` (crates/plugin-runtime/src/wasm.rs) | verified | 82955de |
+
+## Summary
+
+> Completed: 2026-11-11
+
+- `crates/plugin-guest`: QuickJS as a `wasm32-unknown-unknown` module with no
+  system interface; it imports only the host-function call and a clock.
+- `krake_plugin_runtime::wasm`: `WasmEngine` / `WasmContext` run the guest in
+  `wasmtime`, one instance per plugin, with the operations of the native
+  `PluginContext` and the same results and error messages.
+- Limits per instance: linear memory (64 MB), wall-clock deadline per call
+  (epoch interruption), 512 KiB Wasm stack; a call that hits one or traps
+  leaves only that instance unusable.
+- `build.rs` builds the guest and embeds it precompiled for the target, so
+  start-up is a deserialize (about 2 ms); missing tools are named with their
+  install commands. CI, the Docker image and `Cross.toml` install clang and lld.
+- The plugin host does not use the executor yet: that is `plugin-wasm-sandbox`.
 
 ## Decisions
 
