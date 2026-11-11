@@ -90,8 +90,9 @@ Depends on: `plugin-wasm-guest` (`status: implemented`).
   source, then it loads from the bytecode cache (observable as in the existing test
   `second_load_comes_from_bytecode_cache_and_corruption_falls_back`); when the
   cached entry was written by a different guest build (another hash of the
-  embedded module) or is corrupt, then it is not evaluated, the plugin loads
-  from source and the entry is replaced.
+  embedded module), then it is never read: the plugin loads from source and
+  this build writes its own entry; when an entry of this build is corrupt,
+  then it is dropped, the plugin loads from source and the entry is replaced.
 - [ ] AC-07 (always): `discover()` of the shipped plugins takes under 60 ms
   cold and under 40 ms warm (without and with the bytecode cache, as
   `perf_baseline` defines them), and a `generic-http` `resolve()` with 3 host HTTP
@@ -124,6 +125,9 @@ Depends on: `plugin-wasm-guest` (`status: implemented`).
 | The child is killed while calls are in flight | As SH-7a: those calls fail with `HostCrashed`, the next call spawns a new child and re-loads plugins lazily |
 | A daemon updated on disk but not restarted respawns the plugin host | The handshake refuses a host with another protocol version; plugins fail closed until the restart |
 | Bytecode cache directory holds entries from the native engine | They are ignored and replaced (AC-06); no migration step |
+| A plugin uses `Atomics` | The global does not exist in the guest (it is built without threads); no shipped plugin uses it; documented in `docs/plugin-api.md` |
+| A plugin kept state in a JS global and then hit a limit | Its next call runs in a fresh instance: the global is gone; cookies and storage (in the daemon) survive; documented in `docs/plugin-api.md` |
+| A plugin throws an ordinary error | The call fails with that error; the instance stays and the plugin is not marked `failing` |
 | A plugin relied on QuickJS's own stack-overflow `RangeError` being catchable | Unbounded recursion now ends the call with an execution error; documented in `docs/plugin-api.md` |
 | The same plugin is called twice at once | The calls run one after the other on its instance, as today (per-plugin exec lock) |
 | The bytecode cache directory is not writable | Plugins load from source every time; a warning is logged, as today |
@@ -145,16 +149,16 @@ Depends on: `plugin-wasm-guest` (`status: implemented`).
 
 | AC    | Test | Status | Commit |
 | ----- | ---- | ------ | ------ |
-| AC-01 |      | open   |        |
-| AC-02 |      | open   |        |
-| AC-03 |      | open   |        |
-| AC-04 |      | open   |        |
-| AC-05 |      | open   |        |
-| AC-06 |      | open   |        |
-| AC-07 |      | open   |        |
-| AC-08 |      | open   |        |
-| AC-09 |      | open   |        |
-| AC-10 |      | open   |        |
+| AC-01 | `the_plugin_runtime_does_not_depend_on_native_quickjs` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs); the plugin host only links `wasm.rs` for execution | built |        |
+| AC-02 | existing suites unchanged and green: `runtime_tests`, `sandbox_tests`, `hardening_tests`, `host_api_tests`, `process_host_tests`, `spec_runner`, `updater_tests`; `wasm_guest_tests` against `tests/fixtures/native_engine_expectations.json` | built |        |
+| AC-03 | `a_trap_or_timeout_fails_one_call_and_the_plugin_recovers`, `other_plugins_calls_complete_while_one_traps`, `a_trap_or_timeout_while_loading_leaves_the_plugin_unregistered`, `an_ordinary_plugin_error_does_not_mark_the_plugin_failing` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs) | built |        |
+| AC-04 | `exceeding_the_memory_limit_fails_the_call_and_the_next_one_works` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs) | built |        |
+| AC-05 | AC-02 suites (timeouts, HTTP budget, storage quota in `hardening_tests`, `host_api_tests`, `sandbox_tests`) plus AC-04 | built |        |
+| AC-06 | `second_load_comes_from_bytecode_cache_and_corruption_falls_back` (crates/plugin-runtime/tests/hardening_tests.rs), `bytecode_of_another_guest_build_is_never_read` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs), `engine_version_is_part_of_the_key` (crates/plugin-runtime/src/bytecode_cache.rs) | built |        |
+| AC-07 | `plugin_load_and_resolve_baseline` (crates/plugin-runtime/tests/perf_baseline.rs, ignored, run by hand, asserts the budgets in release): cold 21 ms, warm 16 ms, resolve 1.9 ms (medians, three runs, release, 4 vCPU container, 2026-11-11) | built |        |
+| AC-08 | `the_plugin_host_needs_only_its_own_executable` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs); archives and image: `.github/workflows/release-build.yml` and `docker/Dockerfile` ship the same three binaries as before | built |        |
+| AC-09 | CI: release builds — the next run of `.github/workflows/release-build.yml` | open |        |
+| AC-10 | manual: pending — `docs/plugin-api.md` (Sandbox Limits, bytecode), `docs/architecture.md` (Plugin isolation), AGENTS.md (Sandboxing, Tech Stack), README, `docs/site/project.yml`, `plugin-sandbox-hardening.md`, `plugin-runtime-wasm-portability.md` | open |        |
 
 ## Decisions
 
@@ -164,3 +168,39 @@ Depends on: `plugin-wasm-guest` (`status: implemented`).
 - 2026-11-10: the child process stays, and there is no native fallback — the
   user had no preference; two layers and one execution path are the safer
   default.
+- 2026-11-11 (build): the host API is bound after the module body ran, as
+  before: the guest got a separate bind operation, so a module body still
+  cannot call `krake.*`.
+- 2026-11-11 (build): an instance that became unusable is rebuilt inside the
+  plugin host on the plugin's next call, from the source the host keeps
+  (module body evaluated again, host API bound). The daemon learns of it
+  through a new `instance_lost` flag on the response and marks the plugin
+  `failing` until its next successful call. An ordinary JS error does neither.
+- 2026-11-11 (build): IPC protocol version 2 (the `instance_lost` flag, and
+  bytecode that is not interchangeable with version 1).
+- 2026-11-11 (build): the bytecode cache key is the SHA-256 of the embedded
+  guest module plus the cache format and crate version. Entries of another
+  build are never read and leave with the cache's size bound; AC-06 reworded
+  to say that instead of "replaced" (no behavior was dropped).
+- 2026-11-11 (build): `EngineConfig::max_stack_size` is gone: the Wasm stack
+  limit is fixed at 512 KiB by the engine configuration both `build.rs` and
+  the runtime use.
+- 2026-11-11 (build): the unit tests of the removed native engine in
+  `engine.rs` (4) went with it; they tested code that no longer exists.
+  Their cases (context creation, eval, timeout of `postProcess`) are covered
+  by `wasm_guest_tests`.
+- 2026-11-11 (build): the comparison tests of `plugin-wasm-guest` replay the
+  native engine's answers from `tests/fixtures/native_engine_expectations.json`,
+  recorded at the last commit that had both engines.
+- 2026-11-11 (build): tests of this spec were written after the switch, not
+  before; the existing suites were the red/green signal for the switch
+  itself (they ran green at the first full run).
+- 2026-11-11 (measurements, release, 4 vCPU container, medians of three runs):
+
+  | | plugin host, native (SH-7a) | plugin host, Wasm |
+  |---|---|---|
+  | `discover()` cold (median of 5) | 17.3 ms | 21 ms |
+  | `discover()` warm, bytecode cache (median of 5) | 11.9 ms | 16 ms |
+  | `generic-http` `resolve()`, 3 host HTTP calls | 1.78 ms | 1.9 ms |
+
+  `krake-plugin-host` is 9.3 MB in release.
