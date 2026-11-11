@@ -66,11 +66,16 @@ async fn plugin_load_and_resolve_baseline() {
         }
     }
     println!("plugins loaded: {count}");
-    println!("discover() cold, median of {RUNS}: {:?}", median(cold));
-    println!(
-        "discover() warm (bytecode cache), median of {RUNS}: {:?}",
-        median(warm)
-    );
+    let (cold, warm) = (median(cold), median(warm));
+    println!("discover() cold, median of {RUNS}: {cold:?}");
+    println!("discover() warm (bytecode cache), median of {RUNS}: {warm:?}");
+    // Budgets of docs/specs/plugin-wasm-sandbox.md AC-07; they hold for an
+    // optimized build only.
+    let budgets = !cfg!(debug_assertions);
+    if budgets {
+        assert!(cold < Duration::from_millis(60), "cold: {cold:?}");
+        assert!(warm < Duration::from_millis(40), "warm: {warm:?}");
+    }
 
     let mock = MockServer::start().await;
     let page = r#"<html><head><title>Bench</title></head><body>
@@ -115,10 +120,11 @@ async fn plugin_load_and_resolve_baseline() {
         samples.push(start.elapsed());
         assert_eq!(pkg.downloads.len(), 1);
     }
-    println!(
-        "generic-http resolve() against local mock (3 HTTP calls), median of 50: {:?}",
-        median(samples)
-    );
+    let resolve = median(samples);
+    println!("generic-http resolve() against local mock (3 HTTP calls), median of 50: {resolve:?}");
+    if budgets {
+        assert!(resolve < Duration::from_millis(5), "resolve: {resolve:?}");
+    }
 }
 
 /// Start-up cost of the Wasm executor (docs/specs/plugin-wasm-guest.md,
