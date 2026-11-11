@@ -7,12 +7,12 @@ Code-Aufgaben (Marketplace-UI, Hoster-Plugins, Rate-Limit, OpenAPI-Codegen,
 Web-UI-Tests, CHANGELOG-Backfill, Rustdoc) gehören **nicht** hierher und
 laufen über eigene PRs.
 
-Stand: v0.1.0 ist **noch nicht** getaggt — es existieren keine Git-Tags und
-`.release-please-manifest.json` steht auf `0.0.0`. release-please ist mit
-`release-as: 0.1.0` konfiguriert; der nächste Merge nach `main` öffnet die
-v0.1.0-Release-PR, deren Merge den Tag setzt und den (bewusst leeren)
-`CHANGELOG.md` automatisch füllt. Auto-Release-on-merge ist aktiv, und
-4/4 CRITICAL + 11/17 HIGH aus `docs/specs/audit-2026-04-25.md` sind gemergt.
+Stand: v0.1.0 ist veröffentlicht (Tag `krake-v0.1.0`). Seitdem taggt
+release-please wie Pincel und Blinzel ohne Komponente (`v0.1.1`, Titel
+„Krake 0.1.1“); `bootstrap-sha` in `release-please-config.json` zeigt auf den
+0.1.0-Commit, bis das erste `v…`-Release existiert. Auto-Release-on-merge ist
+aktiv, und 4/4 CRITICAL + 11/17 HIGH aus `docs/specs/audit-2026-04-25.md`
+sind gemergt.
 
 ## Signing & Secrets
 
@@ -50,7 +50,7 @@ v0.1.0-Release-PR, deren Merge den Tag setzt und den (bewusst leeren)
 - [ ] Entscheiden, ob `@amigo-labs/krake-plugin-sdk` öffentlich auf npm publiziert wird.
       Falls ja: npm-Org/Account + `NPM_TOKEN`-Secret anlegen und
       `"private": true` in `plugin-sdk/package.json` entfernen.
-- [ ] Direkt nach dem v0.1.0-Tag `release-as: 0.1.0` aus
+- [x] Direkt nach dem v0.1.0-Tag `release-as: 0.1.0` aus
       `release-please-config.json` entfernen — sonst versucht jeder weitere
       Lauf erneut 0.1.0 zu releasen.
 - [ ] release-please-Release-PR für v1.0 reviewen und mergen (Tag-Cut).
