@@ -54,7 +54,7 @@ jobs:
         run: |
           gh pr merge "$PR_NUMBER" \
             --repo "${{ github.repository }}" \
-            --squash \
+            --merge \
             --auto \
             --delete-branch
 
