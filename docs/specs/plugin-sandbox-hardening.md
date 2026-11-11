@@ -150,8 +150,9 @@ second, overlapping key is a possible follow-up.
 Plugin JS runs in a separate binary, `krake-plugin-host`, not in the daemon.
 This contains crashes (a QuickJS abort or segfault, or `panic = "abort"`, kills
 the child, not the queue). It does **not** yet contain a memory-safety
-exploit: the child runs as the same OS user with the same filesystem and
-network reach as the daemon until SH-7b lands.
+exploit by itself: the child runs as the same OS user with the same
+filesystem and network reach as the daemon. That containment came with
+`plugin-wasm-sandbox.md` (QuickJS as WebAssembly inside this process).
 
 - [x] The daemon holds no `rquickjs::Runtime`. `PluginLoader` keeps metadata,
   URL matching, enable flags, per-plugin exec locks and the scoped `HostApi`s.
