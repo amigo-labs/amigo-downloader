@@ -23,7 +23,7 @@ Extensible for HTTP, Usenet, and more.
 
 - **Multi-chunk parallel downloads** with automatic resume and retry
 - **Built-in extractors** — YouTube (with N-parameter challenge), HLS, DASH
-- **TypeScript plugin system** — scriptable hoster support in plain `.ts` files, run in a separate process without file or network access of their own
+- **TypeScript plugin system** — scriptable hoster support in plain `.ts` files, sandboxed in WebAssembly inside a separate process
 - **Plugin marketplace** — install and update plugins from the registry
 - **Responsive Web UI** — Svelte 5 + Tailwind, dark/light themes, adjustable neon intensity
 - **PWA with Share Target** — install on your phone, share links directly to add downloads
@@ -179,7 +179,8 @@ amigo-krake/
 ├── crates/
 │   ├── core/              # Download engine, protocols, storage, i18n
 │   ├── extractors/        # Built-in site extractors (YouTube, HLS, DASH)
-│   ├── plugin-runtime/    # QuickJS VM, TypeScript transpiler, plugin registry
+│   ├── plugin-runtime/    # Wasm executor for QuickJS, TypeScript transpiler, plugin registry
+│   ├── plugin-guest/      # QuickJS compiled to WebAssembly (built by plugin-runtime)
 │   ├── server/            # Axum REST API, WebSocket, Click'n'Load, embedded UI
 │   └── cli/               # Command-line interface
 ├── web-ui/                # Svelte 5 + Tailwind PWA
@@ -232,7 +233,7 @@ Built-in extractors for sites that need special handling beyond simple HTTP:
 
 ### Plugin System
 
-Plugins are TypeScript files (`.ts`) that run in a sandboxed QuickJS VM. TypeScript is transpiled to JavaScript at load time via SWC. A plugin exports an object via `module.exports`; all Host-API calls are **synchronous** (the runtime blocks internally) — no `async`/`await` inside plugin code.
+Plugins are TypeScript files (`.ts`) that run in a sandboxed QuickJS VM (QuickJS compiled to WebAssembly, one instance per plugin, in a separate process). TypeScript is transpiled to JavaScript at load time via SWC. A plugin exports an object via `module.exports`; all Host-API calls are **synchronous** (the runtime blocks internally) — no `async`/`await` inside plugin code.
 
 ```typescript
 /// <reference path="../types/krake.d.ts" />
@@ -266,7 +267,7 @@ The plugin runtime includes:
 - **Registry** — discover and install plugins from the marketplace
 - **Updater** — automatic plugin updates with checksum verification
 - **Transpiler** — TypeScript → JavaScript via SWC at load time
-- **Engine** — QuickJS VM execution with Host API bindings
+- **Engine** — QuickJS as WebAssembly, run by `wasmtime`, with Host API bindings
 
 ### Server
 
@@ -450,7 +451,7 @@ See [Plugin API docs](docs/plugin-api.md) for the full Host API reference.
 | HLS/DASH | m3u8-rs, dash-mpd |
 | Usenet | Custom NNTP/TLS client on Tokio |
 | Extractors | Built-in (YouTube via rquickjs for N-parameter) |
-| Plugins | QuickJS VM (sandboxed), TypeScript via SWC transpiler |
+| Plugins | QuickJS as WebAssembly in `wasmtime` (sandboxed), TypeScript via SWC transpiler |
 | Database | SQLite (rusqlite, WAL mode) |
 | Web API | Axum + WebSocket |
 | Web UI | Svelte 5, Tailwind CSS v4, Vite |

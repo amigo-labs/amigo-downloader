@@ -1,7 +1,7 @@
 # Plugin Runtime: Keeping the Host-API Boundary Wasm-Portable
 
 **Date**: 2026-10-02
-**Status**: Design note (analysis only, no implementation) — #85
+**Status**: Design note — #85. The switch it prepared happened on 2026-11-11: `plugin-wasm-guest.md`, `plugin-wasm-sandbox.md` (AGENTS.md, decision 14)
 **Scope**: the boundary between plugin JS and `crates/plugin-runtime/src/host_api.rs`
 
 ---
@@ -107,7 +107,11 @@ Enforcement:
 - **Since B2 (#79):** the function table's type signature enforces it, because
   the table cannot hold a closure that mentions `Ctx<'_>`.
 
-## 5. Recommendation
+## 5. Recommendation (as of 2026-10-02; superseded)
+
+> Superseded on 2026-11-10: the Wasm route was chosen over the OS sandbox,
+> because it is one mechanism for Windows, macOS and Linux and testable in CI
+> (decision 14). B3 stays as is: the scripts are shared, not replaced.
 
 Do not switch now. #79 (out-of-process host with OS sandboxing) also contains
 the memory-safety bug class, at lower cost and without slowing JS down. With

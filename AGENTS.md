@@ -141,9 +141,9 @@ amigo-krake/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
-│   │       ├── engine.rs        # QuickJS VM execution
+│   │       ├── engine.rs        # Engine config, shared resolve/postProcess/spec scripts
 │   │       ├── host_api.rs      # krake.* host functions (daemon side)
-│   │       ├── host_fns.rs      # Host-function table + QuickJS adapter
+│   │       ├── host_fns.rs      # Host-function table + JS shim
 │   │       ├── ipc.rs           # Daemon ↔ plugin host wire protocol
 │   │       ├── plugin_host.rs   # Child process that runs plugin JS
 │   │       ├── process_host.rs  # Spawns/supervises the plugin host
@@ -275,7 +275,7 @@ amigo-krake/
 | HLS/DASH | **m3u8-rs, dash-mpd** | Streaming-Manifest-Parsing |
 | Usenet/NNTP | **Eigene Impl auf Tokio** | Kein brauchbares Rust-Crate |
 | Extractors | **Eigenes Crate + rquickjs** | YouTube N-Parameter, Format-Auswahl |
-| Plugin Runtime | **QuickJS (rquickjs)** | Sandboxed JS VM, schnell |
+| Plugin Runtime | **QuickJS als WebAssembly (rquickjs im Guest, wasmtime)** | Sandboxed JS VM, Speicherisolation pro Plugin |
 | Plugin Sprache | **TypeScript via SWC** | DX, Typsicherheit, Transpilation zur Ladezeit |
 | Datenbank | **SQLite via rusqlite** | Embedded, kein externer Service |
 | Web Framework | **Axum** | Tokio-nativ, performant |
@@ -357,7 +357,7 @@ amigo-krake/
 
 ## Plugin-System (`plugin-runtime`)
 
-Plugins sind TypeScript-Dateien (`.ts`), die zur Ladezeit via SWC nach JavaScript transpiliert und in einer sandboxed QuickJS VM ausgeführt werden.
+Plugins sind TypeScript-Dateien (`.ts`), die zur Ladezeit via SWC nach JavaScript transpiliert und in einer sandboxed QuickJS VM ausgeführt werden (QuickJS als WebAssembly, eine Instanz pro Plugin).
 
 Die autoritative Plugin-API-Referenz ist `docs/plugin-api.md`; die vollständigen TypeScript-Typen liegen in `plugins/types/krake.d.ts`. Dieser Abschnitt ist nur eine Zusammenfassung.
 
@@ -488,9 +488,9 @@ Für komplexere Plugins existiert das separate Package `@amigo-labs/krake-plugin
 
 ### Sandboxing
 - Kein direkter Netzwerk/Filesystem/Prozess-Zugang
-- Resource Limits: 30s Timeout (5s für Modul-Load), 64MB RAM pro Plugin (eigene QuickJS-Runtime pro Plugin), 20 HTTP-Requests, 1MB Storage
+- Resource Limits: 30s Timeout (5s für Modul-Load), 64MB RAM pro Plugin (eigene Wasm-Instanz mit eigener QuickJS-Runtime pro Plugin), 20 HTTP-Requests, 1MB Storage
 - Netzwerk: optionale Domain-Allowlist `permissions.domains`, pro Request und Redirect-Hop erzwungen; Install/erweiternde Updates brauchen Bestätigung
-- Plugin-JS läuft im separaten Prozess `krake-plugin-host` (liegt neben `krake-server`/`krake`, Override: `KRAKE_PLUGIN_HOST_BIN`); ein QuickJS-Crash beendet nur diesen, die Queue läuft weiter. Noch keine OS-Sandbox um den Child (Landlock/seccomp etc.) — offen in #79, siehe `docs/specs/plugin-sandbox-hardening.md` (SH-7b)
+- Plugin-JS läuft im separaten Prozess `krake-plugin-host` (liegt neben `krake-server`/`krake`, Override: `KRAKE_PLUGIN_HOST_BIN`); dort läuft QuickJS als WebAssembly in `wasmtime` (`crates/plugin-guest`, `wasm.rs`): ein Speicherfehler in QuickJS bleibt in der Wasm-Instanz des Plugins. Reißt ein Aufruf ein Limit oder trappt die Instanz, schlägt nur dieser Aufruf fehl und der nächste bekommt eine frische Instanz; stürzt der Prozess ab, läuft die Queue weiter. Keine zusätzliche OS-Sandbox um den Child (Entscheidung 14, `docs/specs/plugin-wasm-sandbox.md`)
 - Reload: Laden eines Plugins mit bekannter `id` ersetzt die alte Version (genutzt von Plugin-Updates); kein Filesystem-Watcher — nach manuellen Änderungen Server neu starten oder `krake plugins test` zum Iterieren nutzen
 
 ---
