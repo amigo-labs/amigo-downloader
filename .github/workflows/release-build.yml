@@ -386,7 +386,7 @@ jobs:
 
           cat > artifacts/latest.json << EOF
           {
-            "version": "${TAG}",
+            "version": "${VERSION}",
             "notes": "Release ${VERSION} — see https://github.com/${REPO}/releases/tag/${TAG} for full changelog",
             "pub_date": "${DATE}",
             "platforms": {
@@ -429,7 +429,9 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           tag: ${{ inputs.tag_name }}
+          # Release title "Krake X.Y.Z", like "Pincel X.Y.Z" and
+          # "Blinzel X.Y.Z"; replaces the name release-please gave it.
+          name: Krake ${{ inputs.version }}
           allowUpdates: true
           omitBodyDuringUpdate: true
-          omitNameDuringUpdate: true
           artifacts: "artifacts/*"
