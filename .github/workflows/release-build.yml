@@ -386,7 +386,7 @@ jobs:
 
           cat > artifacts/latest.json << EOF
           {
-            "version": "${TAG}",
+            "version": "${VERSION}",
             "notes": "Release ${VERSION} — see https://github.com/${REPO}/releases/tag/${TAG} for full changelog",
             "pub_date": "${DATE}",
             "platforms": {
