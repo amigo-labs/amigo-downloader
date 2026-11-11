@@ -36,6 +36,12 @@ include!("wasm_config.rs");
 /// The guest module, precompiled for this target by `build.rs`.
 static GUEST: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/plugin_guest.cwasm"));
 
+/// Identity of the embedded guest build, for the bytecode cache key.
+pub(crate) fn guest_fingerprint() -> String {
+    use sha2::Digest;
+    hex::encode(sha2::Sha256::digest(GUEST))
+}
+
 /// How often the epoch advances; the granularity of deadlines.
 const TICK: Duration = Duration::from_millis(20);
 
@@ -59,6 +65,7 @@ enum Op {
     ExportJson = 7,
     RequireFn = 8,
     PendingJob = 9,
+    Bind = 10,
     SelfTest = 255,
 }
 
@@ -159,6 +166,20 @@ impl WasmEngine {
         config: &EngineConfig,
         dispatch: Arc<dyn HostDispatch>,
     ) -> Result<WasmContext, crate::Error> {
+        let context = self.create_unbound_context(config, dispatch)?;
+        context.bind_host_api()?;
+        Ok(context)
+    }
+
+    /// Create an instance whose JavaScript has no host API yet: `krake` and
+    /// `console` do not exist until [`WasmContext::bind_host_api`]. The
+    /// plugin host evaluates a plugin's module body in this state, so a
+    /// module body can only define exports.
+    pub fn create_unbound_context(
+        &self,
+        config: &EngineConfig,
+        dispatch: Arc<dyn HostDispatch>,
+    ) -> Result<WasmContext, crate::Error> {
         let mut store = Store::new(
             &self.engine,
             HostState {
@@ -200,11 +221,7 @@ impl WasmEngine {
             load_timeout: config.load_timeout,
             _ticker: Arc::clone(&self.ticker),
         };
-        context.op(
-            Op::Init,
-            &[host_table().as_bytes(), JS_SHIM.as_bytes()],
-            config.load_timeout,
-        )?;
+        context.op(Op::Init, &[], config.load_timeout)?;
         Ok(context)
     }
 }
@@ -403,6 +420,17 @@ impl WasmContext {
     /// The deadline used for module evaluation and export reads.
     pub fn load_timeout(&self) -> Duration {
         self.load_timeout
+    }
+
+    /// Install the host API (`krake.*`, `console.*`) in an instance created
+    /// with [`WasmEngine::create_unbound_context`].
+    pub fn bind_host_api(&self) -> Result<(), crate::Error> {
+        self.op(
+            Op::Bind,
+            &[host_table().as_bytes(), JS_SHIM.as_bytes()],
+            self.load_timeout,
+        )
+        .map(drop)
     }
 
     /// Whether an earlier call left this instance unusable (it hit a limit

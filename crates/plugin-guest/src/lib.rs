@@ -45,6 +45,7 @@ const OP_HAS_EXPORT: u8 = 6;
 const OP_EXPORT_JSON: u8 = 7;
 const OP_REQUIRE_FN: u8 = 8;
 const OP_PENDING_JOB: u8 = 9;
+const OP_BIND: u8 = 10;
 /// Misbehave on purpose, so the executor's tests can prove that a trapping
 /// or hostile guest is contained. Only the executor can send an op; plugin
 /// JavaScript cannot reach this.
@@ -164,7 +165,7 @@ fn text<'a>(args: &[&'a [u8]], i: usize) -> Result<&'a str, String> {
 
 fn run(op: u8, args: &[&[u8]]) -> OpResult {
     if op == OP_INIT {
-        return init(text(args, 0)?, text(args, 1)?);
+        return init();
     }
     if op == OP_SELF_TEST {
         return self_test(text(args, 0)?);
@@ -185,6 +186,11 @@ fn run(op: u8, args: &[&[u8]]) -> OpResult {
             OP_EXPORT_JSON => export_json(&ctx, text(args, 0)?),
             OP_REQUIRE_FN => require_fn(&ctx, text(args, 0)?),
             OP_PENDING_JOB => Ok(Some(flag(ctx.execute_pending_job()))),
+            OP_BIND => {
+                let table = parse_table(text(args, 0)?)?;
+                register(&ctx, table, text(args, 1)?)?;
+                Ok(None)
+            }
             _ => Err(format!("unknown op {op}")),
         })
     })
@@ -435,15 +441,15 @@ fn parse_table(table: &str) -> Result<Vec<HostFn>, String> {
         .collect()
 }
 
-fn init(table: &str, shim: &str) -> OpResult {
-    let table = parse_table(table)?;
+/// Create the QuickJS runtime. It has no host API until `OP_BIND`: a
+/// plugin's module body runs before, and only defines exports.
+fn init() -> OpResult {
     let runtime = Runtime::new().map_err(|e| format!("Failed to create QuickJS runtime: {e}"))?;
     // QuickJS measures its stack against the native stack pointer, which
     // means nothing in Wasm; the executor's Wasm stack limit is the guard.
     runtime.set_max_stack_size(0);
     let context =
         Context::full(&runtime).map_err(|e| format!("Failed to create QuickJS context: {e}"))?;
-    context.with(|ctx| register(&ctx, table, shim))?;
     STATE.with(|state| {
         *state.borrow_mut() = Some(State {
             context,

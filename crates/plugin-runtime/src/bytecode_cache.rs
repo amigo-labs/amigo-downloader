@@ -7,28 +7,28 @@
 //!
 //! # Security constraints
 //!
-//! QuickJS bytecode is version-bound and **not validated** before execution:
-//! malformed or mismatched bytecode is a memory-safety problem, not a parse
-//! error. Therefore:
+//! QuickJS bytecode is version-bound and **not validated** before execution.
+//! Since the engine runs as WebAssembly, malformed or mismatched bytecode can
+//! only corrupt the instance that evaluates it, which fails that load; it is
+//! still kept out:
 //!
-//! - Bytecode is only ever produced **locally**, by [`compile_script`], from
+//! - Bytecode is only ever produced **locally**, by the engine itself, from
 //!   source that already passed the loader's checks. The registry serves
 //!   `.ts`/`.js` source only (`registry::download_plugin` rejects anything
 //!   else); bytecode is never accepted from a remote input.
-//! - The cache key includes the QuickJS version, the cache format version, the
-//!   runtime crate version and the target's pointer width / endianness, so an
-//!   engine bump is a cache *miss*, never a load of stale bytecode.
+//! - The cache key includes a hash of the embedded guest module (QuickJS and
+//!   everything around it), the cache format version and the runtime crate
+//!   version, so another engine build is a cache *miss*, never a load of
+//!   stale bytecode.
 //! - Every entry carries a SHA-256 of its payload; a truncated or corrupted
-//!   entry is detected before it reaches `JS_ReadObject`, deleted, and the
+//!   entry is detected before it reaches the engine, deleted, and the
 //!   loader falls back to source.
 //! - The cache directory must only be writable by the daemon. Plugin JS has no
 //!   filesystem access at all, so the sandbox cannot reach it.
 
-use std::ffi::{CStr, CString};
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
-use rquickjs::{Ctx, qjs};
 use sha2::{Digest, Sha256};
 use tracing::{debug, warn};
 
@@ -51,19 +51,13 @@ const MAX_ENTRY_BYTES: u64 = 16 * 1024 * 1024;
 /// Identity of the engine that produces and consumes the bytecode. Part of
 /// every cache key.
 static ENGINE_FINGERPRINT: LazyLock<String> = LazyLock::new(|| {
-    // SAFETY: JS_GetVersion returns a pointer to a static NUL-terminated string.
-    let qjs_version = unsafe { CStr::from_ptr(qjs::JS_GetVersion()) }
-        .to_string_lossy()
-        .into_owned();
+    // The guest module is the engine: its hash changes with QuickJS, with
+    // the guest's code and with the compiler, so bytecode of another guest
+    // build is a cache miss and never evaluated.
     format!(
-        "quickjs-ng={qjs_version};fmt={CACHE_FORMAT_VERSION};runtime={};ptr={};endian={}",
+        "guest={};fmt={CACHE_FORMAT_VERSION};runtime={}",
+        crate::wasm::guest_fingerprint(),
         env!("CARGO_PKG_VERSION"),
-        usize::BITS,
-        if cfg!(target_endian = "little") {
-            "le"
-        } else {
-            "be"
-        },
     )
 });
 
@@ -238,81 +232,6 @@ fn decode_entry(data: &[u8]) -> Option<&[u8]> {
     Some(payload)
 }
 
-/// Take the pending exception off `ctx` and render it as a message.
-fn take_exception(ctx: &Ctx<'_>) -> String {
-    crate::engine::describe_js_error(ctx, rquickjs::Error::Exception)
-}
-
-/// Compile `source` as a global (non-module) script and serialize the
-/// resulting function to bytecode, without running it.
-pub(crate) fn compile_script(
-    ctx: &Ctx<'_>,
-    source: &str,
-    filename: &str,
-) -> Result<Vec<u8>, String> {
-    let src = CString::new(source).map_err(|_| "source contains a NUL byte".to_string())?;
-    let name = CString::new(filename).map_err(|_| "filename contains a NUL byte".to_string())?;
-    let raw = ctx.as_raw().as_ptr();
-    // SAFETY: `raw` is the live context we are inside of; `src`/`name` are
-    // NUL-terminated and outlive the call. Every JSValue we receive is freed
-    // exactly once, and the buffer from JS_WriteObject is released with
-    // js_free on the same context.
-    unsafe {
-        let func = qjs::JS_Eval(
-            raw,
-            src.as_ptr(),
-            source.len() as _,
-            name.as_ptr(),
-            (qjs::JS_EVAL_TYPE_GLOBAL | qjs::JS_EVAL_FLAG_COMPILE_ONLY) as i32,
-        );
-        if qjs::JS_IsException(func) {
-            return Err(take_exception(ctx));
-        }
-        let mut len = 0usize;
-        let buf = qjs::JS_WriteObject(
-            raw,
-            (&raw mut len).cast(),
-            func,
-            qjs::JS_WRITE_OBJ_BYTECODE as i32,
-        );
-        qjs::JS_FreeValue(raw, func);
-        if buf.is_null() {
-            return Err(take_exception(ctx));
-        }
-        let bytes = std::slice::from_raw_parts(buf, len).to_vec();
-        qjs::js_free(raw, buf as *mut _);
-        Ok(bytes)
-    }
-}
-
-/// Deserialize and run bytecode produced by [`compile_script`].
-///
-/// # Safety
-/// QuickJS trusts its input. `bytecode` must have been produced by
-/// [`compile_script`] in this same engine build, and must be intact.
-pub(crate) unsafe fn eval_script_bytecode(ctx: &Ctx<'_>, bytecode: &[u8]) -> Result<(), String> {
-    let raw = ctx.as_raw().as_ptr();
-    // SAFETY: see function contract; values are freed exactly once
-    // (JS_EvalFunction consumes `func`).
-    unsafe {
-        let func = qjs::JS_ReadObject(
-            raw,
-            bytecode.as_ptr(),
-            bytecode.len() as _,
-            qjs::JS_READ_OBJ_BYTECODE as i32,
-        );
-        if qjs::JS_IsException(func) {
-            return Err(take_exception(ctx));
-        }
-        let result = qjs::JS_EvalFunction(raw, func);
-        if qjs::JS_IsException(result) {
-            return Err(take_exception(ctx));
-        }
-        qjs::JS_FreeValue(raw, result);
-        Ok(())
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -344,7 +263,7 @@ mod tests {
         let cache = tmp_cache("ver", 8);
         let bumped = cache.clone().with_fingerprint_for_test("quickjs-ng=99.0.0");
         assert_ne!(cache.key("p.js", "src"), bumped.key("p.js", "src"));
-        assert!(engine_fingerprint().contains("quickjs-ng="));
+        assert!(engine_fingerprint().contains("guest="));
     }
 
     #[test]

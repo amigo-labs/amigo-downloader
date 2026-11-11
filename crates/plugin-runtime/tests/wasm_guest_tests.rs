@@ -1,4 +1,5 @@
-//! The Wasm executor against the native engine and against its limits.
+//! The Wasm executor against the recorded answers of the native engine and
+//! against its limits.
 //! docs/specs/plugin-wasm-guest.md
 
 use std::collections::HashMap;
@@ -8,8 +9,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use krake_plugin_runtime::Error;
-use krake_plugin_runtime::engine::{EngineConfig, PluginContext, PluginEngine, TestResults};
-use krake_plugin_runtime::host_fns::{HostArgs, HostDispatch, HostResult, register_host_api};
+use krake_plugin_runtime::engine::{EngineConfig, TestResults};
+use krake_plugin_runtime::host_fns::{HostArgs, HostDispatch, HostResult};
 use krake_plugin_runtime::transpiler::transpile;
 use krake_plugin_runtime::wasm::{WasmContext, WasmEngine};
 
@@ -73,40 +74,22 @@ fn wasm_with(engine: &WasmEngine, dispatch: Arc<dyn HostDispatch>) -> WasmContex
         .expect("instance")
 }
 
-/// Where the native engine's answers are recorded.
-fn expectations_path() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/native_engine_expectations.json")
-}
+/// What the native QuickJS engine answered before it left the plugin
+/// runtime (docs/specs/plugin-wasm-sandbox.md, AC-02). Recorded from the
+/// native engine at the last commit that had both, where the same tests
+/// compared the two live.
+static NATIVE_ANSWERS: &str = include_str!("fixtures/native_engine_expectations.json");
 
-static RECORDING: Mutex<()> = Mutex::new(());
-
-fn recording() -> bool {
-    std::env::var_os("KRAKE_RECORD_NATIVE").is_some()
-}
-
-fn load_expectations() -> std::collections::BTreeMap<String, serde_json::Value> {
-    std::fs::read_to_string(expectations_path())
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .unwrap_or_default()
-}
-
-/// What the native QuickJS engine answered, before it was removed from the
-/// plugin runtime (docs/specs/plugin-wasm-sandbox.md). Answers are keyed by
-/// the loaded source, the operation, its argument and how often that call
-/// was made, so a test drives this like an engine.
+/// Replays the native engine's answers. They are keyed by the loaded source,
+/// the operation, its argument and how often that call was made, so a test
+/// drives this like an engine.
 struct Native {
-    live: Option<(PluginContext, Arc<Recorder>)>,
+    answers: std::collections::BTreeMap<String, serde_json::Value>,
     state: Mutex<(String, HashMap<String, usize>)>,
 }
 
 impl Native {
-    fn answer<T: serde::Serialize + serde::de::DeserializeOwned>(
-        &self,
-        op: &str,
-        arg: &str,
-        run: impl FnOnce(&PluginContext) -> T,
-    ) -> T {
+    fn answer<T: serde::de::DeserializeOwned>(&self, op: &str, arg: &str) -> T {
         use sha2::Digest;
         let key = {
             let mut state = self.state.lock().unwrap();
@@ -120,19 +103,8 @@ impl Native {
             *n += 1;
             format!("{call}|{n}")
         };
-        if let Some((context, _)) = &self.live {
-            let value = run(context);
-            let _guard = RECORDING.lock().unwrap();
-            let mut all = load_expectations();
-            all.insert(key, serde_json::to_value(&value).unwrap());
-            std::fs::create_dir_all(expectations_path().parent().unwrap()).unwrap();
-            let mut text = serde_json::to_string_pretty(&all).unwrap();
-            text.push('\n');
-            std::fs::write(expectations_path(), text).unwrap();
-            return value;
-        }
-        let all = load_expectations();
-        let value = all
+        let value = self
+            .answers
             .get(&key)
             .unwrap_or_else(|| panic!("no recorded native answer for {key}"));
         serde_json::from_value(value.clone()).unwrap()
@@ -140,27 +112,13 @@ impl Native {
 
     /// The parent-routed host calls the native engine made.
     fn calls(&self) -> Vec<(String, HostArgs)> {
-        self.answer("calls", "", |_| {
-            self.live
-                .as_ref()
-                .map(|(_, r)| r.calls())
-                .unwrap_or_default()
-        })
+        self.answer("calls", "")
     }
 }
 
-fn native_with(dispatch: Arc<Recorder>) -> Native {
-    let live = recording().then(|| {
-        let context = PluginEngine::new(config(Duration::from_secs(5)))
-            .unwrap()
-            .create_context()
-            .unwrap();
-        let bound: Arc<dyn HostDispatch> = dispatch.clone();
-        context.with(|ctx| register_host_api(&ctx, bound)).unwrap();
-        (context, dispatch)
-    });
+fn native() -> Native {
     Native {
-        live,
+        answers: serde_json::from_str(NATIVE_ANSWERS).expect("fixture is valid JSON"),
         state: Mutex::new((String::new(), HashMap::new())),
     }
 }
@@ -224,32 +182,31 @@ macro_rules! impl_js {
     };
 }
 impl_js!(WasmContext);
-impl_js!(PluginContext);
 
 impl Js for Native {
     fn load(&self, source: &str) -> Result<(), Error> {
-        self.answer("load", source, |c| c.load(source))
+        self.answer("load", source)
     }
     fn export_string(&self, name: &str) -> Result<String, Error> {
-        self.answer("export_string", name, |c| c.export_string(name))
+        self.answer("export_string", name)
     }
     fn export_json(&self, name: &str) -> Result<Option<String>, Error> {
-        self.answer("export_json", name, |c| c.export_json(name))
+        self.answer("export_json", name)
     }
     fn require_fn(&self, name: &str) -> Result<(), Error> {
-        self.answer("require_fn", name, |c| c.require_fn(name))
+        self.answer("require_fn", name)
     }
     fn resolve(&self, url: &str) -> Result<String, Error> {
-        self.answer("resolve", url, |c| c.resolve(url))
+        self.answer("resolve", url)
     }
     fn post_process(&self, json: &str) -> Result<String, Error> {
-        self.answer("post_process", json, |c| c.post_process(json))
+        self.answer("post_process", json)
     }
-    fn spec(&self, source: &str) -> TestResults {
-        self.answer("spec", "", |c| c.spec(source))
+    fn spec(&self, _source: &str) -> TestResults {
+        self.answer("spec", "")
     }
     fn eval(&self, code: &str) -> Result<String, Error> {
-        self.answer("eval", code, |c| c.eval(code))
+        self.answer("eval", code)
     }
 }
 
@@ -353,7 +310,7 @@ fn manifests_of_shipped_plugins_match_the_native_engine() {
         let source = wrap_file(&path);
         let dispatch = Arc::new(Recorder::default());
         let wasm = manifest(&wasm_with(&engine, dispatch.clone()), &source);
-        let native = manifest(&native_with(dispatch), &source);
+        let native = manifest(&native(), &source);
         assert_eq!(wasm, native, "{}", path.display());
         assert!(wasm[0].starts_with("ok"), "{}: {}", path.display(), wasm[0]);
     }
@@ -385,7 +342,7 @@ fn invalid_sources_fail_with_the_native_message() {
         let source = wrap(&source);
         let dispatch = Arc::new(Recorder::default());
         let wasm = manifest(&wasm_with(&engine, dispatch.clone()), &source);
-        let native = manifest(&native_with(dispatch), &source);
+        let native = manifest(&native(), &source);
         assert_eq!(wasm, native, "{label}");
         assert!(
             wasm.iter().any(|line| line.contains("err: ")),
@@ -406,8 +363,7 @@ fn resolve_makes_the_same_host_calls_and_returns_the_same_package() {
     wasm.load(&source).unwrap();
     let wasm_result = json(wasm.resolve(url));
 
-    let native_calls = Arc::new(Recorder::default());
-    let native = native_with(native_calls.clone());
+    let native = native();
     native.load(&source).unwrap();
     let native_result = json(native.resolve(url));
 
@@ -430,7 +386,7 @@ fn post_process_matches_the_native_engine() {
     let context = r#"{"files":["a.rar","b.rar"],"dir":"/downloads"}"#;
     let wasm = wasm_with(&engine(), Arc::new(Recorder::default()));
     wasm.load(&source).unwrap();
-    let native = native_with(Arc::new(Recorder::default()));
+    let native = native();
     native.load(&source).unwrap();
     assert!(wasm.has_post_process());
     let result = json(wasm.post_process(context));
@@ -451,7 +407,7 @@ fn shipped_plugin_specs_give_the_native_results() {
         let spec = spec_source(&spec);
         let wasm = wasm_with(&engine, Arc::new(Recorder::default()));
         wasm.load(&source).unwrap();
-        let native = native_with(Arc::new(Recorder::default()));
+        let native = native();
         native.load(&source).unwrap();
         let wasm_results = serde_json::to_value(wasm.spec(&spec)).unwrap();
         let native_results = serde_json::to_value(native.spec(&spec)).unwrap();
@@ -534,7 +490,7 @@ fn host_function_errors_are_catchable_js_errors() {
     );
     let wasm = wasm_with(&engine(), Arc::new(Recorder::default()));
     wasm.load(&source).unwrap();
-    let native = native_with(Arc::new(Recorder::default()));
+    let native = native();
     native.load(&source).unwrap();
 
     let caught = json(wasm.resolve("https://x/caught"));
@@ -567,7 +523,7 @@ fn a_missing_return_value_reads_like_the_native_engine() {
     let source = wrap(r#"module.exports = { id: "u", resolve(url) { }, postProcess(ctx) { } };"#);
     let wasm = wasm_with(&engine(), Arc::new(Recorder::default()));
     wasm.load(&source).unwrap();
-    let native = native_with(Arc::new(Recorder::default()));
+    let native = native();
     native.load(&source).unwrap();
 
     assert_eq!(
@@ -600,7 +556,7 @@ fn thrown_non_errors_carry_their_string_form_under_both_engines() {
     );
     let wasm = wasm_with(&engine(), Arc::new(Recorder::default()));
     wasm.load(&source).unwrap();
-    let native = native_with(Arc::new(Recorder::default()));
+    let native = native();
     native.load(&source).unwrap();
 
     for (kind, form) in [
@@ -852,7 +808,7 @@ fn a_promise_from_resolve_is_settled_under_both_engines() {
     );
     let wasm = wasm_with(&engine(), Arc::new(Recorder::default()));
     wasm.load(&source).unwrap();
-    let native = native_with(Arc::new(Recorder::default()));
+    let native = native();
     native.load(&source).unwrap();
 
     for js in [&wasm as &dyn Js, &native] {

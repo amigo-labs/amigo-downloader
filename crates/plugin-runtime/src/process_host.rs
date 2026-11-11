@@ -213,6 +213,9 @@ struct State {
     kill_reason: Option<String>,
     pending: HashMap<u64, Pending>,
     scopes: HashMap<Handle, Scope>,
+    /// Plugins whose Wasm instance became unusable during their last request
+    /// and has not been reported to the loader yet.
+    instance_lost: std::collections::HashSet<String>,
 }
 
 /// One running plugin host process.
@@ -379,6 +382,12 @@ impl Child {
     }
 
     /// Free a handle in the child.
+    /// Whether the plugin's Wasm instance became unusable during its last
+    /// request; reading clears the mark.
+    pub(crate) fn take_instance_lost(&self, plugin_id: &str) -> bool {
+        self.shared.lock().instance_lost.remove(plugin_id)
+    }
+
     pub(crate) fn drop_handle(&self, handle: Handle) {
         self.shared.lock().scopes.remove(&handle);
         if let Ok(frame) = ipc::encode_frame(&ToChild::Drop { handle }) {
@@ -465,8 +474,19 @@ impl Child {
 /// Handle one frame from the child.
 fn route(shared: &Arc<Shared>, writer: &mpsc::WeakUnboundedSender<Vec<u8>>, msg: ToParent) {
     match msg {
-        ToParent::Response { id, result } => {
-            let pending = shared.lock().pending.remove(&id);
+        ToParent::Response {
+            id,
+            result,
+            instance_lost,
+        } => {
+            let pending = {
+                let mut state = shared.lock();
+                let pending = state.pending.remove(&id);
+                if instance_lost && let Some(pending) = &pending {
+                    state.instance_lost.insert(pending.plugin_id.clone());
+                }
+                pending
+            };
             if let Some(pending) = pending {
                 let _ = pending.reply.send(result);
             }

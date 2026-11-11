@@ -445,6 +445,7 @@ impl PluginLoader {
         let notifier = self.host_api.clone();
         let id = plugin_id.to_string();
         tokio::spawn(async move {
+            let mut instance_lost = false;
             let result = async {
                 let child = runtime.process.child().await?;
                 if slot.generation != child.generation {
@@ -471,14 +472,16 @@ impl PluginLoader {
                         "plugin host restarted while re-loading plugin {id}"
                     )));
                 }
-                child
+                let result = child
                     .request(request(slot.handle), &id, budget, grace)
-                    .await
+                    .await;
+                instance_lost = child.take_instance_lost(&id);
+                result
             }
             .await;
             // Still holding the slot: health updates stay in call order, and
             // a dropped caller does not skip them.
-            record_health(&plugins, &notifier, &id, &result).await;
+            record_health(&plugins, &notifier, &id, &result, instance_lost).await;
             drop(slot);
             result
         })
@@ -687,16 +690,19 @@ impl PluginLoader {
     }
 }
 
-/// Mark a plugin `failing` when the plugin host died under it; clear the
-/// mark on its next successful call.
+/// Mark a plugin `failing` when the plugin host died under it or its Wasm
+/// instance became unusable (the call hit a limit or the engine trapped);
+/// clear the mark on its next successful call.
 async fn record_health(
     plugins: &RwLock<Vec<LoadedPlugin>>,
     notifier: &HostApi,
     plugin_id: &str,
     result: &Result<Payload, crate::Error>,
+    instance_lost: bool,
 ) {
-    let crashed = matches!(result, Err(crate::Error::HostCrashed(_)));
-    if crashed && let Err(e) = result {
+    let host_crashed = matches!(result, Err(crate::Error::HostCrashed(_)));
+    let crashed = host_crashed || instance_lost;
+    if host_crashed && let Err(e) = result {
         notifier.notify(
             plugin_id,
             "Plugin crashed",

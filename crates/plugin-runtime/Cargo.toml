@@ -39,9 +39,6 @@ cbc = "0.1"
 # Ed25519 signature verification for the plugin registry (index.json.sig).
 ed25519-dalek = { workspace = true }
 
-# QuickJS-NG runtime (replaces rune)
-rquickjs = { workspace = true }
-
 # Runs the plugin guest (QuickJS as WebAssembly, crates/plugin-guest). Only
 # the runtime: the module is precompiled by build.rs, so no compiler ships.
 wasmtime = { version = "50", default-features = false, features = ["runtime", "std"] }
