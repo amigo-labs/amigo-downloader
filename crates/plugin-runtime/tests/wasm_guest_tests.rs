@@ -73,15 +73,96 @@ fn wasm_with(engine: &WasmEngine, dispatch: Arc<dyn HostDispatch>) -> WasmContex
         .expect("instance")
 }
 
-fn native_with(dispatch: Arc<dyn HostDispatch>) -> PluginContext {
-    let context = PluginEngine::new(config(Duration::from_secs(5)))
-        .unwrap()
-        .create_context()
-        .unwrap();
-    context
-        .with(|ctx| register_host_api(&ctx, dispatch))
-        .unwrap();
-    context
+/// Where the native engine's answers are recorded.
+fn expectations_path() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/native_engine_expectations.json")
+}
+
+static RECORDING: Mutex<()> = Mutex::new(());
+
+fn recording() -> bool {
+    std::env::var_os("KRAKE_RECORD_NATIVE").is_some()
+}
+
+fn load_expectations() -> std::collections::BTreeMap<String, serde_json::Value> {
+    std::fs::read_to_string(expectations_path())
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
+}
+
+/// What the native QuickJS engine answered, before it was removed from the
+/// plugin runtime (docs/specs/plugin-wasm-sandbox.md). Answers are keyed by
+/// the loaded source, the operation, its argument and how often that call
+/// was made, so a test drives this like an engine.
+struct Native {
+    live: Option<(PluginContext, Arc<Recorder>)>,
+    state: Mutex<(String, HashMap<String, usize>)>,
+}
+
+impl Native {
+    fn answer<T: serde::Serialize + serde::de::DeserializeOwned>(
+        &self,
+        op: &str,
+        arg: &str,
+        run: impl FnOnce(&PluginContext) -> T,
+    ) -> T {
+        use sha2::Digest;
+        let key = {
+            let mut state = self.state.lock().unwrap();
+            if op == "load" {
+                state.0 = hex::encode(&sha2::Sha256::digest(arg.as_bytes())[..8]);
+                state.1.clear();
+            }
+            let shown = if op == "load" { "" } else { arg };
+            let call = format!("{}|{op}|{shown}", state.0);
+            let n = state.1.entry(call.clone()).or_insert(0);
+            *n += 1;
+            format!("{call}|{n}")
+        };
+        if let Some((context, _)) = &self.live {
+            let value = run(context);
+            let _guard = RECORDING.lock().unwrap();
+            let mut all = load_expectations();
+            all.insert(key, serde_json::to_value(&value).unwrap());
+            std::fs::create_dir_all(expectations_path().parent().unwrap()).unwrap();
+            let mut text = serde_json::to_string_pretty(&all).unwrap();
+            text.push('\n');
+            std::fs::write(expectations_path(), text).unwrap();
+            return value;
+        }
+        let all = load_expectations();
+        let value = all
+            .get(&key)
+            .unwrap_or_else(|| panic!("no recorded native answer for {key}"));
+        serde_json::from_value(value.clone()).unwrap()
+    }
+
+    /// The parent-routed host calls the native engine made.
+    fn calls(&self) -> Vec<(String, HostArgs)> {
+        self.answer("calls", "", |_| {
+            self.live
+                .as_ref()
+                .map(|(_, r)| r.calls())
+                .unwrap_or_default()
+        })
+    }
+}
+
+fn native_with(dispatch: Arc<Recorder>) -> Native {
+    let live = recording().then(|| {
+        let context = PluginEngine::new(config(Duration::from_secs(5)))
+            .unwrap()
+            .create_context()
+            .unwrap();
+        let bound: Arc<dyn HostDispatch> = dispatch.clone();
+        context.with(|ctx| register_host_api(&ctx, bound)).unwrap();
+        (context, dispatch)
+    });
+    Native {
+        live,
+        state: Mutex::new((String::new(), HashMap::new())),
+    }
 }
 
 /// The module wrapper the plugin host puts around a plugin's source.
@@ -109,6 +190,7 @@ trait Js {
     fn resolve(&self, url: &str) -> Result<String, Error>;
     fn post_process(&self, json: &str) -> Result<String, Error>;
     fn spec(&self, source: &str) -> TestResults;
+    fn eval(&self, code: &str) -> Result<String, Error>;
 }
 
 macro_rules! impl_js {
@@ -135,11 +217,41 @@ macro_rules! impl_js {
             fn spec(&self, source: &str) -> TestResults {
                 self.run_tests(source, "plugin.spec.js", Duration::from_secs(5))
             }
+            fn eval(&self, code: &str) -> Result<String, Error> {
+                self.eval_js(code)
+            }
         }
     };
 }
 impl_js!(WasmContext);
 impl_js!(PluginContext);
+
+impl Js for Native {
+    fn load(&self, source: &str) -> Result<(), Error> {
+        self.answer("load", source, |c| c.load(source))
+    }
+    fn export_string(&self, name: &str) -> Result<String, Error> {
+        self.answer("export_string", name, |c| c.export_string(name))
+    }
+    fn export_json(&self, name: &str) -> Result<Option<String>, Error> {
+        self.answer("export_json", name, |c| c.export_json(name))
+    }
+    fn require_fn(&self, name: &str) -> Result<(), Error> {
+        self.answer("require_fn", name, |c| c.require_fn(name))
+    }
+    fn resolve(&self, url: &str) -> Result<String, Error> {
+        self.answer("resolve", url, |c| c.resolve(url))
+    }
+    fn post_process(&self, json: &str) -> Result<String, Error> {
+        self.answer("post_process", json, |c| c.post_process(json))
+    }
+    fn spec(&self, source: &str) -> TestResults {
+        self.answer("spec", "", |c| c.spec(source))
+    }
+    fn eval(&self, code: &str) -> Result<String, Error> {
+        self.answer("eval", code, |c| c.eval(code))
+    }
+}
 
 fn text<T: std::fmt::Debug>(result: Result<T, Error>) -> String {
     match result {
@@ -305,7 +417,7 @@ fn resolve_makes_the_same_host_calls_and_returns_the_same_package() {
         wasm_result["downloads"][0]["url"],
         "https://example.com/get/file.zip"
     );
-    assert_eq!(wasm_calls.calls(), native_calls.calls());
+    assert_eq!(wasm_calls.calls(), native.calls());
     let names: Vec<String> = wasm_calls.calls().into_iter().map(|c| c.0).collect();
     assert_eq!(names, ["__rawHttpGet", "storageSet", "storageGet"]);
 }
@@ -468,7 +580,7 @@ fn a_missing_return_value_reads_like_the_native_engine() {
     );
     assert_eq!(
         text(wasm.eval_js("undefined")),
-        text(native.eval_js("undefined"))
+        text(native.eval("undefined"))
     );
     assert!(text(wasm.resolve("https://x/")).contains("'undefined'"));
     assert!(!wasm.is_unusable());
