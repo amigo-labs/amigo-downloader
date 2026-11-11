@@ -1,6 +1,11 @@
-# Feature: Desktop App (embedded server, tray, self-update)
+---
+status: todo
+created: 2026-10-27
+size: L
+surfaces: [desktop, rest, web-ui]
+---
 
-> status: draft
+# Feature: Desktop App (embedded server, tray, self-update)
 
 ## Summary
 
@@ -35,6 +40,12 @@ This spec makes the desktop app a working product and keeps it current:
 
    The existing core-update banner in the web-ui drives it through a hook in
    `krake-server`.
+
+   **Update choice** (revision 2026-11-11, alike in amigo-pincel and
+   amigo-blinzel): on the first start a question offers "Install
+   automatically (recommended)", "Notify me when an update is available" and
+   "Never check for updates". The About section of the Settings page shows
+   the version and every update option, where the choice can be changed.
 6. **Release plumbing:**
    - `createUpdaterArtifacts`;
    - a Tauri-2 `latest.json`;
@@ -49,7 +60,8 @@ origin cannot call native commands.
 
 Delivered in three PRs, in this order: **P1** embedded server, session, paths
 and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
-(AC-9 to AC-12). **P3** updater and release (AC-13 to AC-24).
+(AC-9 to AC-12). **P3** updater and release (AC-13 to AC-24, and the update
+choice AC-25 to AC-33).
 
 ## Acceptance Criteria
 
@@ -103,14 +115,18 @@ and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
 
 ### P3 — Self-update and release
 
-- [ ] AC-13: With `update.auto_check = true`, a background thread checks
-  `latest.json` 10 s after start, and then whenever
-  `update.check_interval_hours` have passed since `<app_data>/desktop.json`
-  `last_update_check`.
+- [ ] AC-13: While the update choice is "install automatically" or
+  "notify", a background thread checks `latest.json` 10 s after start, and
+  then whenever `update.check_interval_hours` have passed since
+  `<app_data>/desktop.json` `last_update_check`. While it is "never check",
+  no background check runs.
 - [ ] AC-14: An update is downloaded and its minisign signature is verified
   against `plugins.updater.pubkey` (`3098504C1538B8F6`) before anything is
   installed. A wrong or missing signature installs nothing and is logged.
-- [ ] AC-15: How a verified update is installed depends on the platform:
+- [ ] AC-15: A verified update is installed by itself only while the update
+  choice is "install automatically"; otherwise only after Install in the
+  announcement (AC-28) or a manual apply. How it is installed depends on the
+  platform:
   - **macOS** replaces the app bundle;
   - **Linux AppImage** replaces the AppImage, and the new version runs at the
     next start;
@@ -122,7 +138,8 @@ and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
   a Linux `.deb`/`.rpm` install (no `APPIMAGE` env var).
 - [ ] AC-17: In desktop mode `GET /api/v1/updates/check` reports the
   desktop update in `core`, plus `distribution: "tauri"`,
-  `can_self_update` (from AC-16) and `pending_restart`.
+  `can_self_update` (from AC-16), `pending_restart`, `update_mode`
+  (`"auto"`, `"notify"` or `"off"`) and `update_mode_chosen`.
   `POST /api/v1/updates/core` runs check, download and verify through the
   hook, and returns `{"status":"ready","version":"…"}`.
 - [ ] AC-18: The web-ui core-update banner works in desktop mode with no new
@@ -156,6 +173,52 @@ and sidecar (AC-1 to AC-8). **P2** tray, single instance and deep links
 - [ ] AC-24: A desktop release needs the organization secrets
   `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`. The
   installer job fails early with a clear message when either is missing.
+
+### P3 — Update choice
+
+- [ ] AC-25 (event): When the desktop app shows its window and the copy can
+  update itself (AC-16) and no update choice is stored, then the web-ui asks
+  how Krake should handle updates, with the choices "Install automatically
+  (recommended)", "Notify me when an update is available" and "Never check
+  for updates", the first preselected, and a Confirm button. The question
+  never shows in the browser against `krake-server` or Docker, in debug
+  builds or in `.deb` / `.rpm` installs.
+- [ ] AC-26 (event): When the user confirms the question, then the chosen
+  option is stored and the question never shows again; when the user closes
+  it without confirming (Escape, the close button, or closing the window to
+  the tray), nothing is stored, "install automatically" applies for this run,
+  and the question shows again at the next start.
+- [ ] AC-27 (state): While the first-start question is neither confirmed nor
+  closed in this run, no background update check starts; once it is, a check
+  that came due meanwhile starts at once.
+- [ ] AC-28 (event): When a background check finds a newer version while the
+  update choice is "notify" and that version was not announced before, then
+  nothing is downloaded and the web-ui shows "Krake <version> is available"
+  with Install and Later; Install downloads, verifies and installs it like
+  `POST /api/v1/updates/core` and then reads "Update ready — takes effect at
+  the next start"; Install or Later marks that version as announced, so later
+  checks do not announce it again, while a still newer version is announced.
+- [ ] AC-29 (state): While the update choice is "never check", nothing is
+  announced; the core-update banner's manual check and apply still work.
+- [ ] AC-30 (state): While the Settings page's About section shows in the
+  desktop app, it shows the running version (the release version, not a
+  fixed string), the version that is downloaded and takes effect at the next
+  start (if any), the three update choices with the stored one selected, and
+  a Check for updates button; selecting a choice stores it at once and takes
+  effect without a restart. Where the copy cannot update itself it shows the
+  reason instead of the choices ("update with your package manager" for
+  `.deb` / `.rpm`). Outside the desktop app it shows the version only.
+- [ ] AC-31 (event): In desktop mode `PUT /api/v1/updates/mode` with
+  `{"mode":"auto"|"notify"|"off"}` stores the choice and returns it;
+  `{"dismissed":true}` records a close without a choice for this run; any
+  other body is `400`. Outside desktop mode the route answers `404`.
+- [ ] AC-32 (event, manual: needs a real Windows install): When the Windows
+  setup runs silently (`/S`, as winget does) on a machine where Krake has no
+  stored update choice, then "install automatically" is stored and the first
+  start shows no question; interactive and passive (`/P`, the updater)
+  installs store nothing.
+- [ ] AC-33 (always): Every text of the question, the announcement and the
+  About section's update part exists in English and German.
 
 ## API Contract
 
@@ -226,6 +289,18 @@ pub struct DesktopState {
     pub port: Option<u16>,
     /// Unix seconds of the last background update check (AC-13).
     pub last_update_check: u64,
+    /// The user's update choice; `None` until confirmed (AC-25, AC-26).
+    pub update_mode: Option<UpdateMode>,
+    /// Last version announced in "notify" (AC-28).
+    pub announced_version: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum UpdateMode {
+    Auto,
+    Notify,
+    Off,
 }
 ```
 
@@ -236,6 +311,7 @@ pub struct DesktopState {
 | GET | `/api/v1/desktop/session?token=<hex>` | — | `303 Location: /` + `Set-Cookie` | 303, 401 (wrong / used / no desktop mode), 429 (rate limit) |
 | GET | `/api/v1/updates/check` | — | existing `UpdateCheck`; desktop mode: `core` from `DesktopUpdater::check`, plus `distribution: "tauri"`, `can_self_update`, `pending_restart: string \| null` | 200, 502 |
 | POST | `/api/v1/updates/core` | — | desktop mode: `{"status":"ready","version":"1.2.3"}` | 200, 400 (not allowed, AC-16), 502 (check, download or signature failed) |
+| PUT | `/api/v1/updates/mode` | `{"mode":"auto"\|"notify"\|"off"}` or `{"dismissed":true}` | `{"update_mode":"…","update_mode_chosen":bool}` | 200, 400 (other body), 404 (no desktop mode) |
 
 `/api/v1/desktop/session` is mounted only when `ServeOptions::desktop` is
 `Some`, and the token is compared in constant time. It is not behind
@@ -247,8 +323,12 @@ pub struct DesktopState {
   username `desktop`.
 - New file `<app_data>/desktop.json` (`DesktopState`), written with
   temp-file + rename.
-- Config: none. The desktop updater reuses `update.auto_check` and
-  `update.check_interval_hours`.
+- Config: none. The desktop updater reuses `update.check_interval_hours`;
+  whether it checks is the update choice in `desktop.json` (AC-13), not
+  `update.auto_check`, which keeps governing plugin update checks.
+- `desktop.json` also holds `update_mode` and `announced_version`. No
+  migration: no desktop release has shipped, so no copy has a choice from an
+  earlier version.
 
 ## UI Changes
 
@@ -259,6 +339,9 @@ pub struct DesktopState {
 - New locale keys in `locales/en.json` and `locales/de.json`.
 - No setup or login screen in desktop mode; this comes from the server
   (AC-4), with no web-ui change.
+- First-start update question (a dialog over any page), the "notify"
+  announcement (Install / Later), and the update part of the Settings page's
+  About section (AC-25 to AC-30), all desktop mode only.
 
 ## Affected Files
 
@@ -316,6 +399,12 @@ pub struct DesktopState {
 | Windows: Quit while an update download is still in progress | Quit is not delayed. Nothing is installed; the next start checks again. |
 | `krake-plugin-host` missing from a broken install | Plugin downloads fail with the existing "plugin host not found" error; built-in protocols keep working. |
 | Release built with a repository secret that shadows the org key | AC-21 stops the upload, naming the file and both key IDs. |
+| First start through a `krake://add` link | The link's download is queued; the question shows over the page. |
+| Window closed to the tray while the question is open | Counts as closed without a choice (AC-26); downloads go on. |
+| "notify" finds a version while the window is hidden in the tray | The announcement shows the next time the window opens. |
+| Announcement open when the app quits | That version counts as not announced; the next due check announces it again. |
+| `desktop.json` not writable when the user confirms | The choice applies for this run; the question shows again at the next start. |
+| User switches from "never check" to "install automatically" in About | A check that is due starts without a restart. |
 
 ## Test Plan
 
@@ -366,6 +455,15 @@ pub struct DesktopState {
   - `krake://add` link;
   - update from version N to N+1 through the banner (AC-9 to AC-18).
 - [ ] Manual: the website links resolve after the release (AC-22, AC-23).
+- [ ] Unit (`tauri`): `UpdateMode` round trip in `desktop.json`, missing
+  field → not chosen; `is_due` per mode; the announcement once per version
+  (AC-13, AC-25 to AC-29).
+- [ ] Unit (`crates/server`), `update_api` with a fake `DesktopUpdater`:
+  `PUT /updates/mode` per mode, dismissed, bad body → 400, no desktop mode →
+  404 (AC-31).
+- [ ] Web UI unit tests (`web-ui/test/`): question shown only for desktop
+  mode with `can_self_update` and no choice; announcement once per version;
+  About section states (AC-25, AC-28, AC-30).
 
 ## Out of Scope
 
@@ -379,3 +477,72 @@ pub struct DesktopState {
 - Torrent / magnet support (AC-12 only declines it).
 - Moving `localStorage` settings into the server.
 - Native file dialogs / Tauri IPC for the web-ui.
+- An update question inside the Windows installer — because macOS has no
+  installer and Linux has none either; one first-start question serves every
+  platform alike (owner, 2026-11-11).
+- An update choice for `krake-server`, Docker and the CLI — because they
+  update through `krake update`, the banner or a new image; the question is
+  about the desktop app replacing itself.
+- Skipping a version for good, or postponing for a time span — because
+  "notify" announces each version once and the banner's check offers it again
+  at any time.
+
+## Open questions
+
+<!-- One bullet per open question; empty means: everything settled, spec-build may start -->
+
+## Evidence
+
+| AC    | Test | Status | Commit |
+| ----- | ---- | ------ | ------ |
+| AC-1 |      | open   |        |
+| AC-2 |      | open   |        |
+| AC-3 |      | open   |        |
+| AC-4 |      | open   |        |
+| AC-5 |      | open   |        |
+| AC-6 |      | open   |        |
+| AC-7 |      | open   |        |
+| AC-8 |      | open   |        |
+| AC-9 |      | open   |        |
+| AC-10 |      | open   |        |
+| AC-11 |      | open   |        |
+| AC-12 |      | open   |        |
+| AC-13 |      | open   |        |
+| AC-14 |      | open   |        |
+| AC-15 |      | open   |        |
+| AC-16 |      | open   |        |
+| AC-17 |      | open   |        |
+| AC-18 |      | open   |        |
+| AC-19 |      | open   |        |
+| AC-20 |      | open   |        |
+| AC-21 |      | open   |        |
+| AC-22 |      | open   |        |
+| AC-23 |      | open   |        |
+| AC-24 |      | open   |        |
+| AC-25 |      | open   |        |
+| AC-26 |      | open   |        |
+| AC-27 |      | open   |        |
+| AC-28 |      | open   |        |
+| AC-29 |      | open   |        |
+| AC-30 |      | open   |        |
+| AC-31 |      | open   |        |
+| AC-32 |      | open   |        |
+| AC-33 |      | open   |        |
+
+## Decisions
+
+- 2026-11-11: Converted to the feature-spec template (front matter, Open
+  questions, Evidence, Decisions); the earlier ACs keep their IDs and
+  wording, the new ones carry their form.
+- 2026-11-11: Update choice added (owner), alike in amigo-pincel
+  (`desktop-app`) and amigo-blinzel (`updates`): the user picks on the first
+  start — install automatically, notify, never check — and changes it in the
+  Settings page's About section, which shows the version and every update
+  option. Owner's answers: ask on the first start, not in the installer;
+  three choices; nobody asked → automatic (closing without a choice, silent
+  installs); "notify" announces each version once; closing the question
+  without a choice asks again at the next start. AC-13, AC-15 and AC-17
+  reworded; AC-25 to AC-33 new. The choice lives in `desktop.json`, not in
+  the config TOML, because it belongs to the desktop app alone and the
+  server's `update.auto_check` keeps governing plugin checks. New route
+  `PUT /api/v1/updates/mode` (desktop mode only), listed for review.
