@@ -158,7 +158,7 @@ Depends on: `plugin-wasm-guest` (`status: implemented`).
 | AC-07 | `plugin_load_and_resolve_baseline` (crates/plugin-runtime/tests/perf_baseline.rs, ignored, run by hand, asserts the budgets in release): cold 21 ms, warm 16 ms, resolve 1.9 ms (medians, three runs, release, 4 vCPU container, 2026-11-11) | built |        |
 | AC-08 | `the_plugin_host_needs_only_its_own_executable` (crates/plugin-runtime/tests/wasm_sandbox_tests.rs); archives and image: `.github/workflows/release-build.yml` and `docker/Dockerfile` ship the same three binaries as before | built |        |
 | AC-09 | CI: release builds — the next run of `.github/workflows/release-build.yml` | open |        |
-| AC-10 | manual: pending — `docs/plugin-api.md` (Sandbox Limits, bytecode), `docs/architecture.md` (Plugin isolation), AGENTS.md (Sandboxing, Tech Stack), README, `docs/site/project.yml`, `plugin-sandbox-hardening.md`, `plugin-runtime-wasm-portability.md` | open |        |
+| AC-10 | manual: daniel-rck checked the sandbox documentation (`docs/plugin-api.md` (Sandbox Limits, bytecode), `docs/architecture.md` (Plugin isolation), AGENTS.md (Sandboxing, Tech Stack), README, `docs/site/project.yml`, `plugin-sandbox-hardening.md`, `plugin-runtime-wasm-portability.md`), 2026-11-11 | built |        |
 
 ## Decisions
 
