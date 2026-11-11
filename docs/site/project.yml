@@ -69,8 +69,8 @@ features:
       de: m3u8- und MPD-Parsing mit Auswahl von Variante und Spur sowie Segment-Downloads, dazu ein eingebauter YouTube-Extractor (InnerTube-Client, N-Parameter-Challenge, Formatauswahl).
   - title: { en: Sandboxed TypeScript plugins, de: Abgeschottete TypeScript-Plugins }
     text:
-      en: Write hoster and extractor plugins in plain TypeScript. SWC transpiles them, a QuickJS VM in a separate process runs them — no direct network or file-system access, with limits of 30 s, 64 MB, 20 requests and 1 MB storage.
-      de: Hoster- und Extractor-Plugins in einfachem TypeScript schreiben. SWC transpiliert sie, eine QuickJS-VM in einem eigenen Prozess führt sie aus – ohne direkten Netzwerk- oder Dateisystemzugriff, mit Limits von 30 s, 64 MB, 20 Requests und 1 MB Speicher.
+      en: Write hoster and extractor plugins in plain TypeScript. SWC transpiles them, and QuickJS runs them as WebAssembly in a separate process — no direct network or file-system access, with limits of 30 s, 64 MB, 20 requests and 1 MB storage.
+      de: Hoster- und Extractor-Plugins in einfachem TypeScript schreiben. SWC transpiliert sie, QuickJS führt sie als WebAssembly in einem eigenen Prozess aus – ohne direkten Netzwerk- oder Dateisystemzugriff, mit Limits von 30 s, 64 MB, 20 Requests und 1 MB Speicher.
   - title: { en: Plugin marketplace, de: Plugin-Marktplatz }
     text:
       en: Search, install and update plugins from the registry, with checksum verification and automatic updates.
@@ -105,6 +105,7 @@ features:
       de: Eine responsive Svelte-Oberfläche (als PWA mit Teilen-Ziel installierbar), die Kommandozeile krake für direkte Downloads und die Warteschlange sowie eine native Tauri-App – auf Englisch und Deutsch.
 
 downloads:
+  checksums: SHA256SUMS
   files:
     # Desktop app (Tauri bundles; names carry the version)
     - { os: windows, label: { en: Desktop app (installer), de: Desktop-App (Installer) }, arch: x64, match: "_x64-setup\\.exe$" }

@@ -1,7 +1,7 @@
 # Plugin Sandbox Hardening
 
 **Date**: 2026-10-02
-**Status**: Implemented (#78, #80–#84, #79 process split), design note (#85), open (#79 OS sandbox)
+**Status**: Implemented (#78, #80–#84, #79 process split), design note (#85). The OS sandbox (SH-7b) was replaced by WebAssembly isolation: `plugin-wasm-guest.md`, `plugin-wasm-sandbox.md`
 **Scope**: `crates/plugin-runtime`, server plugin endpoints, Web UI / CLI install flow, release workflow
 **Tracking**: #77
 
@@ -13,9 +13,10 @@ The plugin sandbox's documented limits (30 s, 64 MB, 20 requests, 1 MB storage)
 bounded a *cooperating* interpreter but were not a security boundary: some
 entry points ran without a deadline, the registry signature check could be
 bypassed, and any plugin could reach any host. This spec covers the in-process
-hardening and the process split (#79, SH-7a). The OS sandbox around the
-child process (SH-7b) is the remaining step that changes the trust model; its
-design decisions are recorded at the end.
+hardening and the process split (#79, SH-7a). The step that changes the trust
+model was planned as an OS sandbox around the child process (SH-7b) and built
+as WebAssembly isolation instead (`plugin-wasm-sandbox.md`); the SH-7b
+decisions are kept at the end as the record of the alternative.
 
 ---
 
@@ -216,7 +217,12 @@ network reach as the daemon until SH-7b lands.
   no new reach. The parent re-validates everything it trusts from a manifest
   (allowlist, URL pattern, API version).
 
-## SH-7b. OS sandbox for the plugin host (#79) — open
+## SH-7b. OS sandbox for the plugin host (#79) — replaced
+
+> **Replaced on 2026-11-10** by memory isolation through WebAssembly
+> (AGENTS.md, "Wichtige Design-Entscheidungen" 14): `plugin-wasm-guest.md` and
+> `plugin-wasm-sandbox.md`. The decisions below are kept as the record of the
+> alternative that was not built.
 
 These decisions are settled here so the implementation PR does not have to
 argue them again:

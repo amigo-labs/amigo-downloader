@@ -1,7 +1,8 @@
 //! The plugin host: the child process that runs plugin JavaScript.
 //!
 //! The `krake-plugin-host` binary calls [`run`]. It owns every QuickJS
-//! runtime; the daemon owns none. It reads [`ToChild`] frames from stdin and
+//! runtime, each inside its own WebAssembly instance ([`crate::wasm`]); the
+//! daemon owns none. It reads [`ToChild`] frames from stdin and
 //! writes [`ToParent`] frames to stdout (see [`crate::ipc`]).
 //!
 //! The child does no I/O of its own: the daemon sends plugin and spec
@@ -22,18 +23,20 @@ use std::sync::mpsc::{SyncSender, sync_channel};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crate::engine::{EngineConfig, PluginContext, PluginEngine};
+use crate::engine::EngineConfig;
 use crate::host_api::{base64_decode_bytes, base64_encode_bytes};
-use crate::host_fns::{HostArgs, HostDispatch, HostResult, register_host_api};
+use crate::host_fns::{HostArgs, HostDispatch, HostResult};
 use crate::ipc::{self, Handle, Payload, Request, ToChild, ToParent};
 use crate::permissions::DomainAllowlist;
 use crate::sandbox::SandboxLimits;
 use crate::types::{PluginMeta, PluginPermissions, PluginType};
+use crate::wasm::{WasmContext, WasmEngine};
 
 /// Run the plugin host on stdin/stdout until stdin closes. Returns the
 /// process exit code.
 pub fn run() -> i32 {
     let host = Arc::new(Host {
+        engine: WasmEngine::new().map_err(|e| e.to_string()),
         out: Mutex::new(BufWriter::new(io::stdout())),
         pending_calls: Mutex::new(HashMap::new()),
         next_call: AtomicU64::new(1),
@@ -67,14 +70,19 @@ pub fn run() -> i32 {
                 let spawned = std::thread::Builder::new()
                     .name(format!("plugin-req-{id}"))
                     .spawn(move || {
-                        let result = worker.handle(id, body);
+                        let (result, instance_lost) = worker.handle(id, body);
                         // A failed write means the daemon is gone; the reader
                         // loop sees EOF and exits.
-                        let _ = worker.send(&ToParent::Response { id, result });
+                        let _ = worker.send(&ToParent::Response {
+                            id,
+                            result,
+                            instance_lost,
+                        });
                     });
                 if let Err(e) = spawned {
                     let _ = host.send(&ToParent::Response {
                         id,
+                        instance_lost: false,
                         result: Err(crate::Error::Execution(format!(
                             "plugin host could not start a worker: {e}"
                         ))),
@@ -94,15 +102,43 @@ pub fn run() -> i32 {
     }
 }
 
-/// One loaded plugin context.
+/// One loaded plugin: its Wasm instance and what it takes to build a new
+/// one.
 struct Loaded {
-    context: PluginContext,
+    /// The current instance. Replaced by a fresh one after a call left it
+    /// unusable (it hit a limit or trapped).
+    context: Mutex<Arc<WasmContext>>,
     /// Request currently executing on this context, stamped on host calls so
     /// the daemon can attribute them. The daemon serializes calls per plugin.
     request: Arc<AtomicU64>,
+    source: String,
+    filename: String,
+    is_typescript: bool,
+    config: EngineConfig,
+    dispatch: Arc<ParentDispatch>,
+}
+
+impl Loaded {
+    /// The instance to run the next call on. An unusable one is replaced:
+    /// the module body is evaluated again from the source and the host API
+    /// bound, exactly as at load.
+    fn instance(&self, engine: &WasmEngine) -> Result<Arc<WasmContext>, crate::Error> {
+        let mut current = self.context.lock().unwrap_or_else(|e| e.into_inner());
+        if current.is_unusable() {
+            let dispatch: Arc<dyn HostDispatch> = self.dispatch.clone();
+            let fresh = engine.create_unbound_context(&self.config, dispatch)?;
+            let wrapped = wrap_module(&self.source, &self.filename, self.is_typescript)?;
+            fresh.eval_source(&wrapped, &self.filename)?;
+            fresh.bind_host_api()?;
+            *current = Arc::new(fresh);
+        }
+        Ok(Arc::clone(&current))
+    }
 }
 
 struct Host {
+    /// The Wasm engine with the embedded guest, or why it could not start.
+    engine: Result<WasmEngine, String>,
     out: Mutex<BufWriter<io::Stdout>>,
     pending_calls: Mutex<HashMap<u64, SyncSender<HostResult>>>,
     next_call: AtomicU64,
@@ -132,7 +168,16 @@ impl Host {
             .ok_or_else(|| crate::Error::NotFound(format!("plugin handle {handle}")))
     }
 
-    fn handle(self: &Arc<Self>, id: u64, body: Request) -> Result<Payload, crate::Error> {
+    fn engine(&self) -> Result<&WasmEngine, crate::Error> {
+        self.engine
+            .as_ref()
+            .map_err(|e| crate::Error::Execution(e.clone()))
+    }
+
+    /// Run one request. The flag says the plugin's instance became unusable
+    /// during it (the call hit a limit or the engine trapped); the next call
+    /// gets a fresh one.
+    fn handle(self: &Arc<Self>, id: u64, body: Request) -> (Result<Payload, crate::Error>, bool) {
         match body {
             Request::Load {
                 source,
@@ -141,64 +186,75 @@ impl Host {
                 cached_bytecode,
                 want_bytecode,
                 limits,
-            } => self.load(
-                LoadSpec {
-                    source: &source,
-                    filename: &filename,
-                    is_typescript,
-                    cached_bytecode: cached_bytecode.as_deref(),
-                    want_bytecode,
-                },
-                &limits,
+            } => (
+                self.load(
+                    LoadSpec {
+                        source: &source,
+                        filename: &filename,
+                        is_typescript,
+                        cached_bytecode: cached_bytecode.as_deref(),
+                        want_bytecode,
+                    },
+                    &limits,
+                ),
+                false,
             ),
             Request::Resolve {
                 handle,
                 url,
                 timeout_ms,
-            } => {
-                let loaded = self.context(handle)?;
-                loaded.request.store(id, Ordering::Relaxed);
-                let json = loaded
-                    .context
-                    .call_resolve(&url, Duration::from_millis(timeout_ms))?;
+            } => self.call(id, handle, |context| {
+                let json = context.call_resolve(&url, Duration::from_millis(timeout_ms))?;
                 Ok(Payload::Json { json: Some(json) })
-            }
+            }),
             Request::PostProcess {
                 handle,
                 context_json,
                 timeout_ms,
-            } => {
-                let loaded = self.context(handle)?;
-                loaded.request.store(id, Ordering::Relaxed);
-                if !loaded.context.has_post_process() {
+            } => self.call(id, handle, |context| {
+                if !context.has_post_process() {
                     return Ok(Payload::Json { json: None });
                 }
-                let json = loaded
-                    .context
-                    .call_post_process(&context_json, Duration::from_millis(timeout_ms))?;
+                let json =
+                    context.call_post_process(&context_json, Duration::from_millis(timeout_ms))?;
                 Ok(Payload::Json { json: Some(json) })
-            }
+            }),
             Request::RunSpec {
                 handle,
                 spec_source,
                 filename,
                 is_typescript,
                 timeout_ms,
-            } => {
-                let loaded = self.context(handle)?;
-                loaded.request.store(id, Ordering::Relaxed);
+            } => self.call(id, handle, |context| {
                 let spec_source = if is_typescript {
                     crate::transpiler::transpile(&spec_source, &filename)?
                 } else {
                     spec_source
                 };
-                let results = loaded.context.run_tests(
-                    &spec_source,
-                    &filename,
-                    Duration::from_millis(timeout_ms),
-                );
+                let results =
+                    context.run_tests(&spec_source, &filename, Duration::from_millis(timeout_ms));
                 Ok(Payload::Spec { results })
+            }),
+        }
+    }
+
+    /// Run `f` on the plugin's instance for request `id`.
+    fn call(
+        &self,
+        id: u64,
+        handle: Handle,
+        f: impl FnOnce(&WasmContext) -> Result<Payload, crate::Error>,
+    ) -> (Result<Payload, crate::Error>, bool) {
+        let context = self.context(handle).and_then(|loaded| {
+            loaded.request.store(id, Ordering::Relaxed);
+            loaded.instance(self.engine()?)
+        });
+        match context {
+            Ok(context) => {
+                let result = f(&context);
+                (result, context.is_unusable())
             }
+            Err(e) => (Err(e), false),
         }
     }
 
@@ -207,13 +263,27 @@ impl Host {
         spec: LoadSpec<'_>,
         limits: &SandboxLimits,
     ) -> Result<Payload, crate::Error> {
-        let engine = PluginEngine::new(EngineConfig {
+        let engine = self.engine()?;
+        let config = EngineConfig {
             max_memory: usize::try_from(limits.max_memory_bytes).unwrap_or(usize::MAX),
             load_timeout: Duration::from_secs(limits.max_load_secs.max(1)),
-            ..Default::default()
-        })?;
+        };
 
-        let mut context = engine.create_context()?;
+        // The daemon maps the handle to the plugin's id, allowlist and
+        // request budget; JS can see neither.
+        let handle = self.next_handle.fetch_add(1, Ordering::Relaxed);
+        let request = Arc::new(AtomicU64::new(0));
+        let dispatch = Arc::new(ParentDispatch {
+            host: Arc::clone(self),
+            handle,
+            request: Arc::clone(&request),
+        });
+        let unbound = || {
+            let dispatch: Arc<dyn HostDispatch> = dispatch.clone();
+            engine.create_unbound_context(&config, dispatch)
+        };
+
+        let mut context = unbound()?;
         let mut new_bytecode = None;
         let mut cached_bytecode_rejected = false;
         let from_cache = match spec.cached_bytecode {
@@ -221,10 +291,10 @@ impl Host {
                 Ok(()) => true,
                 Err(e @ crate::Error::Timeout(_)) => return Err(e),
                 Err(_) => {
-                    // Start over in a clean context; a genuinely broken
+                    // Start over in a clean instance; a genuinely broken
                     // module body fails again below and is reported as such.
                     cached_bytecode_rejected = true;
-                    context = engine.create_context()?;
+                    context = unbound()?;
                     false
                 }
             },
@@ -242,23 +312,25 @@ impl Host {
         // Bind the host API after the module body ran (so the plugin's
         // declared identity is known to the daemon) and before `resolve()` or
         // any callback can run — the module body only defines exports and
-        // never touches `krake`. The daemon maps the handle to the plugin's
-        // id, allowlist and request budget; JS can see neither.
-        let handle = self.next_handle.fetch_add(1, Ordering::Relaxed);
-        let request = Arc::new(AtomicU64::new(0));
-        let dispatch = Arc::new(ParentDispatch {
-            host: Arc::clone(self),
-            handle,
-            request: Arc::clone(&request),
-        });
-        context.with(|ctx| register_host_api(&ctx, dispatch))?;
+        // never touches `krake`.
+        context.bind_host_api()?;
 
         context
             .require_export_function("resolve")
             .map_err(|e| crate::Error::Execution(format!("Plugin {id}: {e}")))?;
 
-        self.lock_contexts()
-            .insert(handle, Arc::new(Loaded { context, request }));
+        self.lock_contexts().insert(
+            handle,
+            Arc::new(Loaded {
+                context: Mutex::new(Arc::new(context)),
+                request,
+                source: spec.source.to_string(),
+                filename: spec.filename.to_string(),
+                is_typescript: spec.is_typescript,
+                config,
+                dispatch,
+            }),
+        );
         Ok(Payload::Loaded {
             handle,
             meta: Box::new(meta),
@@ -307,42 +379,40 @@ impl HostDispatch for ParentDispatch {
 }
 
 /// Evaluate a plugin's module body from cache bytecode sent by the daemon.
-fn eval_cached(context: &PluginContext, b64: &str, filename: &str) -> Result<(), crate::Error> {
+/// QuickJS does not validate bytecode; a bad entry can only corrupt the Wasm
+/// instance it runs in, which then fails the call.
+fn eval_cached(context: &WasmContext, b64: &str, filename: &str) -> Result<(), crate::Error> {
     let bytecode = base64_decode_bytes(b64).map_err(crate::Error::Execution)?;
-    // SAFETY: the entry was produced by `compile_to_bytecode` under a cache
-    // key that pins the engine version, and the daemon verified its checksum
-    // before sending it. Malformed bytecode could still corrupt this process —
-    // which is why it is only ever evaluated here, never in the daemon.
-    unsafe { context.eval_bytecode(&bytecode, filename) }
+    context.eval_bytecode(&bytecode, filename)
+}
+
+/// A plugin's source as the engine evaluates it: transpiled (TS) and wrapped
+/// with `module.exports` for the CommonJS-style default export. Plugin
+/// writes `module.exports = { resolve(url) {}, ... }`; after evaluation
+/// `__plugin_exports` points to it.
+fn wrap_module(source: &str, filename: &str, is_typescript: bool) -> Result<String, crate::Error> {
+    let js_source = if is_typescript {
+        crate::transpiler::transpile(source, filename)?
+    } else {
+        source.to_string()
+    };
+    Ok(format!(
+        "var module = {{ exports: {{}} }};\n{js_source}\nvar __plugin_exports = module.exports;\n"
+    ))
 }
 
 /// Evaluate a plugin's module body from source: transpile (TS), wrap, compile
 /// and run. Returns the compiled bytecode when the caller asked for it.
 fn eval_from_source(
-    context: &PluginContext,
+    context: &WasmContext,
     spec: &LoadSpec<'_>,
 ) -> Result<Option<Vec<u8>>, crate::Error> {
-    let js_source = if spec.is_typescript {
-        crate::transpiler::transpile(spec.source, spec.filename)?
-    } else {
-        spec.source.to_string()
-    };
-
-    // Inject `module.exports` for CommonJS-style default export.
-    // Plugin writes: module.exports = { pluginId() {}, resolve(url) {}, ... }
-    // After eval, __plugin_exports points to module.exports.
-    let wrapped = format!(
-        r#"var module = {{ exports: {{}} }};
-{js_source}
-var __plugin_exports = module.exports;
-"#
-    );
+    let wrapped = wrap_module(spec.source, spec.filename, spec.is_typescript)?;
 
     if spec.want_bytecode {
         match context.compile_to_bytecode(&wrapped, spec.filename) {
             Ok(bytecode) => {
-                // SAFETY: produced just now by this engine, from checked source.
-                unsafe { context.eval_bytecode(&bytecode, spec.filename) }?;
+                context.eval_bytecode(&bytecode, spec.filename)?;
                 return Ok(Some(bytecode));
             }
             Err(e @ crate::Error::Timeout(_)) => return Err(e),
@@ -359,7 +429,7 @@ var __plugin_exports = module.exports;
 /// `file_path` is left empty; the daemon owns paths. Non-fatal findings are
 /// pushed to `warnings` for the daemon to log.
 fn read_manifest(
-    context: &PluginContext,
+    context: &WasmContext,
     warnings: &mut Vec<String>,
 ) -> Result<PluginMeta, crate::Error> {
     // Extract required metadata — supports both properties and functions

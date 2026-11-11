@@ -1,0 +1,643 @@
+{
+  "00251ad6d1146be8|export_json|permissions|1": {
+    "Ok": null
+  },
+  "00251ad6d1146be8|export_string|apiVersion|1": {
+    "Err": {
+      "Execution": "Export 'apiVersion' not found"
+    }
+  },
+  "00251ad6d1146be8|export_string|id|1": {
+    "Err": {
+      "Execution": "reading export 'id': nope"
+    }
+  },
+  "00251ad6d1146be8|export_string|name|1": {
+    "Err": {
+      "Execution": "Export 'name' not found"
+    }
+  },
+  "00251ad6d1146be8|export_string|pluginType|1": {
+    "Err": {
+      "Execution": "Export 'pluginType' not found"
+    }
+  },
+  "00251ad6d1146be8|export_string|urlPattern|1": {
+    "Err": {
+      "Execution": "Export 'urlPattern' not found"
+    }
+  },
+  "00251ad6d1146be8|export_string|version|1": {
+    "Err": {
+      "Execution": "Export 'version' not found"
+    }
+  },
+  "00251ad6d1146be8|load||1": {
+    "Ok": null
+  },
+  "00251ad6d1146be8|require_fn|resolve|1": {
+    "Ok": null
+  },
+  "0b86e14aaeb7c67d|export_json|permissions|1": {
+    "Ok": "{\"domains\":[\"www.premiumize.me\"]}"
+  },
+  "0b86e14aaeb7c67d|export_string|apiVersion|1": {
+    "Ok": "1"
+  },
+  "0b86e14aaeb7c67d|export_string|id|1": {
+    "Ok": "premiumize"
+  },
+  "0b86e14aaeb7c67d|export_string|name|1": {
+    "Ok": "Premiumize"
+  },
+  "0b86e14aaeb7c67d|export_string|pluginType|1": {
+    "Ok": "multi-hoster"
+  },
+  "0b86e14aaeb7c67d|export_string|urlPattern|1": {
+    "Ok": "https?://(?:www\\.)?(?:1fichier\\.com|rapidgator\\.net|uploaded\\.net|uploaded\\.to|turbobit\\.net|nitroflare\\.com|filefactory\\.com|ddownload\\.com|katfile\\.com|uploadgig\\.com|alfafile\\.net|k2s\\.cc|keep2share\\.cc|fboom\\.me|tezfiles\\.com|hitfile\\.net|file\\.al|clicknupload\\.co|uptobox\\.com)/.+"
+  },
+  "0b86e14aaeb7c67d|export_string|version|1": {
+    "Ok": "1.0.0"
+  },
+  "0b86e14aaeb7c67d|load||1": {
+    "Ok": null
+  },
+  "0b86e14aaeb7c67d|require_fn|resolve|1": {
+    "Ok": null
+  },
+  "1ddde600849ebb9d|export_json|permissions|1": {
+    "Ok": null
+  },
+  "1ddde600849ebb9d|export_string|apiVersion|1": {
+    "Ok": "1"
+  },
+  "1ddde600849ebb9d|export_string|id|1": {
+    "Ok": "xfilesharing"
+  },
+  "1ddde600849ebb9d|export_string|name|1": {
+    "Ok": "XFileSharingPro (Generic)"
+  },
+  "1ddde600849ebb9d|export_string|pluginType|1": {
+    "Ok": "hoster"
+  },
+  "1ddde600849ebb9d|export_string|urlPattern|1": {
+    "Ok": "https?://(?:www\\.)?(?:ddownload\\.com|katfile\\.com|hexupload\\.net|clicknupload\\.co|file\\.al|uploadrar\\.com|filerio\\.in|filenext\\.com|isra\\.cloud|worldbytez\\.com|uploadbank\\.com|fastclick\\.to|dailyuploads\\.net|userupload\\.net|mx-sh\\.net|streamvid\\.net|upstream\\.to|hotlink\\.cc|douploads\\.net|uploadev\\.org|sfile\\.mobi|anonfiles\\.la|fikper\\.com|filelox\\.com|down\\.fast-down\\.com|ouo\\.press|drop\\.download|mexa\\.sh)/.+"
+  },
+  "1ddde600849ebb9d|export_string|version|1": {
+    "Ok": "1.0.0"
+  },
+  "1ddde600849ebb9d|load||1": {
+    "Ok": null
+  },
+  "1ddde600849ebb9d|require_fn|resolve|1": {
+    "Ok": null
+  },
+  "1ddde600849ebb9d|spec||1": {
+    "failed": 0,
+    "passed": 5,
+    "results": [
+      {
+        "error": null,
+        "name": "has required metadata",
+        "passed": true,
+        "skip_reason": null,
+        "skipped": false
+      },
+      {
+        "error": null,
+        "name": "urlPattern matches known XFS domains",
+        "passed": true,
+        "skip_reason": null,
+        "skipped": false
+      },
+      {
+        "error": null,
+        "name": "has resolve function",
+        "passed": true,
+        "skip_reason": null,
+        "skipped": false
+      },
+      {
+        "error": null,
+        "name": "has checkOnline function",
+        "passed": true,
+        "skip_reason": null,
+        "skipped": false
+      },
+      {
+        "error": null,
+        "name": "size parsing: single capture group gets number + unit",
+        "passed": true,
+        "skip_reason": null,
+        "skipped": false
+      }
+    ],
+    "skipped": 0
+  },
+  "297333c775a20a24|export_json|permissions|1": {
+    "Ok": "{\"domains\":[\"api.alldebrid.com\"]}"
+  },
+  "297333c775a20a24|export_string|apiVersion|1": {
+    "Ok": "1"
+  },
+  "297333c775a20a24|export_string|id|1": {
+    "Ok": "alldebrid"
+  },
+  "297333c775a20a24|export_string|name|1": {
+    "Ok": "AllDebrid"
+  },
+  "297333c775a20a24|export_string|pluginType|1": {
+    "Ok": "multi-hoster"
+  },
+  "297333c775a20a24|export_string|urlPattern|1": {
+    "Ok": "https?://(?:www\\.)?(?:1fichier\\.com|rapidgator\\.net|uploaded\\.net|uploaded\\.to|turbobit\\.net|nitroflare\\.com|filefactory\\.com|ddownload\\.com|katfile\\.com|uploadgig\\.com|alfafile\\.net|k2s\\.cc|keep2share\\.cc|fboom\\.me|tezfiles\\.com|hitfile\\.net|file\\.al|clicknupload\\.co|uptobox\\.com|mega\\.nz|mediafire\\.com|filestore\\.to|hexupload\\.net)/.+"
+  },
+  "297333c775a20a24|export_string|version|1": {
+    "Ok": "1.0.0"
+  },
+  "297333c775a20a24|load||1": {
+    "Ok": null
+  },
+  "297333c775a20a24|require_fn|resolve|1": {
+    "Ok": null
+  },
+  "4d456d3eab9cacab|eval|undefined|1": {
+    "Err": {
+      "Execution": "JS eval error: Error converting from js 'undefined' into type 'string'"
+    }
+  },
+  "4d456d3eab9cacab|load||1": {
+    "Ok": null
+  },
+  "4d456d3eab9cacab|post_process|{}|1": {
+    "Err": {
+      "Execution": "postProcess() failed: Error converting from js 'undefined' into type 'string'"
+    }
+  },
+  "4d456d3eab9cacab|resolve|https://x/|1": {
+    "Err": {
+      "Execution": "resolve() eval failed: Error converting from js 'undefined' into type 'string'"
+    }
+  },
+  "4df7a4062895349a|export_json|permissions|1": {
+    "Ok": "{\"domains\":[\"www.youtube.com\"]}"
+  },
+  "4df7a4062895349a|export_string|apiVersion|1": {
+    "Ok": "1"
+  },
+  "4df7a4062895349a|export_string|id|1": {
+    "Ok": "youtube"
+  },
+  "4df7a4062895349a|export_string|name|1": {
+    "Ok": "YouTube"
+  },
+  "4df7a4062895349a|export_string|pluginType|1": {
+    "Err": {
+      "Execution": "Export 'pluginType' not found"
+    }
+  },
+  "4df7a4062895349a|export_string|urlPattern|1": {
+    "Ok": "https?://(www\\.)?(youtube\\.com/(watch|shorts|embed)|youtu\\.be/)"
+  },
+  "4df7a4062895349a|export_string|version|1": {
+    "Ok": "1.1.0"
+  },
+  "4df7a4062895349a|load||1": {
+    "Ok": null
+  },
+  "4df7a4062895349a|require_fn|resolve|1": {
+    "Ok": null
+  },
+  "4df7a4062895349a|spec||1": {
+    "failed": 3,
+    "passed": 6,
+    "results": [
+      {
+        "error": null,
+        "name": "has required metadata",
+        "passed": true,
+        "skip_reason": null,
+        "skipped": false
+      },
+      {
+        "error": null,
+        "name": "urlPattern matches youtube URLs",
+        "passed": true,
+        "skip_reason": null,
+        "skipped": false
+      },
+      {
+        "error": null,
+        "name": "has resolve function",
+        "passed": true,
+        "skip_reason": null,
+        "skipped": false
+      },
+      {
+        "error": null,
+        "name": "has checkOnline function",
+        "passed": true,
+        "skip_reason": null,
+        "skipped": false
+      },
+      {
+        "error": "Error: YouTube youtubei/v1/player returned invalid JSON: unexpected token: '<'",
+        "name": "resolve returns valid DownloadPackage for known video",
+        "passed": false,
+        "skip_reason": null,
+        "skipped": false
+      },
+      {
+        "error": "Error: YouTube youtubei/v1/player returned invalid JSON: unexpected token: '<'",
+        "name": "resolve works with short URL format",
+        "passed": false,
+        "skip_reason": null,
+        "skipped": false
+      },
+      {
+        "error": null,
+        "name": "resolve throws on invalid video ID",
+        "passed": true,
+        "skip_reason": null,
+        "skipped": false
+      },
+      {
+        "error": null,
+        "name": "checkOnline returns online for known video",
+        "passed": true,
+        "skip_reason": null,
+        "skipped": false
+      },
+      {
+        "error": "Error: nonexistent video should not be online",
+        "name": "checkOnline returns offline for nonexistent video",
+        "passed": false,
+        "skip_reason": null,
+        "skipped": false
+      }
+    ],
+    "skipped": 0
+  },
+  "530dbe6fd152f35f|export_json|permissions|1": {
+    "Ok": null
+  },
+  "530dbe6fd152f35f|export_string|apiVersion|1": {
+    "Err": {
+      "Execution": "Export 'apiVersion' not found"
+    }
+  },
+  "530dbe6fd152f35f|export_string|id|1": {
+    "Ok": "[object Object]"
+  },
+  "530dbe6fd152f35f|export_string|name|1": {
+    "Ok": "7"
+  },
+  "530dbe6fd152f35f|export_string|pluginType|1": {
+    "Err": {
+      "Execution": "Export 'pluginType' not found"
+    }
+  },
+  "530dbe6fd152f35f|export_string|urlPattern|1": {
+    "Err": {
+      "Execution": "Export 'urlPattern' not found"
+    }
+  },
+  "530dbe6fd152f35f|export_string|version|1": {
+    "Err": {
+      "Execution": "Export 'version' not found"
+    }
+  },
+  "530dbe6fd152f35f|load||1": {
+    "Ok": null
+  },
+  "530dbe6fd152f35f|require_fn|resolve|1": {
+    "Err": {
+      "Execution": "'resolve' must be a function, got string"
+    }
+  },
+  "5a7e0a7ff0da5ed1|export_json|permissions|1": {
+    "Ok": "{\"domains\":[\"my-hoster.com\",\"*.my-hoster.com\"]}"
+  },
+  "5a7e0a7ff0da5ed1|export_string|apiVersion|1": {
+    "Ok": "1"
+  },
+  "5a7e0a7ff0da5ed1|export_string|id|1": {
+    "Ok": "my-hoster"
+  },
+  "5a7e0a7ff0da5ed1|export_string|name|1": {
+    "Ok": "My Hoster"
+  },
+  "5a7e0a7ff0da5ed1|export_string|pluginType|1": {
+    "Err": {
+      "Execution": "Export 'pluginType' not found"
+    }
+  },
+  "5a7e0a7ff0da5ed1|export_string|urlPattern|1": {
+    "Ok": "https?://(www\\.)?my-hoster\\.com/.+"
+  },
+  "5a7e0a7ff0da5ed1|export_string|version|1": {
+    "Ok": "1.0.0"
+  },
+  "5a7e0a7ff0da5ed1|load||1": {
+    "Ok": null
+  },
+  "5a7e0a7ff0da5ed1|require_fn|resolve|1": {
+    "Ok": null
+  },
+  "912b44b1cf10b584|load||1": {
+    "Ok": null
+  },
+  "912b44b1cf10b584|resolve|https://x/caught|1": {
+    "Ok": "{\"caught\":true,\"message\":\"Error converting from js 'string' into type 'Error': boom: network down\"}"
+  },
+  "912b44b1cf10b584|resolve|https://x/plain|1": {
+    "Err": {
+      "Execution": "resolve() eval failed: Error converting from js 'string' into type 'Error': boom: network down"
+    }
+  },
+  "93422f3c44aa4886|export_json|permissions|1": {
+    "Ok": null
+  },
+  "93422f3c44aa4886|export_string|apiVersion|1": {
+    "Ok": "1"
+  },
+  "93422f3c44aa4886|export_string|id|1": {
+    "Ok": "generic-http"
+  },
+  "93422f3c44aa4886|export_string|name|1": {
+    "Ok": "Generic HTTP"
+  },
+  "93422f3c44aa4886|export_string|pluginType|1": {
+    "Ok": "generic"
+  },
+  "93422f3c44aa4886|export_string|urlPattern|1": {
+    "Ok": "https?://.+"
+  },
+  "93422f3c44aa4886|export_string|version|1": {
+    "Ok": "5.0.0"
+  },
+  "93422f3c44aa4886|load||1": {
+    "Ok": null
+  },
+  "93422f3c44aa4886|require_fn|resolve|1": {
+    "Ok": null
+  },
+  "93422f3c44aa4886|spec||1": {
+    "failed": 0,
+    "passed": 4,
+    "results": [
+      {
+        "error": null,
+        "name": "has required metadata",
+        "passed": true,
+        "skip_reason": null,
+        "skipped": false
+      },
+      {
+        "error": null,
+        "name": "urlPattern matches any HTTP URL",
+        "passed": true,
+        "skip_reason": null,
+        "skipped": false
+      },
+      {
+        "error": null,
+        "name": "has resolve function",
+        "passed": true,
+        "skip_reason": null,
+        "skipped": false
+      },
+      {
+        "error": null,
+        "name": "has checkOnline function",
+        "passed": true,
+        "skip_reason": null,
+        "skipped": false
+      }
+    ],
+    "skipped": 0
+  },
+  "95b334f9c3caa78b|export_json|permissions|1": {
+    "Ok": null
+  },
+  "95b334f9c3caa78b|export_string|apiVersion|1": {
+    "Err": {
+      "Execution": "Export 'apiVersion' not found"
+    }
+  },
+  "95b334f9c3caa78b|export_string|id|1": {
+    "Err": {
+      "Execution": "Export 'id' not found"
+    }
+  },
+  "95b334f9c3caa78b|export_string|name|1": {
+    "Err": {
+      "Execution": "Export 'name' not found"
+    }
+  },
+  "95b334f9c3caa78b|export_string|pluginType|1": {
+    "Err": {
+      "Execution": "Export 'pluginType' not found"
+    }
+  },
+  "95b334f9c3caa78b|export_string|urlPattern|1": {
+    "Err": {
+      "Execution": "Export 'urlPattern' not found"
+    }
+  },
+  "95b334f9c3caa78b|export_string|version|1": {
+    "Err": {
+      "Execution": "Export 'version' not found"
+    }
+  },
+  "95b334f9c3caa78b|load||1": {
+    "Ok": null
+  },
+  "95b334f9c3caa78b|require_fn|resolve|1": {
+    "Err": {
+      "Execution": "missing required function 'resolve'"
+    }
+  },
+  "a0de1070872f10ce|export_json|permissions|1": {
+    "Ok": null
+  },
+  "a0de1070872f10ce|export_string|apiVersion|1": {
+    "Err": {
+      "Execution": "Export 'apiVersion' not found"
+    }
+  },
+  "a0de1070872f10ce|export_string|id|1": {
+    "Ok": "x"
+  },
+  "a0de1070872f10ce|export_string|name|1": {
+    "Ok": "X"
+  },
+  "a0de1070872f10ce|export_string|pluginType|1": {
+    "Err": {
+      "Execution": "Export 'pluginType' not found"
+    }
+  },
+  "a0de1070872f10ce|export_string|urlPattern|1": {
+    "Err": {
+      "Execution": "Export 'urlPattern' not found"
+    }
+  },
+  "a0de1070872f10ce|export_string|version|1": {
+    "Err": {
+      "Execution": "Export 'version' not found"
+    }
+  },
+  "a0de1070872f10ce|load||1": {
+    "Ok": null
+  },
+  "a0de1070872f10ce|require_fn|resolve|1": {
+    "Err": {
+      "Execution": "missing required function 'resolve'"
+    }
+  },
+  "a4664f255e5c6039|export_json|permissions|1": {
+    "Ok": "{\"domains\":[\"api.real-debrid.com\"]}"
+  },
+  "a4664f255e5c6039|export_string|apiVersion|1": {
+    "Ok": "1"
+  },
+  "a4664f255e5c6039|export_string|id|1": {
+    "Ok": "real-debrid"
+  },
+  "a4664f255e5c6039|export_string|name|1": {
+    "Ok": "Real-Debrid"
+  },
+  "a4664f255e5c6039|export_string|pluginType|1": {
+    "Ok": "multi-hoster"
+  },
+  "a4664f255e5c6039|export_string|urlPattern|1": {
+    "Ok": "https?://(?:www\\.)?(?:1fichier\\.com|rapidgator\\.net|uploaded\\.net|uploaded\\.to|turbobit\\.net|nitroflare\\.com|filefactory\\.com|ddownload\\.com|katfile\\.com|megaupload\\.nz|filestore\\.to|hexupload\\.net|uploadgig\\.com|alfafile\\.net|filerio\\.in|filenext\\.com|isra\\.cloud|worldbytez\\.com|k2s\\.cc|keep2share\\.cc|fboom\\.me|tezfiles\\.com|hitfile\\.net|file\\.al|clicknupload\\.co|filespace\\.com|uptobox\\.com)/.+"
+  },
+  "a4664f255e5c6039|export_string|version|1": {
+    "Ok": "1.0.0"
+  },
+  "a4664f255e5c6039|load||1": {
+    "Ok": null
+  },
+  "a4664f255e5c6039|require_fn|resolve|1": {
+    "Ok": null
+  },
+  "b077dd6614739291|export_json|permissions|1": {
+    "Err": {
+      "Execution": "reading export 'permissions': __plugin_exports is not defined"
+    }
+  },
+  "b077dd6614739291|export_string|apiVersion|1": {
+    "Err": {
+      "Execution": "__plugin_exports not found: Error converting from js 'undefined' into type 'object'"
+    }
+  },
+  "b077dd6614739291|export_string|id|1": {
+    "Err": {
+      "Execution": "__plugin_exports not found: Error converting from js 'undefined' into type 'object'"
+    }
+  },
+  "b077dd6614739291|export_string|name|1": {
+    "Err": {
+      "Execution": "__plugin_exports not found: Error converting from js 'undefined' into type 'object'"
+    }
+  },
+  "b077dd6614739291|export_string|pluginType|1": {
+    "Err": {
+      "Execution": "__plugin_exports not found: Error converting from js 'undefined' into type 'object'"
+    }
+  },
+  "b077dd6614739291|export_string|urlPattern|1": {
+    "Err": {
+      "Execution": "__plugin_exports not found: Error converting from js 'undefined' into type 'object'"
+    }
+  },
+  "b077dd6614739291|export_string|version|1": {
+    "Err": {
+      "Execution": "__plugin_exports not found: Error converting from js 'undefined' into type 'object'"
+    }
+  },
+  "b077dd6614739291|load||1": {
+    "Err": {
+      "Execution": "JS eval error in plugin.js: unexpected token in expression: ''"
+    }
+  },
+  "b077dd6614739291|require_fn|resolve|1": {
+    "Err": {
+      "Execution": "__plugin_exports not found: Error converting from js 'undefined' into type 'object'"
+    }
+  },
+  "ce4508529f1954cb|calls||1": [
+    [
+      "__rawHttpGet",
+      [
+        "https://example.com/files/42",
+        "{\"X-Test\":\"1\"}"
+      ]
+    ],
+    [
+      "storageSet",
+      [
+        "last",
+        "https://example.com/files/42"
+      ]
+    ],
+    [
+      "storageGet",
+      [
+        "last"
+      ]
+    ]
+  ],
+  "ce4508529f1954cb|load||1": {
+    "Ok": null
+  },
+  "ce4508529f1954cb|post_process|{\"files\":[\"a.rar\",\"b.rar\"],\"dir\":\"/downloads\"}|1": {
+    "Ok": "{\"success\":true,\"message\":\"saw 2 files\"}"
+  },
+  "ce4508529f1954cb|resolve|https://example.com/files/42|1": {
+    "Ok": "{\"name\":\"My File\",\"id\":\"zip\",\"hash\":\"8e1347edcfef17f950a44544d0f8380a31f8b7fcccd8b5ca87e3be2564769568\",\"stored\":\"https://example.com/files/42\",\"parts\":[\"a\",\"b\",\"c\"],\"seconds\":90,\"ok\":true,\"downloads\":[{\"url\":\"https://example.com/get/file.zip\"}]}"
+  },
+  "e7a25481cded3b91|load||1": {
+    "Ok": null
+  },
+  "e7a25481cded3b91|resolve|https://example.com/a|1": {
+    "Ok": "{\"name\":\"from promise\",\"downloads\":[{\"url\":\"https://example.com/a\"}]}"
+  },
+  "e7a25481cded3b91|resolve|https://example.com/b|1": {
+    "Ok": "{\"name\":\"from promise\",\"downloads\":[{\"url\":\"https://example.com/b\"}]}"
+  },
+  "e7a25481cded3b91|resolve|https://example.com/reject|1": {
+    "Err": {
+      "Execution": "Error: no such file"
+    }
+  },
+  "f1915d54452bb66c|load||1": {
+    "Ok": null
+  },
+  "f1915d54452bb66c|resolve|https://x/array|1": {
+    "Err": {
+      "Execution": "resolve() eval failed: 1,2"
+    }
+  },
+  "f1915d54452bb66c|resolve|https://x/null|1": {
+    "Err": {
+      "Execution": "resolve() eval failed: null"
+    }
+  },
+  "f1915d54452bb66c|resolve|https://x/number|1": {
+    "Err": {
+      "Execution": "resolve() eval failed: 42"
+    }
+  },
+  "f1915d54452bb66c|resolve|https://x/object|1": {
+    "Err": {
+      "Execution": "resolve() eval failed: [object Object]"
+    }
+  },
+  "f1915d54452bb66c|resolve|https://x/string|1": {
+    "Err": {
+      "Execution": "resolve() eval failed: plain string"
+    }
+  }
+}

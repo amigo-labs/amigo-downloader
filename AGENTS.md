@@ -141,9 +141,9 @@ amigo-krake/
 │   │   ├── Cargo.toml
 │   │   └── src/
 │   │       ├── lib.rs
-│   │       ├── engine.rs        # QuickJS VM execution
+│   │       ├── engine.rs        # Engine config, shared resolve/postProcess/spec scripts
 │   │       ├── host_api.rs      # krake.* host functions (daemon side)
-│   │       ├── host_fns.rs      # Host-function table + QuickJS adapter
+│   │       ├── host_fns.rs      # Host-function table + JS shim
 │   │       ├── ipc.rs           # Daemon ↔ plugin host wire protocol
 │   │       ├── plugin_host.rs   # Child process that runs plugin JS
 │   │       ├── process_host.rs  # Spawns/supervises the plugin host
@@ -153,7 +153,9 @@ amigo-krake/
 │   │       ├── sandbox.rs
 │   │       ├── transpiler.rs    # TypeScript → JS via SWC
 │   │       ├── types.rs
-│   │       └── updater.rs       # Plugin auto-updates
+│   │       ├── updater.rs       # Plugin auto-updates
+│   │       └── wasm.rs          # Wasm executor: runs the plugin guest in wasmtime
+│   ├── plugin-guest/            # QuickJS as WebAssembly (not a workspace member)
 │   ├── server/
 │   │   ├── Cargo.toml
 │   │   └── src/
@@ -273,7 +275,7 @@ amigo-krake/
 | HLS/DASH | **m3u8-rs, dash-mpd** | Streaming-Manifest-Parsing |
 | Usenet/NNTP | **Eigene Impl auf Tokio** | Kein brauchbares Rust-Crate |
 | Extractors | **Eigenes Crate + rquickjs** | YouTube N-Parameter, Format-Auswahl |
-| Plugin Runtime | **QuickJS (rquickjs)** | Sandboxed JS VM, schnell |
+| Plugin Runtime | **QuickJS als WebAssembly (rquickjs im Guest, wasmtime)** | Sandboxed JS VM, Speicherisolation pro Plugin |
 | Plugin Sprache | **TypeScript via SWC** | DX, Typsicherheit, Transpilation zur Ladezeit |
 | Datenbank | **SQLite via rusqlite** | Embedded, kein externer Service |
 | Web Framework | **Axum** | Tokio-nativ, performant |
@@ -355,7 +357,7 @@ amigo-krake/
 
 ## Plugin-System (`plugin-runtime`)
 
-Plugins sind TypeScript-Dateien (`.ts`), die zur Ladezeit via SWC nach JavaScript transpiliert und in einer sandboxed QuickJS VM ausgeführt werden.
+Plugins sind TypeScript-Dateien (`.ts`), die zur Ladezeit via SWC nach JavaScript transpiliert und in einer sandboxed QuickJS VM ausgeführt werden (QuickJS als WebAssembly, eine Instanz pro Plugin).
 
 Die autoritative Plugin-API-Referenz ist `docs/plugin-api.md`; die vollständigen TypeScript-Typen liegen in `plugins/types/krake.d.ts`. Dieser Abschnitt ist nur eine Zusammenfassung.
 
@@ -486,9 +488,9 @@ Für komplexere Plugins existiert das separate Package `@amigo-labs/krake-plugin
 
 ### Sandboxing
 - Kein direkter Netzwerk/Filesystem/Prozess-Zugang
-- Resource Limits: 30s Timeout (5s für Modul-Load), 64MB RAM pro Plugin (eigene QuickJS-Runtime pro Plugin), 20 HTTP-Requests, 1MB Storage
+- Resource Limits: 30s Timeout (5s für Modul-Load), 64MB RAM pro Plugin (eigene Wasm-Instanz mit eigener QuickJS-Runtime pro Plugin), 20 HTTP-Requests, 1MB Storage
 - Netzwerk: optionale Domain-Allowlist `permissions.domains`, pro Request und Redirect-Hop erzwungen; Install/erweiternde Updates brauchen Bestätigung
-- Plugin-JS läuft im separaten Prozess `krake-plugin-host` (liegt neben `krake-server`/`krake`, Override: `KRAKE_PLUGIN_HOST_BIN`); ein QuickJS-Crash beendet nur diesen, die Queue läuft weiter. Noch keine OS-Sandbox um den Child (Landlock/seccomp etc.) — offen in #79, siehe `docs/specs/plugin-sandbox-hardening.md` (SH-7b)
+- Plugin-JS läuft im separaten Prozess `krake-plugin-host` (liegt neben `krake-server`/`krake`, Override: `KRAKE_PLUGIN_HOST_BIN`); dort läuft QuickJS als WebAssembly in `wasmtime` (`crates/plugin-guest`, `wasm.rs`): ein Speicherfehler in QuickJS bleibt in der Wasm-Instanz des Plugins. Reißt ein Aufruf ein Limit oder trappt die Instanz, schlägt nur dieser Aufruf fehl und der nächste bekommt eine frische Instanz; stürzt der Prozess ab, läuft die Queue weiter. Keine zusätzliche OS-Sandbox um den Child (Entscheidung 14, `docs/specs/plugin-wasm-sandbox.md`)
 - Reload: Laden eines Plugins mit bekannter `id` ersetzt die alte Version (genutzt von Plugin-Updates); kein Filesystem-Watcher — nach manuellen Änderungen Server neu starten oder `krake plugins test` zum Iterieren nutzen
 
 ---
@@ -654,6 +656,7 @@ Two more shared skills are vendored for the web UI: `improve <target> [idea]` (m
 11. **Eigenes Extractor-Crate** — YouTube, HLS, DASH als Built-in Extractors
 12. **i18n** — JSON-basierte Locale-Dateien (en, de)
 13. **Eine Akzentfarbe** — die Web-UI nutzt nur die Markenfarbe Limette `#9be22d` (`docs/site/project.yml`), keine wählbaren Paletten: die Farbe gehört zur Marke, nicht zu den Einstellungen
+14. **Plugin-Isolation durch WebAssembly** — QuickJS läuft als Wasm-Modul (`wasm32-unknown-unknown`, ohne WASI) in `wasmtime` innerhalb von `krake-plugin-host`, statt einer OS-Sandbox pro Plattform (Landlock/seccomp, AppContainer, `sandbox_init`): ein Mechanismus für Windows, macOS und Linux, in CI testbar, und ein Speicherfehler in QuickJS bleibt im Wasm-Speicher. Der eigene Prozess bleibt als zweite Schicht; es gibt keinen nativen Ausweichweg. Neue Abhängigkeit `wasmtime`; der Build braucht `clang` mit Wasm-Target. Specs: `docs/specs/plugin-wasm-guest.md`, `docs/specs/plugin-wasm-sandbox.md` (#79)
 
 ---
 
@@ -690,6 +693,9 @@ Power users and tech enthusiasts managing downloads (HTTP, Usenet) centrally. Da
 
 Pitfalls that code and git history don't show. Short entries; `/spec-build` adds to this list when a loop surprised it.
 
+- **The build needs `clang` with a WebAssembly target and the Rust target `wasm32-unknown-unknown`.** `crates/plugin-runtime/build.rs` builds `crates/plugin-guest` (QuickJS as Wasm) with a nested `cargo` and embeds it precompiled. The guest is not a workspace member: `cargo fmt --all`, clippy and `cargo test --workspace` do not see it; run `cargo fmt` inside `crates/plugin-guest`, and it has its own `Cargo.lock`. Apple's clang has no Wasm target (`brew install llvm`, then `CC_wasm32_unknown_unknown`).
+- **A Wasm instance outliving its `WasmEngine` still needs the deadline ticker.** Instances hold the ticker alive themselves; a test that creates the engine as a temporary once hung forever in `while (true) {}` because nothing advanced the epoch.
+- **`pkill -f <test name>` kills the shell that runs it**, because the pattern is in its own command line. Stop a hung test binary by PID.
 - **The build needs `protoc`.** `cargo build` / `clippy` fail in `pssh-box`'s build script without it (`apt-get install protobuf-compiler`); CI installs it.
 - **`vite dev` hides what the server enforces.** It sets no CSP header and proxies `/api`, so a blocked font or script only shows against the real server (`cargo run -p krake-server`). A debug server reads `web-ui/dist` from disk: rebuild the UI, no server restart.
 - **The server refuses downloads from private addresses**, loopback included (`crates/server/src/net_guard.rs`, no setting). A local test server therefore cannot feed running downloads into a served UI; tests reach the coordinator directly (`crates/core/tests/download_lifecycle_tests.rs`). For a UI run with live transfers use a public URL, or a throwaway binary built with the guard argument flipped — never committed.

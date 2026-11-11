@@ -1,5 +1,7 @@
 pub mod bytecode_cache;
 pub mod engine;
+#[cfg(test)]
+mod guest_tools;
 pub mod host_api;
 pub mod host_fns;
 pub mod ipc;
@@ -12,6 +14,7 @@ pub mod sandbox;
 pub mod transpiler;
 pub mod types;
 pub mod updater;
+pub mod wasm;
 
 /// Major version of the `krake.*` host API this runtime implements.
 ///

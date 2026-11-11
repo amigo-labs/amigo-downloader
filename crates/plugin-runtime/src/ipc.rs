@@ -21,7 +21,7 @@ use crate::types::PluginMeta;
 
 /// Bumped on any incompatible change to the messages below. The daemon
 /// refuses a child that reports a different version.
-pub const PROTOCOL_VERSION: u32 = 1;
+pub const PROTOCOL_VERSION: u32 = 2;
 
 /// Largest accepted frame. An HTTP body (up to the host-side cap of 32 MiB)
 /// is JSON-escaped twice on its way to the plugin: once inside the response
@@ -99,6 +99,11 @@ pub enum ToParent {
     Response {
         id: u64,
         result: Result<Payload, crate::Error>,
+        /// The plugin's Wasm instance became unusable during this request
+        /// (the call hit a limit or the engine trapped). The next call gets a
+        /// fresh instance; the daemon marks the plugin `failing` until then.
+        #[serde(default)]
+        instance_lost: bool,
     },
     /// Execute host function `name` for the plugin loaded as `handle`, on
     /// behalf of request `request`.
@@ -249,6 +254,7 @@ mod tests {
         let msg = ToParent::Response {
             id: 1,
             result: Err(crate::Error::Timeout(30)),
+            instance_lost: true,
         };
         let buf = encode_frame(&msg).unwrap();
         let back: ToParent = read_frame(&mut buf.as_slice()).unwrap().unwrap();

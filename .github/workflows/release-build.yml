@@ -82,19 +82,25 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
-          targets: ${{ matrix.target }}
+          # wasm32: the plugin guest, built by crates/plugin-runtime/build.rs
+          targets: ${{ matrix.target }},wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@v2
         with:
           key: release-${{ matrix.target }}
 
-      - name: Install protobuf compiler (Linux)
+      - name: Install protobuf compiler, clang and lld (Linux)
         if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler clang lld
 
-      - name: Install protobuf compiler (macOS)
+      # Apple's clang has no WebAssembly target; Homebrew's LLVM builds the
+      # plugin guest.
+      - name: Install protobuf compiler and LLVM (macOS)
         if: runner.os == 'macOS'
-        run: brew install protobuf
+        run: |
+          brew install protobuf llvm
+          echo "CC_wasm32_unknown_unknown=$(brew --prefix llvm)/bin/clang" >> "$GITHUB_ENV"
+          echo "AR_wasm32_unknown_unknown=$(brew --prefix llvm)/bin/llvm-ar" >> "$GITHUB_ENV"
 
       - name: Install protobuf compiler (Windows)
         if: runner.os == 'Windows'
@@ -220,7 +226,8 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@1.99.0
         with:
-          targets: ${{ matrix.target }}
+          # wasm32: the plugin guest, built by crates/plugin-runtime/build.rs
+          targets: ${{ matrix.target }},wasm32-unknown-unknown
 
       - uses: Swatinem/rust-cache@v2
         with:
@@ -234,11 +241,16 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler clang lld
 
-      - name: Install protobuf compiler (macOS)
+      # Apple's clang has no WebAssembly target; Homebrew's LLVM builds the
+      # plugin guest.
+      - name: Install protobuf compiler and LLVM (macOS)
         if: runner.os == 'macOS'
-        run: brew install protobuf
+        run: |
+          brew install protobuf llvm
+          echo "CC_wasm32_unknown_unknown=$(brew --prefix llvm)/bin/clang" >> "$GITHUB_ENV"
+          echo "AR_wasm32_unknown_unknown=$(brew --prefix llvm)/bin/llvm-ar" >> "$GITHUB_ENV"
 
       - name: Install protobuf compiler (Windows)
         if: runner.os == 'Windows'
@@ -400,6 +412,18 @@ jobs:
 
           # Pretty-print for verification
           cat artifacts/latest.json
+
+      # One list of every downloadable file's hash, next to the per-file
+      # .sha256 files (which scripts/install.sh uses). amigo-labs.dev links it
+      # (docs/site/project.yml, downloads.checksums).
+      - name: SHA256SUMS
+        working-directory: artifacts
+        run: |
+          # SHA256SUMS itself is excluded: the redirection creates it before
+          # find lists the directory.
+          find . -maxdepth 1 -type f ! -name '*.sha256' ! -name '*.sig' ! -name 'latest.json' ! -name SHA256SUMS -printf '%f\0' \
+            | sort -z | xargs -0 sha256sum > SHA256SUMS
+          cat SHA256SUMS
 
       - name: Upload to GitHub Release
         uses: ncipollo/release-action@v1

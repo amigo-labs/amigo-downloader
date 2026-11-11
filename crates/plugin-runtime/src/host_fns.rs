@@ -14,13 +14,9 @@
 //! `docs/specs/plugin-runtime-wasm-portability.md` §1): `bool`, numbers and
 //! string arrays travel as JSON text and are converted at the engine adapter
 //! according to [`Ret`]. No engine type appears in a host function's
-//! signature, so the same table serves the QuickJS adapter below, the IPC
-//! boundary to the daemon, and any future engine.
-
-use std::sync::Arc;
-
-use rquickjs::function::Rest;
-use rquickjs::{Ctx, Function, IntoJs, Object, Value};
+//! signature, so the same table serves the Wasm executor
+//! ([`crate::wasm`], which sends it to the guest), the IPC boundary to the
+//! daemon, and any future engine.
 
 use crate::host_api::HostApi;
 
@@ -274,8 +270,11 @@ pub fn parent_fn(qualified: &str) -> Option<&'static HostFn> {
 }
 
 /// JavaScript shim that wraps raw JSON-returning functions into
-/// object-returning ones. Injected after every table function is registered.
-const JS_SHIM: &str = r#"
+/// object-returning ones. The guest evaluates it after it registered every
+/// table function under `globalThis.krake` / `globalThis.console`
+/// (`globalThis.amigo` is the same object: the pre-rename name, kept as a
+/// deprecated alias so existing plugins keep working).
+pub(crate) const JS_SHIM: &str = r#"
 (function() {
     var a = krake;
 
@@ -362,118 +361,6 @@ const JS_SHIM: &str = r#"
     };
 })();
 "#;
-
-fn js_err(msg: &str) -> rquickjs::Error {
-    rquickjs::Error::new_from_js_message("string", "Error", msg)
-}
-
-/// Convert JS arguments to [`HostArgs`] with the same rules rquickjs applies
-/// to `String` / `Option<String>` parameters: required arguments must be
-/// strings, optional ones may also be `undefined` or `null`. Extra arguments
-/// are ignored.
-fn convert_args(f: &HostFn, args: &[Value<'_>]) -> rquickjs::Result<HostArgs> {
-    let mut out = Vec::with_capacity(f.required + f.optional);
-    for i in 0..f.required + f.optional {
-        let value = args.get(i);
-        let optional = i >= f.required;
-        match value {
-            Some(v) if v.is_string() => {
-                let s = v.as_string().map(|s| s.to_string()).transpose()?;
-                out.push(s);
-            }
-            None => {
-                if optional {
-                    out.push(None);
-                } else {
-                    return Err(rquickjs::Error::new_from_js("undefined", "String"));
-                }
-            }
-            Some(v) if optional && (v.is_undefined() || v.is_null()) => out.push(None),
-            Some(v) => return Err(rquickjs::Error::new_from_js(v.type_name(), "String")),
-        }
-    }
-    Ok(out)
-}
-
-/// Convert a host result to the JS shape declared by `ret`.
-fn convert_ret<'js>(
-    ctx: &Ctx<'js>,
-    ret: Ret,
-    value: Option<String>,
-) -> rquickjs::Result<Value<'js>> {
-    let missing = || js_err("host function returned no value");
-    match ret {
-        Ret::Unit => Ok(Value::new_undefined(ctx.clone())),
-        Ret::Str => value.ok_or_else(missing)?.into_js(ctx),
-        Ret::OptStr => value.into_js(ctx),
-        Ret::Bool => (value.as_deref() == Some("true")).into_js(ctx),
-        Ret::OptNum => value
-            .map(|v| {
-                v.parse::<f64>()
-                    .map_err(|_| js_err("host function returned a non-number"))
-            })
-            .transpose()?
-            .into_js(ctx),
-        Ret::StrArray => {
-            let items: Vec<String> = serde_json::from_str(value.as_deref().unwrap_or("[]"))
-                .map_err(|_| js_err("host function returned a malformed array"))?;
-            items.into_js(ctx)
-        }
-    }
-}
-
-/// Install every [`HOST_FNS`] entry under `globalThis.krake` /
-/// `globalThis.console`, then the [`JS_SHIM`] wrappers. `globalThis.amigo`
-/// is the same object: the pre-rename name, kept as a deprecated alias so
-/// existing plugins keep working.
-///
-/// `dispatch` executes the [`Route::Parent`] functions; it carries the
-/// plugin's identity (its scoped cookie jar, storage namespace, request
-/// budget and domain allowlist), which JS can neither read nor change.
-pub fn register_host_api<'js>(
-    ctx: &Ctx<'js>,
-    dispatch: Arc<dyn HostDispatch>,
-) -> Result<(), crate::Error> {
-    let exec = |e: rquickjs::Error| crate::Error::Execution(e.to_string());
-    let krake = Object::new(ctx.clone())
-        .map_err(|e| crate::Error::Execution(format!("Failed to create krake object: {e}")))?;
-    let console = Object::new(ctx.clone())
-        .map_err(|e| crate::Error::Execution(format!("Failed to create console: {e}")))?;
-
-    for f in HOST_FNS {
-        let qualified = f.qualified_name();
-        let dispatch = Arc::clone(&dispatch);
-        let func = Function::new(
-            ctx.clone(),
-            move |ctx: Ctx<'js>, args: Rest<Value<'js>>| -> rquickjs::Result<Value<'js>> {
-                let args = convert_args(f, &args.0)?;
-                let result = match f.route {
-                    Route::Local(call) => call(&args),
-                    Route::Parent => dispatch.call(&qualified, args),
-                };
-                let value = result.map_err(|e| js_err(&e))?;
-                convert_ret(&ctx, f.ret, value)
-            },
-        )
-        .map_err(exec)?;
-        let target = match f.object {
-            Obj::Krake => &krake,
-            Obj::Console => &console,
-        };
-        target.set(f.name, func).map_err(exec)?;
-    }
-
-    let global = ctx.globals();
-    global.set("amigo", krake.clone()).map_err(exec)?;
-    global.set("krake", krake).map_err(exec)?;
-    global.set("console", console).map_err(exec)?;
-
-    // The shim keeps the Rust→JS boundary at plain strings while giving
-    // plugins object-returning functions.
-    ctx.eval::<Value<'_>, _>(JS_SHIM)
-        .map_err(|e| crate::Error::Execution(format!("Failed to inject JS shim: {e}")))?;
-    Ok(())
-}
 
 #[cfg(test)]
 mod tests {

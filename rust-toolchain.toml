@@ -6,3 +6,6 @@
 channel = "1.99.0"
 profile = "minimal"
 components = ["rustfmt", "clippy"]
+# The plugin guest (crates/plugin-guest, QuickJS as WebAssembly) is built for
+# this target by crates/plugin-runtime/build.rs. It also needs `clang`.
+targets = ["wasm32-unknown-unknown"]

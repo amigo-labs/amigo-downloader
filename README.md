@@ -23,9 +23,9 @@ Extensible for HTTP, Usenet, and more.
 
 - **Multi-chunk parallel downloads** with automatic resume and retry
 - **Built-in extractors** — YouTube (with N-parameter challenge), HLS, DASH
-- **TypeScript plugin system** — scriptable hoster support, hot-reloadable `.ts` files
+- **TypeScript plugin system** — scriptable hoster support in plain `.ts` files, sandboxed in WebAssembly inside a separate process
 - **Plugin marketplace** — install and update plugins from the registry
-- **Responsive Web UI** — Svelte 5 + Tailwind, dark/light themes, 6 accent colors
+- **Responsive Web UI** — Svelte 5 + Tailwind, dark/light themes, adjustable neon intensity
 - **PWA with Share Target** — install on your phone, share links directly to add downloads
 - **DLC container** import and export (JDownloader compatible)
 - **Usenet support** — NZB parsing, NNTP/SSL multi-connection, yEnc decoding
@@ -63,8 +63,21 @@ Open `http://localhost:1516` in your browser.
 cd web-ui && npm ci && npx vite build && cd ..
 
 # Build and run server
-cargo run --release --bin krake-server
+cargo run --bin krake-server
 ```
+
+The build needs `protoc`, `clang` with a WebAssembly target (`apt-get install
+protobuf-compiler clang lld`; on macOS `brew install protobuf llvm`) and the
+Rust target `wasm32-unknown-unknown`, which `rustup` installs from
+`rust-toolchain.toml`.
+
+A `--release` build (and therefore `cargo install`) refuses to compile without
+the pinned signing keys `KRAKE_UPDATE_PUBKEY_HEX` and
+`KRAKE_REGISTRY_PUBKEY_HEX` (Ed25519 public keys, 64 hex chars each). They
+decide whose releases and plugin registry the binary trusts: with keys of your
+own, self-update and registry installs only accept what you signed yourself,
+and the official releases and registry fail verification. Debug builds run
+without keys and skip signature verification with a warning.
 
 ### CLI
 
@@ -79,11 +92,11 @@ installs to `/usr/local/bin` (override with `KRAKE_INSTALL_DIR`). Or build from
 source with Cargo:
 
 ```bash
-# Install to ~/.cargo/bin/
-cargo install --path crates/cli
+# Debug build (a release build needs the signing keys, see "From source")
+cargo build -p krake-cli -p krake-plugin-runtime
 
-# Use it
-krake https://example.com/file.zip
+# Use it (krake-plugin-host sits next to it in target/debug/)
+target/debug/krake https://example.com/file.zip
 ```
 
 <details>
@@ -166,7 +179,8 @@ amigo-krake/
 ├── crates/
 │   ├── core/              # Download engine, protocols, storage, i18n
 │   ├── extractors/        # Built-in site extractors (YouTube, HLS, DASH)
-│   ├── plugin-runtime/    # QuickJS VM, TypeScript transpiler, plugin registry
+│   ├── plugin-runtime/    # Wasm executor for QuickJS, TypeScript transpiler, plugin registry
+│   ├── plugin-guest/      # QuickJS compiled to WebAssembly (built by plugin-runtime)
 │   ├── server/            # Axum REST API, WebSocket, Click'n'Load, embedded UI
 │   └── cli/               # Command-line interface
 ├── web-ui/                # Svelte 5 + Tailwind PWA
@@ -219,7 +233,7 @@ Built-in extractors for sites that need special handling beyond simple HTTP:
 
 ### Plugin System
 
-Plugins are TypeScript files (`.ts`) that run in a sandboxed QuickJS VM. TypeScript is transpiled to JavaScript at load time via SWC. A plugin exports an object via `module.exports`; all Host-API calls are **synchronous** (the runtime blocks internally) — no `async`/`await` inside plugin code.
+Plugins are TypeScript files (`.ts`) that run in a sandboxed QuickJS VM (QuickJS compiled to WebAssembly, one instance per plugin, in a separate process). TypeScript is transpiled to JavaScript at load time via SWC. A plugin exports an object via `module.exports`; all Host-API calls are **synchronous** (the runtime blocks internally) — no `async`/`await` inside plugin code.
 
 ```typescript
 /// <reference path="../types/krake.d.ts" />
@@ -253,7 +267,7 @@ The plugin runtime includes:
 - **Registry** — discover and install plugins from the marketplace
 - **Updater** — automatic plugin updates with checksum verification
 - **Transpiler** — TypeScript → JavaScript via SWC at load time
-- **Engine** — QuickJS VM execution with Host API bindings
+- **Engine** — QuickJS as WebAssembly, run by `wasmtime`, with Host API bindings
 
 ### Server
 
@@ -422,7 +436,7 @@ docker compose -f docker/docker-compose.local.yml up -d --build
 1. Copy `plugins/template/plugin.ts`
 2. Set `id`, `name`, `version`, `urlPattern` and implement `resolve()` on the exported object
 3. Drop the `.ts` file into `plugins/hosters/` or `plugins/extractors/`
-4. It's auto-detected and loaded (hot-reload supported)
+4. It's loaded on the next server start (there is no file watcher); iterate with `krake plugins test <plugin.ts> [url]`
 
 Type definitions are available in `plugins/types/krake.d.ts` for IDE support.
 
@@ -437,7 +451,7 @@ See [Plugin API docs](docs/plugin-api.md) for the full Host API reference.
 | HLS/DASH | m3u8-rs, dash-mpd |
 | Usenet | Custom NNTP/TLS client on Tokio |
 | Extractors | Built-in (YouTube via rquickjs for N-parameter) |
-| Plugins | QuickJS VM (sandboxed), TypeScript via SWC transpiler |
+| Plugins | QuickJS as WebAssembly in `wasmtime` (sandboxed), TypeScript via SWC transpiler |
 | Database | SQLite (rusqlite, WAL mode) |
 | Web API | Axum + WebSocket |
 | Web UI | Svelte 5, Tailwind CSS v4, Vite |

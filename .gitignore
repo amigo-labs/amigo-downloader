@@ -52,3 +52,4 @@ config.toml
 .superpowers/brainstorm/50537-1774879578/state/events
 .superpowers/brainstorm/50537-1774879578/state/server-stopped
 .superpowers/brainstorm/50537-1774879578/state/server.pid
+crates/plugin-guest/target/

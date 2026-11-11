@@ -1,13 +1,13 @@
 # Plugin API Reference
 
-Plugins are TypeScript (`.ts`) files that run in a sandboxed QuickJS VM. TypeScript is transpiled to JavaScript at load time via SWC.
+Plugins are TypeScript (`.ts`) files that run in a sandboxed QuickJS VM (QuickJS compiled to WebAssembly, one instance per plugin). TypeScript is transpiled to JavaScript at load time via SWC.
 
 ## Quick Start
 
 1. Copy `plugins/template/plugin.ts`
 2. Implement the required exports
 3. Drop into `plugins/hosters/<your-plugin>/` or `plugins/extractors/<your-plugin>/`
-4. It auto-loads on startup (hot-reload supported)
+4. It loads on the next server start (there is no file watcher); iterate with `krake plugins test <plugin.ts> [url]`
 
 Type definitions for IDE support: `plugins/types/krake.d.ts`
 
@@ -381,36 +381,57 @@ Also available as `console.log()`, `console.warn()`, `console.error()`.
 
 Plugin JavaScript runs in a separate process, `krake-plugin-host`, which the
 server (and `krake`) start next to themselves. Inside it each plugin runs in
-**its own QuickJS runtime**, so memory and the execution deadline are per
-plugin; different plugins execute concurrently, and one slow plugin never
-delays another or the plugin list. Stateful host functions (HTTP, cookies,
+**its own WebAssembly instance** holding its own QuickJS runtime (QuickJS is
+compiled to WebAssembly and executed by `wasmtime`), so memory and the
+execution deadline are per plugin; different plugins execute concurrently, and
+one slow plugin never delays another or the plugin list. Stateful host functions (HTTP, cookies,
 storage, logging, notifications, captcha) are executed by the daemon on the
 plugin's behalf; pure helpers (regex, crypto, URL, HTML) run in the plugin
 host.
 
 | Limit | Default | Enforced how |
 |-------|---------|--------------|
-| Execution timeout | 30 s per `resolve()` / `postProcess()` call | Interrupt handler; also polled inside the regex engine, so a catastrophically backtracking native `RegExp` is stopped too |
-| Load timeout | 5 s for evaluating the module body and reading its exports (incl. getters) | Same interrupt handler — a top-level `while (true) {}` fails to load instead of hanging startup |
-| Memory | 64 MB per plugin | QuickJS runtime memory limit (per plugin runtime) |
-| Stack | 1 MB per plugin | QuickJS max stack size |
+| Execution timeout | 30 s per `resolve()` / `postProcess()` call | The Wasm runtime interrupts the instance; that also stops a catastrophically backtracking native `RegExp` |
+| Load timeout | 5 s for evaluating the module body and reading its exports (incl. getters) | Same interrupt — a top-level `while (true) {}` fails to load instead of hanging startup |
+| Memory | 64 MB per plugin | Limit on the instance's linear memory, which holds the QuickJS heap and the engine itself |
+| Stack | 512 KiB per plugin | Wasm stack limit |
 | HTTP requests | 20 per invocation | Per-plugin counter in the host API |
 | Network destinations | `permissions.domains`, if declared | Checked on every request and redirect hop |
 | Storage | 1 MB per plugin | Host-side quota |
 
-**What these limits are not:** they bound a *cooperating* interpreter. A crash
-in QuickJS (abort, segfault) only takes down the plugin host: the calls it was
-running fail, the plugins are marked `failing`, and the next call starts a new
-plugin host — the download queue keeps running. The plugin host is not yet
-confined by the operating system, though: until the OS sandbox from #79 lands,
-it runs as the same user as the daemon, so a memory-safety *exploit* in
-QuickJS is still not contained. The execution deadline is wall-clock for the whole invocation: it cannot
+**The boundary:** QuickJS, a C interpreter, runs inside a WebAssembly
+instance. The instance has no system interface: it can compute, read a clock
+and call the host functions listed above, nothing else. A memory-safety bug in
+QuickJS — even one a plugin exploits on purpose — can only corrupt that
+instance's own memory. Two layers follow from this:
+
+- **Per plugin:** a call that exceeds a limit, or whose instance traps, fails
+  on its own. The plugin is marked `failing`, other plugins keep running, and
+  the plugin's next call runs in a fresh instance (its module body is
+  evaluated again; cookies and storage live in the daemon and survive).
+- **Per process:** a fault in the Wasm runtime itself or a crash of the plugin
+  host only takes down that process: the calls it was running fail, the
+  plugins are marked `failing`, and the next call starts a new plugin host —
+  the download queue keeps running. The plugin host is not additionally
+  confined by the operating system; an escape from the Wasm runtime would have
+  the daemon user's rights.
+
+Two things differ from a native QuickJS:
+
+- Unbounded recursion ends the call with an error instead of a catchable
+  `RangeError`; the Wasm stack limit is the guard.
+- `Atomics` does not exist (the engine is built without threads).
+
+After a timeout or a limit, a plugin starts from a clean state: globals a
+plugin set in an earlier call are gone. Keep state in `krake.storage*`.
+
+The execution deadline is wall-clock for the whole invocation: it cannot
 interrupt a pending host call (an HTTP request has its own 30 s timeout;
 `krake.solveCaptcha` waits for the user), but JS is stopped as soon as it
 resumes past the deadline.
 
-In addition, the Host API caps its inputs *outside* the QuickJS context — the
-64 MB JS memory limit doesn't protect the host heap, so oversized arguments
+In addition, the Host API caps its inputs *outside* the plugin's instance — the
+64 MB memory limit doesn't protect the host heap, so oversized arguments
 are rejected with an error instead of being processed:
 
 | Host API input | Cap |
@@ -427,20 +448,22 @@ No direct network, filesystem, or process access. Everything is proxied through 
 
 To make restarts cheap, the server caches each plugin's compiled QuickJS
 bytecode on disk (`$KRAKE_CONFIG_DIR/cache/plugin-bytecode`). QuickJS does
-**not** validate bytecode before executing it — malformed or version-mismatched
-bytecode is a memory-safety problem, not a parse error — so:
+**not** validate bytecode before executing it. Since the engine runs as
+WebAssembly, malformed or version-mismatched bytecode can only corrupt the
+instance that evaluates it, which fails that load; it is still kept out:
 
 - bytecode is only ever produced locally, from source that passed the loader's
   checks; the registry serves `.ts`/`.js` source only and any other artifact is
   rejected;
-- the cache key includes the QuickJS version and a cache-format version, so an
-  engine upgrade is a cache miss, never a load of stale bytecode;
+- the cache key includes a hash of the embedded engine module and a
+  cache-format version, so another engine build is a cache miss, never a load
+  of stale bytecode;
 - every entry carries a SHA-256 of its payload; a truncated or corrupted entry
   is deleted and the plugin is recompiled from source;
 - the cache directory must only be writable by the daemon (plugin JS has no
   filesystem access at all);
 - the daemon reads and writes the cache; the plugin host only ever receives
-  bytecode from it, so a bad entry can at worst crash the plugin host.
+  bytecode from it, so a bad entry can at worst fail that plugin's load.
 
 ## Reloading Plugins
 
