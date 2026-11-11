@@ -21,7 +21,7 @@ A fast, modular download manager in Rust: multi-chunk HTTP, Usenet, HLS, DASH an
 ## Quick start
 
 ```bash
-docker run -d --name krake -p 1516:1516 -p 9666:9666 \
+docker run -d --name krake -p 1516:1516 \
   -v ./config:/config -v ./downloads:/downloads \
   -e KRAKE_BIND=0.0.0.0:1516 ghcr.io/amigo-labs/krake:latest
 ```
@@ -51,10 +51,11 @@ For plugin authors and contributors, in this repository:
 
 ## Development
 
-The build needs Rust (pinned in `rust-toolchain.toml`), Node.js with pnpm, `protoc`, and `clang` with a WebAssembly target (`apt-get install protobuf-compiler clang lld`; on macOS `brew install protobuf llvm`).
+The build needs Rust (pinned in `rust-toolchain.toml`), Node.js with pnpm, `protoc`, and `clang` with a WebAssembly target (`apt-get install protobuf-compiler clang lld`). On macOS, `brew install protobuf llvm` and set `CC_wasm32_unknown_unknown` and `AR_wasm32_unknown_unknown` to Homebrew's `clang` and `llvm-ar`; Apple's clang has no WebAssembly target.
 
 ```bash
 pnpm install && pnpm build:web-ui        # Web UI
+cargo build --bin krake-plugin-host      # plugins run in this process
 cargo run --bin krake-server             # server on http://127.0.0.1:1516
 cargo test --workspace
 cargo clippy --workspace --all-targets -- -D warnings

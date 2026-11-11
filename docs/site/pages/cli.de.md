@@ -1,4 +1,4 @@
-`krake` lädt Dateien direkt herunter oder steuert die Warteschlange eines Krake-Servers. Es ist ein Client: Der Server mit Web-Oberfläche ist `krake-server` (oder das Docker-Image).
+`krake` lädt Dateien im Terminal herunter. Es arbeitet für sich: Einen laufenden Krake-Server steuert es nicht. Für die Warteschlange eines Servers nimmst du dessen Web-Oberfläche oder dessen REST-API.
 
 ## Direkt herunterladen
 
@@ -17,7 +17,7 @@ krake <URL> --chunks 8         # acht parallele Chunks
 
 ## Warteschlange
 
-Diese Befehle arbeiten auf der Warteschlange des Servers.
+Diese Befehle führen eine eigene Warteschlange, in einer Datei `krake.db` in dem Ordner, in dem du sie aufrufst. Die Downloads eines laufenden Servers zeigen oder ändern sie nicht.
 
 ```bash
 krake add <URL>                # URL einreihen
@@ -40,7 +40,7 @@ krake export-dlc                     # alles exportieren
 krake export-dlc --ids id1,id2       # einzelne Downloads exportieren
 ```
 
-## Ein Server auf einem anderen Rechner
+## Mit einem Server koppeln
 
 ```bash
 krake login https://krake.example.org --name home   # mit einem Server koppeln
@@ -49,17 +49,16 @@ krake remote use home
 krake remote remove home
 ```
 
+Die Kopplung nutzt `krake plugins install`: Es installiert ein Plugin auf dem gekoppelten Server. Die Warteschlangen-Befehle oben bleiben lokal.
+
 ## Plugins
 
 ```bash
-krake plugins list
-krake plugins search <query>
-krake plugins install <id>
-krake plugins update [id]
-krake plugins enable <id>
-krake plugins login <id>                 # bei einem Hoster-Konto anmelden
+krake plugins install <id>               # aus der Registry installieren, auf diesem Rechner oder einem gekoppelten Server
 krake plugins test <plugin.ts> [url]     # Spec eines Plugins ausführen oder eine URL damit auflösen
 ```
+
+Plugins auflisten, suchen, aktualisieren und aktivieren sowie die Anmeldung bei einem Hoster-Konto erledigst du in der Web-Oberfläche (Seite „Plugins“); die passenden Unterbefehle von `krake plugins` verweisen vorerst nur dorthin.
 
 ## Einstellungen
 

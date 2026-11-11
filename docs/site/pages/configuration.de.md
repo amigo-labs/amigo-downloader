@@ -2,6 +2,8 @@ Die meisten Einstellungen stehen auf der Seite „Settings“ der Web-Oberfläch
 
 ## Die Datei
 
+Ein Auszug mit den Einstellungen, die du am ehesten änderst. Ändere sie in der Datei, die der Server angelegt hat; ersetze diese nicht durch den Auszug, sie hat mehr Abschnitte als hier gezeigt.
+
 ```toml
 download_dir = "downloads"
 temp_dir = "downloads/.tmp"
@@ -64,6 +66,6 @@ Für ein eigenes Plugin: Starte mit [`plugins/template/plugin.ts`](https://githu
 
 ## Andere Werkzeuge
 
-- **Browser-Erweiterungen:** Click'n'Load lauscht auf Port 9666, wie bei JDownloader.
+- **Browser-Erweiterungen:** Click'n'Load lauscht auf Port 9666, wie bei JDownloader, für Browser auf demselben Rechner wie der Server (nicht mit dem Docker-Image).
 - **NZBGet-Clients:** Der Server beantwortet NZBGets JSON-RPC unter `/jsonrpc`.
 - **Skripte:** eine REST-API unter `/api/v1/` und ein WebSocket unter `/api/v1/ws` für den Fortschritt in Echtzeit.

@@ -2,6 +2,8 @@ Most settings are on the Settings page of the Web UI. They are stored in `config
 
 ## The file
 
+An excerpt with the settings you are most likely to change. Edit them in the file the server generated; do not replace that file with this excerpt, it has more sections than shown here.
+
 ```toml
 download_dir = "downloads"
 temp_dir = "downloads/.tmp"
@@ -64,6 +66,6 @@ To write one, start from [`plugins/template/plugin.ts`](https://github.com/amigo
 
 ## Other tools
 
-- **Browser extensions:** Click'n'Load listens on port 9666, like JDownloader.
+- **Browser extensions:** Click'n'Load listens on port 9666, like JDownloader, for browsers on the same machine as the server (not with the Docker image).
 - **NZBGet clients:** the server answers NZBGet's JSON-RPC at `/jsonrpc`.
 - **Scripts:** a REST API under `/api/v1/` and a WebSocket at `/api/v1/ws` for live progress.

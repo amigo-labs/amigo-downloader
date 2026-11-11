@@ -1,4 +1,4 @@
-`krake` downloads files directly, or controls the queue of a Krake server. It is a client: the server with the Web UI is `krake-server` (or the Docker image).
+`krake` downloads files from the terminal. It works on its own: it does not control a running Krake server. For a server's queue, use its Web UI or its REST API.
 
 ## Download directly
 
@@ -17,7 +17,7 @@ krake <URL> --chunks 8         # eight parallel chunks
 
 ## Queue
 
-These commands work on the server's queue.
+These commands keep a queue of their own, in a `krake.db` file in the folder you run them in. They do not show or change the downloads of a running server.
 
 ```bash
 krake add <URL>                # queue a URL
@@ -40,7 +40,7 @@ krake export-dlc                     # export everything
 krake export-dlc --ids id1,id2       # export some downloads
 ```
 
-## A server on another machine
+## Pairing with a server
 
 ```bash
 krake login https://krake.example.org --name home   # pair with a server
@@ -49,17 +49,16 @@ krake remote use home
 krake remote remove home
 ```
 
+Pairing is used by `krake plugins install`, which installs a plugin on the paired server. The queue commands above stay local.
+
 ## Plugins
 
 ```bash
-krake plugins list
-krake plugins search <query>
-krake plugins install <id>
-krake plugins update [id]
-krake plugins enable <id>
-krake plugins login <id>                 # sign in to a hoster account
+krake plugins install <id>               # install from the registry, on this machine or a paired server
 krake plugins test <plugin.ts> [url]     # run a plugin's spec, or resolve a URL with it
 ```
+
+Listing, searching, updating and enabling plugins and signing in to a hoster account are done in the Web UI (Plugins page); the matching `krake plugins` subcommands only point there for now.
 
 ## Settings
 

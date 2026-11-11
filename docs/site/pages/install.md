@@ -4,13 +4,15 @@ Krake runs as a server with a Web UI (Docker or a single binary), as a desktop a
 
 ```bash
 docker run -d --name krake \
-  -p 1516:1516 -p 9666:9666 \
+  -p 1516:1516 \
   -v ./config:/config -v ./downloads:/downloads \
   -e KRAKE_BIND=0.0.0.0:1516 \
   ghcr.io/amigo-labs/krake:latest
 ```
 
-Open `http://localhost:1516`. The setup wizard creates the admin account. Port 9666 is Click'n'Load, for browser extensions.
+Open `http://localhost:1516`. The setup wizard creates the admin account.
+
+Click'n'Load (port 9666, for browser extensions) does not work with the container: the listener only accepts connections from the machine it runs on, which inside a container is the container itself. It works when `krake-server` or the desktop app runs on the same machine as the browser.
 
 The same as a compose file:
 
@@ -20,7 +22,6 @@ services:
     image: ghcr.io/amigo-labs/krake:latest
     ports:
       - "1516:1516"   # Web UI
-      - "9666:9666"   # Click'n'Load
     volumes:
       - ./config:/config
       - ./downloads:/downloads
@@ -63,8 +64,10 @@ Installers for Windows, macOS and Linux are attached to each release. The app bu
 
 ## On your phone
 
-1. Open `http://your-server:1516` in the phone's browser.
-2. Choose "Add to Home Screen".
+The Web UI works in any phone browser. To install it as an app and share links to it, the server must be reachable over HTTPS with a certificate the phone trusts (for example behind a reverse proxy; set `KRAKE_TRUST_PROXY=true`), and the browser must support sharing to installed web apps (Chrome on Android does).
+
+1. Open `https://your-server` in the phone's browser.
+2. Choose "Add to Home Screen" / "Install app".
 3. Share a link from any app to Krake. It lands in the queue.
 
 ## Checksums
@@ -82,10 +85,13 @@ You need Rust (the version in `rust-toolchain.toml`), Node.js with pnpm, `protoc
 ```bash
 # Debian / Ubuntu
 sudo apt-get install protobuf-compiler clang lld
-# macOS (Apple's clang has no WebAssembly target)
+# macOS: Apple's clang has no WebAssembly target, so point the build at Homebrew's
 brew install protobuf llvm
+export CC_wasm32_unknown_unknown="$(brew --prefix llvm)/bin/clang"
+export AR_wasm32_unknown_unknown="$(brew --prefix llvm)/bin/llvm-ar"
 
 pnpm install && pnpm build:web-ui
+cargo build --bin krake-plugin-host    # plugins run in this process; the server looks for it next to itself
 cargo run --bin krake-server
 ```
 

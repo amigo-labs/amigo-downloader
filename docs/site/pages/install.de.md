@@ -4,13 +4,15 @@ Krake läuft als Server mit Web-Oberfläche (Docker oder einzelnes Binary), als 
 
 ```bash
 docker run -d --name krake \
-  -p 1516:1516 -p 9666:9666 \
+  -p 1516:1516 \
   -v ./config:/config -v ./downloads:/downloads \
   -e KRAKE_BIND=0.0.0.0:1516 \
   ghcr.io/amigo-labs/krake:latest
 ```
 
-Öffne `http://localhost:1516`. Der Einrichtungsassistent legt das Admin-Konto an. Port 9666 ist Click'n'Load für Browser-Erweiterungen.
+Öffne `http://localhost:1516`. Der Einrichtungsassistent legt das Admin-Konto an.
+
+Click'n'Load (Port 9666, für Browser-Erweiterungen) funktioniert mit dem Container nicht: Der Dienst nimmt nur Verbindungen von dem Rechner an, auf dem er läuft, und das ist im Container der Container selbst. Es funktioniert, wenn `krake-server` oder die Desktop-App auf demselben Rechner läuft wie der Browser.
 
 Dasselbe als Compose-Datei:
 
@@ -20,7 +22,6 @@ services:
     image: ghcr.io/amigo-labs/krake:latest
     ports:
       - "1516:1516"   # Web-Oberfläche
-      - "9666:9666"   # Click'n'Load
     volumes:
       - ./config:/config
       - ./downloads:/downloads
@@ -63,8 +64,10 @@ Installer für Windows, macOS und Linux hängen an jedem Release. Die App bringt
 
 ## Auf dem Handy
 
-1. Öffne `http://dein-server:1516` im Browser des Handys.
-2. Wähle „Zum Home-Bildschirm“.
+Die Web-Oberfläche läuft in jedem Handy-Browser. Um sie als App zu installieren und Links an sie zu teilen, muss der Server über HTTPS mit einem Zertifikat erreichbar sein, dem das Handy vertraut (zum Beispiel hinter einem Reverse-Proxy; setze `KRAKE_TRUST_PROXY=true`), und der Browser muss das Teilen an installierte Web-Apps unterstützen (Chrome unter Android kann das).
+
+1. Öffne `https://dein-server` im Browser des Handys.
+2. Wähle „Zum Home-Bildschirm“ bzw. „App installieren“.
 3. Teile einen Link aus einer beliebigen App an Krake. Er landet in der Warteschlange.
 
 ## Prüfsummen
@@ -82,10 +85,13 @@ Du brauchst Rust (die Version aus `rust-toolchain.toml`), Node.js mit pnpm, `pro
 ```bash
 # Debian / Ubuntu
 sudo apt-get install protobuf-compiler clang lld
-# macOS (Apples clang hat kein WebAssembly-Target)
+# macOS: Apples clang hat kein WebAssembly-Target, deshalb den Build auf das von Homebrew zeigen lassen
 brew install protobuf llvm
+export CC_wasm32_unknown_unknown="$(brew --prefix llvm)/bin/clang"
+export AR_wasm32_unknown_unknown="$(brew --prefix llvm)/bin/llvm-ar"
 
 pnpm install && pnpm build:web-ui
+cargo build --bin krake-plugin-host    # Plugins laufen in diesem Prozess; der Server sucht ihn neben sich
 cargo run --bin krake-server
 ```
 

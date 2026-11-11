@@ -142,11 +142,11 @@ downloads:
     - { os: linux, label: { en: CLI (krake), de: CLI (krake) }, arch: arm64, asset: krake-linux-aarch64.tar.gz }
   install:
     - label: Docker
-      command: docker run -d --name krake -p 1516:1516 -p 9666:9666 -v ./config:/config -v ./downloads:/downloads -e KRAKE_BIND=0.0.0.0:1516 ghcr.io/amigo-labs/krake:latest
+      command: docker run -d --name krake -p 1516:1516 -v ./config:/config -v ./downloads:/downloads -e KRAKE_BIND=0.0.0.0:1516 ghcr.io/amigo-labs/krake:latest
       requiresRelease: true
       note:
-        en: Then open http://localhost:1516; the setup wizard creates the admin account. Port 9666 is Click'n'Load.
-        de: Danach http://localhost:1516 öffnen; der Einrichtungsassistent legt das Admin-Konto an. Port 9666 ist Click'n'Load.
+        en: Then open http://localhost:1516; the setup wizard creates the admin account. Click'n'Load needs the server or the desktop app on the same machine as the browser, not the container.
+        de: Danach http://localhost:1516 öffnen; der Einrichtungsassistent legt das Admin-Konto an. Click'n'Load braucht den Server oder die Desktop-App auf demselben Rechner wie der Browser, nicht den Container.
     - label: { en: Install script (CLI), de: Installationsskript (CLI) }
       command: curl -fsSL https://raw.githubusercontent.com/amigo-labs/amigo-krake/main/scripts/install.sh | bash
       requiresRelease: true
